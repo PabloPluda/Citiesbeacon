@@ -1,0 +1,98 @@
+:root {
+  /* Color Palette */
+  --primary: #4DA6FF;
+  --secondary: #5CD85C;
+  --accent-1: #FFD93D;
+  --accent-2: #FF8C42;
+  --accent-3: #FF6B8A;
+  --bg-light: #FFF8F0;
+  --bg-dark: #1A1A3E;
+  --text-primary: #2D3436;
+  --text-light: #FFFFFF;
+
+  /* Fonts */
+  --font-ui: 'Outfit', sans-serif;
+  --font-dialog: 'Fredoka', sans-serif;
+  --font-title: 'Fredoka One', cursive;
+  
+  /* Utils */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-full: 9999px;
+  --shadow-soft: 0 4px 12px rgba(45, 52, 54, 0.1);
+  --shadow-glow: 0 0 15px rgba(77, 166, 255, 0.5);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-ui);
+  background-color: var(--bg-light);
+  color: var(--text-primary);
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  /* Disable text selection and touch highlights for PWA/Game feel */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Typography Utility Classes */
+h1, h2, h3, .title {
+  font-family: var(--font-title);
+  color: var(--text-primary);
+  letter-spacing: 0.05em;
+}
+
+.text-dialog {
+  font-family: var(--font-dialog);
+}
+
+/* Button Base */
+.btn {
+  font-family: var(--font-title);
+  padding: 12px 24px;
+  border-radius: var(--radius-full);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-soft);
+  font-size: 1.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn:active {
+  transform: scale(0.95);
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: var(--text-light);
+}
+
+.btn-secondary {
+  background-color: var(--secondary);
+  color: var(--text-light);
+}
+
+.btn-accent {
+  background-color: var(--accent-2);
+  color: var(--text-light);
+}

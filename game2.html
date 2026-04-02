@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CityHero - Spot the Mistake</title>
+
+<style>
+body {
+  font-family: Arial;
+  background: #eef5ff;
+  text-align: center;
+  padding: 20px;
+}
+
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 20px;
+  max-width: 500px;
+  margin: auto;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+h1 {
+  color: #2b7cff;
+}
+
+.scene {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 20px;
+}
+
+.option {
+  border: 3px solid transparent;
+  border-radius: 15px;
+  padding: 10px;
+  cursor: pointer;
+  width: 120px;
+}
+
+.option:hover {
+  border-color: #2b7cff;
+}
+
+img {
+  width: 100%;
+  border-radius: 10px;
+}
+
+.feedback {
+  margin-top: 15px;
+  font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+
+<div class="card">
+  <h1>CityHero Academy</h1>
+  <h2>Spot the Mistake</h2>
+
+  <p id="question">Who is doing something wrong?</p>
+
+  <div class="scene">
+    <div class="option" onclick="answer(0)">
+      <img src="https://cdn-icons-png.flaticon.com/512/194/194938.png">
+      <p>Person A</p>
+    </div>
+
+    <div class="option" onclick="answer(1)">
+      <img src="https://cdn-icons-png.flaticon.com/512/194/194935.png">
+      <p>Person B</p>
+    </div>
+  </div>
+
+  <div class="feedback" id="feedback"></div>
+
+</div>
+
+<script>
+const rounds = [
+  { correct: 0, text: "Crossing on RED light" },
+  { correct: 1, text: "Not looking both ways" },
+  { correct: 0, text: "Using phone while crossing" }
+];
+
+let current = 0;
+
+function answer(i) {
+  if (i === rounds[current].correct) {
+    document.getElementById("feedback").innerText = "🔥 Correct! You spotted the problem!";
+  } else {
+    document.getElementById("feedback").innerText = "⚠️ Not quite. Look carefully!";
+  }
+
+  setTimeout(() => {
+    current++;
+    if (current < rounds.length) {
+      document.getElementById("feedback").innerText = "";
+    } else {
+      document.querySelector(".card").innerHTML = `
+        <h1>Great Work!</h1>
+        <p>You are learning to help others!</p>
+        <button onclick="location.reload()">Play Again</button>
+      `;
+    }
+  }, 1000);
+}
+</script>
+
+</body>
+</html>

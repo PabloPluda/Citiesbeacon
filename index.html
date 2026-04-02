@@ -1,0 +1,141 @@
+let lives = 3;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CityHero Academy - Street Challenge</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f8fb;
+      text-align: center;
+      padding: 30px;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 20px;
+      max-width: 400px;
+      margin: auto;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #2b7cff;
+    }
+    button {
+      display: block;
+      margin: 10px auto;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 10px;
+      background: #2b7cff;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+      width: 80%;
+    }
+    button:hover {
+      background: #1a5edb;
+    }
+    .feedback {
+      margin-top: 15px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h1>CityHero Academy</h1>
+  <h2>Street Challenge</h2>
+  <p id="progress"></p>
+  <p id="question">Loading...</p>
+
+  <button onclick="answer(0)" id="btn0"></button>
+  <button onclick="answer(1)" id="btn1"></button>
+  <button onclick="answer(2)" id="btn2"></button>
+
+  <div class="feedback" id="feedback"></div>
+</div>
+
+<script>
+const questions = [
+  {
+    q: "The light is RED. What should you do?",
+    options: ["Cross quickly", "Wait for green", "Follow others"],
+    correct: 1
+  },
+  {
+    q: "The light is GREEN. What should you do first?",
+    options: ["Run", "Look both ways", "Follow others"],
+    correct: 1
+  },
+  {
+    q: "You see others crossing on red. What do you do?",
+    options: ["Follow them", "Wait safely", "Run fast"],
+    correct: 1
+  },
+  {
+    q: "Cars are still moving. What do you do?",
+    options: ["Cross anyway", "Wait until safe", "Run"],
+    correct: 1
+  },
+  {
+    q: "You are about to cross. What do you check?",
+    options: ["Your phone", "Both sides", "Nothing"],
+    correct: 1
+  }
+];
+
+let current = 0;
+let score = 0;
+
+function loadQuestion() {
+  document.getElementById("progress").innerText =
+  "Round " + (current + 1) + " of " + questions.length;
+  const q = questions[current];
+  document.getElementById("question").innerText = q.q;
+  document.getElementById("btn0").innerText = q.options[0];
+  document.getElementById("btn1").innerText = q.options[1];
+  document.getElementById("btn2").innerText = q.options[2];
+  document.getElementById("feedback").innerText = "";
+}
+
+function answer(i) {
+  if (i === questions[current].correct) {
+    score++;
+    document.getElementById("feedback").innerText = "🔥 Nice! You saved the day!";
+  } else {
+  lives--;
+  document.getElementById("feedback").innerText = "⚠️ Not safe! Try again!" + lives;
+
+  if (lives === 0) {
+    document.querySelector(".card").innerHTML = `
+      <h1>Game Over</h1>
+      <p>Try again to become a City Hero!</p>
+      <button onclick="location.reload()">Restart</button>
+    `;
+    return;
+  }
+}
+
+  setTimeout(() => {
+    current++;
+    if (current < questions.length) {
+      loadQuestion();
+    } else {
+      document.querySelector(".card").innerHTML = `
+        <h1>Mission Complete!</h1>
+        <h2>Your Score: ${score}/${questions.length}</h2>
+        <p>You are becoming a City Hero!</p>
+        <button onclick="location.reload()">Play Again</button>
+      `;
+    }
+  }, 1000);
+}
+
+loadQuestion();
+</script>
+
+</body>
+</html>

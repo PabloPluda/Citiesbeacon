@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Street Hero - Tap to Cross</title>
+
+<style>
+body {
+  font-family: Arial;
+  background: #87CEEB;
+  text-align: center;
+  padding: 20px;
+}
+
+.game {
+  background: white;
+  padding: 20px;
+  border-radius: 20px;
+  max-width: 400px;
+  margin: auto;
+}
+
+.road {
+  background: #555;
+  height: 120px;
+  border-radius: 10px;
+  position: relative;
+  margin: 20px 0;
+}
+
+.tommy {
+  font-size: 40px;
+  position: absolute;
+  left: 10px;
+  top: 40px;
+  transition: transform 0.3s ease;
+}
+
+.car {
+  font-size: 30px;
+  position: absolute;
+  right: -50px;
+  top: 40px;
+  transition: transform 0.5s linear;
+}
+.light {
+  font-size: 40px;
+}
+
+button {
+  padding: 15px;
+  font-size: 18px;
+  border-radius: 10px;
+  border: none;
+  background: #28a745;
+  color: white;
+  width: 80%;
+}
+
+.feedback {
+  font-weight: bold;
+  margin-top: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="game">
+  <h1>🚦 Tap to Cross</h1>
+
+  <div class="light" id="light">🔴</div>
+  <div style="background:#ddd;height:10px;border-radius:5px;margin:10px 0;">
+  <div id="timer" style="height:100%;width:100%;background:#ff4d4d;border-radius:5px;"></div>
+  </div>
+  <div class="road">
+    <div class="tommy">🧒</div>
+    <div class="car" id="car">🚗</div>
+  </div>
+
+  <button onclick="cross()">TAP TO CROSS</button>
+
+  <div class="feedback" id="feedback"></div>
+</div>
+
+<script>
+let light = "red";
+let score = 0;
+let round = 0;
+let maxRounds = 5;
+let canClick = true;
+let timerInterval;
+
+function startRound() {
+  round++;
+  canClick = true;
+  document.getElementById("feedback").innerText = "";
+
+  // Reset timer
+  let timeLeft = 100;
+  const timerBar = document.getElementById("timer");
+  timerBar.style.width = "100%";
+
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    timeLeft -= 1;
+    timerBar.style.width = timeLeft + "%";
+
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      if (canClick) {
+        canClick = false;
+        document.getElementById("feedback").innerText = "⏱️ Too slow!";
+        next();
+      }
+    }
+  }, 30);
+
+  // Start RED
+  light = "red";
+  document.getElementById("light").innerText = "🔴";
+  document.getElementById("car").style.display = "block";
+  moveCar();
+  // Random delay → GREEN
+  let delay = Math.random() * 2000 + 1000;
+
+  setTimeout(() => {
+    light = "green";
+    document.getElementById("light").innerText = "🟢";
+    document.getElementById("car").style.transform = "translateX(-400px)";
+  }, delay);
+}
+
+function cross() {
+  if (!canClick) return;
+  canClick = false;
+  clearInterval(timerInterval);
+
+  if (light === "green") {
+    document.querySelector(".tommy").style.transform = "translateX(200px)";
+    score++;
+    document.getElementById("feedback").innerText = "🔥 GO!";
+  } else {
+    document.querySelector(".tommy").style.transform = "scale(1.5)";
+    document.getElementById("feedback").innerText = "❌ STOP!";
+  }
+
+  next();
+  setTimeout(() => {
+    document.querySelector(".tommy").style.transform = "translateX(0px)";
+  }, 800);
+}
+
+function next() {
+  setTimeout(() => {
+    document.querySelector(".tommy").style.transform = "scale(1)";
+  }, 800);
+  if (round >= maxRounds) {
+    setTimeout(endGame, 1000);
+  } else {
+    setTimeout(startRound, 1200);
+  }
+}
+
+function endGame() {
+  document.querySelector(".game").innerHTML = `
+    <h1>Score: ${score}/${maxRounds}</h1>
+    <p>You are becoming a City Hero!</p>
+    <button onclick="location.reload()">Play Again</button>
+  `;
+}
+
+startRound();
+
+function moveCar() {
+  const car = document.getElementById("car");
+
+  car.style.transform = "translateX(-400px)";
+
+  setTimeout(() => {
+    car.style.transform = "translateX(0px)";
+  }, 1000);
+}
+
+</script>
+
+
+</body>
+</html>

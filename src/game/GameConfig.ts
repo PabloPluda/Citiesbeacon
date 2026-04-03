@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
-import { ThrowToBinScene } from './scenes/ThrowToBinScene';
 
-export function createGameConfig(parent: string | HTMLElement): Phaser.Types.Core.GameConfig {
+export function createGameConfig(parent: string | HTMLElement, InitialSceneClass: any): Phaser.Types.Core.GameConfig {
   return {
     type: Phaser.AUTO,
     parent: parent,
@@ -19,6 +18,6 @@ export function createGameConfig(parent: string | HTMLElement): Phaser.Types.Cor
         debug: false
       }
     },
-    scene: [ThrowToBinScene]
+    scene: [InitialSceneClass]
   };
 }

@@ -1,9 +1,11 @@
 import { useNavigate } from 'react-router-dom';
-import { Play, Trophy } from 'lucide-react';
+import { Play, Trophy, RotateCcw } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useProgressStore } from '../store/progressStore';
 
 export default function Home() {
   const navigate = useNavigate();
+  const resetProgress = useProgressStore((state) => state.resetProgress);
 
   return (
     <div style={{
@@ -62,6 +64,19 @@ export default function Home() {
           style={{ backgroundColor: 'white', color: 'var(--primary)' }}
         >
           <Trophy size={20} /> Leaderboard
+        </button>
+        <button 
+          onClick={() => {
+            if (confirm("Reset ALL progress permanently?")) {
+              resetProgress();
+              alert("Progress reset to 0!");
+            }
+          }}
+          style={{ marginTop: '20px', background: 'none', border: 'none', color: '#ff4444', 
+                   textDecoration: 'underline', cursor: 'pointer', fontFamily: 'Fredoka' }}
+        >
+          <RotateCcw size={16} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }}/>
+          Dev Reset Stats
         </button>
       </div>
     </div>

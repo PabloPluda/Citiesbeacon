@@ -1,135 +1,292 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Phaser from 'phaser';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronLeft } from 'lucide-react';
 import { createGameConfig } from '../game/GameConfig';
 import { EventBus } from '../game/EventBus';
-import { Heart, ChevronLeft } from 'lucide-react';
 import { useProgressStore } from '../store/progressStore';
+import PuzzleReveal from '../components/PuzzleReveal';
+import { ThrowToBinScene } from '../game/scenes/ThrowToBinScene';
+import { CrossingScene } from '../game/scenes/CrossingScene';
+import { LightsOutScene } from '../game/scenes/LightsOutScene';
+import { WaterSaverScene } from '../game/scenes/WaterSaverScene';
+
+const SCENE_MAP: Record<number, any> = {
+  1: ThrowToBinScene,
+  2: CrossingScene,
+  3: LightsOutScene,
+  4: WaterSaverScene
+};
+
+// ─── Circular countdown timer ─────────────────────────────────────────────────
+function TimerRing({ timeLeft }: { timeLeft: number }) {
+  const r = 22;
+  const circ = 2 * Math.PI * r;
+  // Maximum time can be technically more than 35 due to +2s, so we clamp for the circle
+  const maxTime = 35;
+  const offset = circ * (1 - Math.min(1, timeLeft / maxTime));
+  const color = timeLeft <= 5 ? '#EF4444' : timeLeft <= 10 ? '#F59E0B' : '#22C55E';
+  return (
+    <div style={{ position: 'relative', width: 60, height: 60 }}>
+      <svg width={60} height={60} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={30} cy={30} r={r} fill="rgba(0,0,0,0.4)" stroke="rgba(255,255,255,0.2)" strokeWidth={5} />
+        <circle
+          cx={30} cy={30} r={r} fill="none"
+          stroke={color} strokeWidth={5}
+          strokeDasharray={circ} strokeDashoffset={offset}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 0.9s linear, stroke 0.3s' }}
+        />
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'white', fontFamily: 'Fredoka One', fontSize: '1.1rem',
+        textShadow: '1px 1px 3px black',
+      }}>
+        {timeLeft}
+      </div>
+    </div>
+  );
+}
+
+// ─── Level-complete overlay ───────────────────────────────────────────────────
+function LevelCompleteOverlay({ level, onSeeResults }: { level: number; onSeeResults: () => void }) {
+  return (
+    <motion.div
+      initial={{ scale: 0.6, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 1.1, opacity: 0 }}
+      transition={{ type: 'spring', bounce: 0.45 }}
+      style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(10,20,60,0.88)', zIndex: 40, gap: 16,
+      }}
+    >
+      <div style={{ fontSize: '4rem' }}>🎉</div>
+      <h2 style={{ fontFamily: 'Fredoka One', color: '#FFD700', fontSize: '2.2rem', textAlign: 'center' }}>
+        Level {level} Clear!
+      </h2>
+      <p style={{ fontFamily: 'Fredoka', color: '#A0AEC0', fontSize: '1.1rem' }}>
+        You bagged all 7 pieces of trash!
+      </p>
+      <motion.button
+        whileTap={{ scale: 0.93 }}
+        className="btn btn-primary"
+        onClick={onSeeResults}
+        style={{ marginTop: 12, fontSize: '1.1rem', padding: '14px 28px' }}
+      >
+        See Your Puzzle! 🧩
+      </motion.button>
+    </motion.div>
+  );
+}
+
+// ─── Time-up overlay ──────────────────────────────────────────────────────────
+function TimeUpOverlay({ scored, onRetry, onQuit }: { scored: number; onRetry: () => void; onQuit: () => void }) {
+  return (
+    <motion.div
+      initial={{ y: 60, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: -40, opacity: 0 }}
+      style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(10,20,60,0.88)', zIndex: 40, gap: 16,
+      }}
+    >
+      <div style={{ fontSize: '3.5rem' }}>⏰</div>
+      <h2 style={{ fontFamily: 'Fredoka One', color: '#EF4444', fontSize: '2rem' }}>Time's Up!</h2>
+      <p style={{ fontFamily: 'Fredoka', color: '#A0AEC0', fontSize: '1.1rem' }}>
+        You got {scored} / 7 pieces. So close!
+      </p>
+      <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+        <motion.button whileTap={{ scale: 0.93 }} className="btn btn-primary" onClick={onRetry}
+          style={{ fontSize: '1rem', padding: '12px 22px' }}>
+          Try Again! 💪
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.93 }} className="btn"
+          onClick={onQuit}
+          style={{ background: 'rgba(255,255,255,0.1)', color: 'white', fontSize: '1rem', padding: '12px 22px' }}>
+          Quit
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Main GameWindow ──────────────────────────────────────────────────────────
+type Phase = 'playing' | 'levelComplete' | 'timeUp' | 'puzzleReveal';
 
 export default function GameWindow() {
   const navigate = useNavigate();
   const { missionId } = useParams();
+  const mId = parseInt(missionId || '1', 10);
+
   const gameRef = useRef<Phaser.Game | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  
-  const [score, setScore] = useState(0);
-  const [lives, setLives] = useState(4);
-  const [streak, setStreak] = useState(0);
-  
-  // Ref for score to use inside effect without dependencies changing
-  const scoreRef = useRef(0);
-  scoreRef.current = score;
 
-  const { addCityPoints, updateHighScore } = useProgressStore();
+  const { completeLevel, getHighestLevel } = useProgressStore();
+  
+  // Calculate initial level to jump right in
+  const highest = getHighestLevel(mId);
+  const initial = highest >= 20 ? 20 : highest + 1; // Play next uncompleted level or max
+
+  const levelRef = useRef(initial);
+  const [level, setLevel] = useState(initial);
+  const [scored, setScored] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(35); // Base timer 35s
+  const [phase, setPhase] = useState<Phase>('playing');
 
   useEffect(() => {
     if (containerRef.current && !gameRef.current) {
-      gameRef.current = new Phaser.Game(createGameConfig(containerRef.current));
+      const SceneClass = SCENE_MAP[mId] || ThrowToBinScene;
+      gameRef.current = new Phaser.Game(createGameConfig(containerRef.current, SceneClass));
     }
 
-    const handleScore = (points: number) => {
-      setScore(s => s + points);
-      setStreak(s => {
-        const newStreak = s + 1;
-        if (newStreak % 5 === 0) {
-          setLives(l => Math.min(4, l + 1)); // Recover 1 life every 5 hits
-        }
-        return newStreak;
-      });
+    // Inject level data into Phaser the very first time it loads
+    const onSceneReady = () => {
+       if (levelRef.current > 1) {
+         EventBus.emit('restart-scene', { level: levelRef.current });
+       }
     };
+    EventBus.once('current-scene-ready', onSceneReady);
 
-    const handleMiss = () => {
-      setStreak(0);
-      setLives(l => {
-        const newLives = l - 1;
-        if (newLives <= 0) {
-          // Game Over logic
-          const finalScore = scoreRef.current;
-          
-          // Grant CP (10 base + 1 CP every 100 points)
-          const earnedCP = 10 + Math.floor(finalScore / 100);
-          addCityPoints(earnedCP);
-          
-          if (missionId) {
-             updateHighScore(parseInt(missionId, 10), finalScore);
-          }
+    const onTimer = (t: number) => setTimeLeft(t);
+    const onScored = (n: number) => setScored(n);
 
-          setTimeout(() => {
-             alert(`Great job, CityHero!\nYour Score: ${finalScore} pts\nEarned: +${earnedCP} CP!`);
-             navigate('/map');
-          }, 100);
-        }
-        return newLives;
-      });
+    const onLevelComplete = (completedLevel: number) => {
+      completeLevel(mId, completedLevel);
+      setPhase('levelComplete');
     };
+    const onTimeUp = () => setPhase('timeUp');
 
-    EventBus.on('game-score', handleScore);
-    EventBus.on('game-miss', handleMiss);
+    EventBus.on('game-timer', onTimer);
+    EventBus.on('game-scored-update', onScored);
+    EventBus.on('game-level-complete', onLevelComplete);
+    EventBus.on('game-time-up', onTimeUp);
 
     return () => {
-      EventBus.off('game-score', handleScore);
-      EventBus.off('game-miss', handleMiss);
+      EventBus.off('game-timer', onTimer);
+      EventBus.off('game-scored-update', onScored);
+      EventBus.off('game-level-complete', onLevelComplete);
+      EventBus.off('game-time-up', onTimeUp);
       if (gameRef.current) {
         gameRef.current.destroy(true);
         gameRef.current = null;
       }
     };
-  }, [navigate]);
+  }, [mId]);  // eslint-disable-line
+
+  // After level complete, show puzzle
+  const handleSeeResults = () => setPhase('puzzleReveal');
+
+  // From puzzle: go to next level
+  const handleNextLevel = () => {
+    const next = levelRef.current + 1;
+    levelRef.current = next;
+    setLevel(next);
+    setScored(0);
+    setTimeLeft(35);
+    setPhase('playing');
+    EventBus.emit('restart-scene', { level: next });
+  };
+
+  // Mission done → replay from lvl 1
+  const handlePlayAgain = () => {
+    levelRef.current = 1;
+    setLevel(1);
+    setScored(0);
+    setTimeLeft(35);
+    setPhase('playing');
+    EventBus.emit('restart-scene', { level: 1 });
+  };
+
+  // Retry same level
+  const handleRetry = () => {
+    setScored(0);
+    setTimeLeft(35);
+    setPhase('playing');
+    EventBus.emit('restart-scene', { level: levelRef.current });
+  };
+
+  const isMissionComplete = level >= 20 && phase === 'puzzleReveal';
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#000' }}>
-      {/* Game Canvas Container */}
+      {/* Phaser canvas container */}
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* HTML UI / HUD Overlay */}
+      {/* ─ HUD ─────────────────────────────────────────────────────────────── */}
       <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        padding: '16px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        pointerEvents: 'none' // Let clicks pass through to Phaser
+        position: 'absolute', top: 0, left: 0, width: '100%',
+        padding: '10px 14px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        pointerEvents: 'none',
       }}>
-        {/* Left Side: Back & Lives */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button 
-            onClick={() => navigate('/map')}
-            style={{ 
-              pointerEvents: 'auto', 
-              background: 'white', 
-              border: 'none', 
-              borderRadius: '50%', 
-              width: '40px', 
-              height: '40px', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              boxShadow: 'var(--shadow-soft)'
-            }}
-          >
-            <ChevronLeft size={24} color="var(--primary)" />
-          </button>
-          <div style={{ display: 'flex', gap: '4px' }}>
-            {[...Array(4)].map((_, i) => (
-              <Heart 
-                key={i} 
-                size={24} 
-                fill={i < lives ? "var(--accent-3)" : "none"} 
-                color={i < lives ? "var(--accent-3)" : "#FFF"} 
-                style={{ opacity: i < lives ? 1 : 0.5 }}
-              />
-            ))}
-          </div>
+        {/* Back */}
+        <button
+          id="btn-back"
+          onClick={() => navigate('/map')}
+          style={{
+            pointerEvents: 'auto',
+            background: 'rgba(255,255,255,0.92)', border: 'none',
+            borderRadius: '50%', width: 44, height: 44,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.25)', cursor: 'pointer',
+          }}
+        >
+          <ChevronLeft size={24} color="var(--primary)" />
+        </button>
+
+        {/* Timer */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+          <TimerRing timeLeft={timeLeft} />
+          <span style={{
+            fontFamily: 'Fredoka One', fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)',
+            textShadow: '1px 1px 2px black', letterSpacing: '0.05em',
+          }}>
+            LVL {level}/20
+          </span>
         </div>
 
-        {/* Right Side: Score & Streak */}
-        <div style={{ textAlign: 'right', color: 'white', textShadow: '2px 2px 0 #000' }}>
-          <h2 style={{ fontSize: '2rem', margin: 0 }}>{score}</h2>
-          {streak >= 2 && <span style={{ fontSize: '1.2rem', color: 'var(--accent-1)' }}>Combo x{streak} 🔥</span>}
+        {/* Scored */}
+        <div style={{
+          background: 'rgba(255,255,255,0.92)', borderRadius: 20,
+          padding: '6px 14px', textAlign: 'center',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
+        }}>
+          <div style={{ fontFamily: 'Fredoka One', fontSize: '1.5rem', color: 'var(--primary)', lineHeight: 1 }}>
+            {scored}<span style={{ fontSize: '0.9rem', color: '#888' }}>/7</span>
+          </div>
+          <div style={{ fontFamily: 'Fredoka', fontSize: '0.65rem', color: '#999' }}>SCORED</div>
         </div>
       </div>
+
+      {/* ─ Overlays ─────────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {phase === 'levelComplete' && (
+          <LevelCompleteOverlay key="lvlcomplete" level={level} onSeeResults={handleSeeResults} />
+        )}
+        {phase === 'timeUp' && (
+          <TimeUpOverlay key="timeup" scored={scored} onRetry={handleRetry} onQuit={() => navigate('/map')} />
+        )}
+        {phase === 'puzzleReveal' && (
+          <PuzzleReveal
+            key="puzzle"
+            missionId={mId}
+            currentLevel={level}
+            isMissionComplete={isMissionComplete}
+            onNextLevel={handleNextLevel}
+            onPlayAgain={handlePlayAgain}
+            onQuit={() => navigate('/map')}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

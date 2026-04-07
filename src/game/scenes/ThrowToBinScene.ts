@@ -1,637 +1,408 @@
-import Phaser from 'phaser';
+﻿import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 
-// ─── Level config table ──────────────────────────────────────────────────────
-// movement: 'static' | 'jump' (reposition after each throw) | 'continuous' (moving)
-const LEVELS = Array.from({ length: 20 }, (_, i) => {
-  const lvl = i + 1;
-  let scale = 1.0;
-  let movement = 'static';
-  let speed = 0;
-
-  if (lvl <= 5) {
-    // 1-5: scale drops 5% each level, static
-    scale = 1.0 - ((lvl - 1) * 0.05); // 1.0 down to 0.8
-    movement = 'static';
-  } 
-  else if (lvl <= 10) {
-    // 6-10: scale stays at lvl 5 (0.8), movement smooth
-    scale = 0.8;
-    movement = 'continuous';
-    speed = 30 + ((lvl - 6) * 10); // 30 to 70 speed
-  }
-  else if (lvl <= 15) {
-    // 11-15: scale drops another 5% each level, speed stays at 70
-    scale = 0.8 - ((lvl - 10) * 0.05); // 0.75 down to 0.55
-    movement = 'continuous';
-    speed = 70;
-  }
-  else {
-    // 16-20: scale stays at 0.55, speed increases slightly
-    scale = 0.55;
-    movement = 'continuous';
-    speed = 70 + ((lvl - 15) * 12); // 82 to 130
-  }
-
-  return { scale, movement, speed };
-});
-
-const SCORE_MSGS = [
-  ["Nice shot! 🎯", "Right in! 💪", "Great throw! ⭐", "Bullseye! 🎯", "Awesome! 🌟"],
-  ["Combo x2! 🔥", "Keep it up! 🔥", "Double! 💥"],
-  ["INCREDIBLE! 🌟", "You're on fire! 🚀", "UNSTOPPABLE! ⚡", "LEGEND! 👑"],
+const LEVELS = [
+  {trashGoal:7,spawnRate:2400},{trashGoal:7,spawnRate:2200},{trashGoal:7,spawnRate:2000},
+  {trashGoal:8,spawnRate:1900},{trashGoal:8,spawnRate:1800},{trashGoal:9,spawnRate:1700},
+  {trashGoal:9,spawnRate:1600},{trashGoal:10,spawnRate:1500},{trashGoal:10,spawnRate:1400},
+  {trashGoal:11,spawnRate:1300},{trashGoal:11,spawnRate:1200},{trashGoal:12,spawnRate:1100},
 ];
-const MISS_MSGS = ["Almost! 😅", "Try again! 👊", "You got this! 💪", "So close! 😬", "Next one! 🎯"];
-const TRASH_TEXTURES = ['t_paper', 't_can', 't_box', 't_cup', 't_apple'];
 
-// ─── Scene ───────────────────────────────────────────────────────────────────
+const TRASH_EMOJIS = ['🥤','🍌','🍾','🥫','📦','🗞️'];
+const MAX_PULL  = 140;
+const MAX_SPEED = 1500;
+const GRAVITY   = 1000;
+
+interface ThrownItem {
+  container: Phaser.GameObjects.Container;
+  vx: number; vy: number; rotDir: number; done: boolean;
+}
+
 export class ThrowToBinScene extends Phaser.Scene {
-  private bin!: Phaser.Physics.Arcade.Image;
-  private trashGroup!: Phaser.Physics.Arcade.Group;
-  private selectedTrash: Phaser.Physics.Arcade.Image | null = null;
-  private isDragging = false;
-  private dragStartX = 0;
-  private dragStartY = 0;
-  private powerUI!: Phaser.GameObjects.Graphics;
-  private aimUI!: Phaser.GameObjects.Graphics;
-  private slingshotUI!: Phaser.GameObjects.Graphics;
-  private tommy!: Phaser.GameObjects.Image;
-  private inFlight = false;
+  level = 1; scored = 0; timeLeft = 30;
+  done = false; tutorialActive = false;
 
-  private level = 1;
-  private scored = 0;
-  private streak = 0;
-  private timeLeft = 30;
-  private timerEvent!: Phaser.Time.TimerEvent;
-  private done = false;
-  private tutorialActive = false;
+  binCX   = 0; binRimY  = 0;
+  binHalfW = 62; binBodyH = 130;
 
-  constructor() {
-    super({ key: 'ThrowToBinScene' });
+  trashItems:  Phaser.GameObjects.Container[] = [];
+  thrownItems: ThrownItem[] = [];
+  selectedTrash: Phaser.GameObjects.Container | null = null;
+  isDragging = false;
+  dragOriginX = 0; dragOriginY = 0;
+
+  slingshotGfx!: Phaser.GameObjects.Graphics;
+  tommyPortrait!: Phaser.GameObjects.Container;
+  spawnEvent!: Phaser.Time.TimerEvent;
+
+  constructor() { super('ThrowToBinScene'); }
+
+  init(data?: { level?: number }) {
+    this.level = data?.level ?? 1;
+    this.scored = 0; this.timeLeft = 30;
+    this.done = false; this.tutorialActive = false;
+    this.isDragging = false; this.selectedTrash = null;
+    this.trashItems = []; this.thrownItems = [];
   }
 
-  init(data: { level?: number }) {
-    this.level = Math.max(1, Math.min(20, data?.level ?? 1));
-    this.scored = 0;
-    this.streak = 0;
-    this.timeLeft = 35;
-    this.isDragging = false;
-    this.inFlight = false;
-    this.done = false;
-    this.tutorialActive = false;
-    this.selectedTrash = null;
-  }
+  get cfg() { return LEVELS[Math.min(this.level - 1, LEVELS.length - 1)]; }
 
-  // ── Preload: generate textures programmatically ───────────────────────────
-  preload() {
-    const g = this.make.graphics({ x: 0, y: 0 });
+  preload() { this.load.image('back_trash', '/back_trash.jpg'); }
 
-    // Paper ball
-    g.fillStyle(0xF5F5F5); g.lineStyle(2, 0xBBBBBB);
-    g.fillCircle(22, 22, 22); g.strokeCircle(22, 22, 22);
-    g.generateTexture('t_paper', 44, 44); g.clear();
-
-    // Can
-    g.fillStyle(0x60A5FA); g.fillRoundedRect(0, 4, 32, 40, 6);
-    g.fillStyle(0x93C5FD); g.fillRoundedRect(2, 4, 28, 12, 4);
-    g.generateTexture('t_can', 32, 44); g.clear();
-
-    // Box
-    g.fillStyle(0xD97706); g.fillRoundedRect(0, 0, 40, 36, 4);
-    g.fillStyle(0xFCD34D); g.fillRect(0, 16, 40, 3); g.fillRect(18, 0, 4, 36);
-    g.generateTexture('t_box', 40, 36); g.clear();
-
-    // Cup (red trapezoid approximated with rects)
-    g.fillStyle(0xEF4444);
-    g.fillRect(6, 0, 28, 6);   // rim
-    g.fillRect(8, 6, 24, 38);  // body
-    g.generateTexture('t_cup', 40, 44); g.clear();
-
-
-    // Apple core
-    g.fillStyle(0x86EFAC); g.fillCircle(20, 22, 18);
-    g.fillStyle(0x22C55E); g.fillCircle(14, 14, 8);
-    g.generateTexture('t_apple', 40, 44); g.clear();
-
-    // Bin — blue body + dark rim
-    g.fillStyle(0x3B82F6); g.fillRoundedRect(5, 20, 100, 120, 10);
-    g.fillStyle(0x1D4ED8); g.fillRoundedRect(0, 8, 110, 22, 8);
-    g.fillStyle(0x60A5FA); g.fillRoundedRect(12, 26, 86, 8, 4);
-    g.generateTexture('bin', 110, 142); g.clear();
-
-    // Tommy Neutral
-    g.fillStyle(0xFFDAB9); g.fillCircle(30, 30, 25);
-    g.fillStyle(0x000000); g.fillCircle(20, 25, 3); g.fillCircle(40, 25, 3);
-    g.lineStyle(3, 0x000000); g.beginPath(); g.moveTo(22, 40); g.lineTo(38, 40); g.strokePath();
-    g.generateTexture('tommy_neutral', 60, 60); g.clear();
-
-    // Tommy Smile
-    g.fillStyle(0xFFDAB9); g.fillCircle(30, 30, 25);
-    g.fillStyle(0x000000); g.fillCircle(20, 25, 3); g.fillCircle(40, 25, 3);
-    g.lineStyle(3, 0x000000); g.beginPath(); g.arc(30, 35, 10, 0, Math.PI, false); g.strokePath();
-    g.generateTexture('tommy_smile', 60, 60); g.clear();
-
-    // Tommy Expectant (Astounded, no enojado!)
-    g.fillStyle(0xFFDAB9); g.fillCircle(30, 30, 25);
-    // Sin cejas para no parecer enojado
-    g.fillStyle(0x000000); g.fillCircle(20, 25, 5); g.fillCircle(40, 25, 5);
-    // "O" mouth grande (Sorpresa positiva)
-    g.beginPath(); g.arc(30, 40, 7, 0, Math.PI * 2, false); g.strokePath();
-    g.generateTexture('tommy_tense', 60, 60); g.clear();
-
-    g.destroy();
-  }
-
-  // ── Create ────────────────────────────────────────────────────────────────
   create() {
-    const W = this.cameras.main.width;
-    const H = this.cameras.main.height;
-
-    // Sky
-    this.cameras.main.setBackgroundColor('#87CEEB');
-
-    // Park (Grass horizon)
-    this.add.rectangle(W / 2, H * 0.25, W, H * 0.3, 0x4ADE80);
-    
-    // Sidewalk (Grey pavement for trash)
-    this.add.rectangle(W / 2, H * 0.70, W, H * 0.6, 0xCBD5E1);
-    this.add.rectangle(W / 2, H * 0.40, W, 8, 0x94A3B8); // Curb line
-
-    // Tommy Graphic - Movido más abajo a la izquierda para no tapar ni el boton Back de React ni el nivel
-    this.tommy = this.add.image(60, 140, 'tommy_neutral').setDepth(20);
-    
-    // UI layers
-    this.slingshotUI = this.add.graphics().setDepth(4);
-    this.aimUI = this.add.graphics().setDepth(5);
-    this.powerUI = this.add.graphics().setDepth(5);
-
-    // Bin
-    this.spawnBin();
-
-    // Trash group
-    this.trashGroup = this.physics.add.group();
-    for (let i = 0; i < Phaser.Math.Between(5, 6); i++) {
-      this.spawnOneTrash();
-    }
-
-    // Input
-    this.input.on('pointerdown', this.onPointerDown, this);
-    this.input.on('pointermove', this.onPointerMove, this);
-    this.input.on('pointerup', this.onPointerUp, this);
-    this.input.on('pointerupoutside', this.onPointerUp, this);
-
-    if (this.level === 1) {
-      this.tutorialActive = true;
-      this.time.delayedCall(500, () => this.showTutorial());
-    }
-
-    // 35-second countdown - use loop instead of repeat so we can freely add time
-    this.timerEvent = this.time.addEvent({
-      delay: 1000,
-      callback: this.onTick,
-      callbackScope: this,
-      loop: true,
-    });
-
-    // Tell React the scene + initial state
     EventBus.emit('current-scene-ready', this);
-    EventBus.emit('game-timer', 35);
-    EventBus.emit('game-scored-update', 0);
+    EventBus.emit('game-timer', this.timeLeft);
+    EventBus.emit('game-scored-update', `0/${this.cfg.trashGoal}`);
 
-    // React can restart this scene via EventBus
-    const handleRestart = (data: { level: number }) => {
-      // Use setTimeout to decouple the restart from the React synchronous render loop that fired it
-      setTimeout(() => {
-        this.scene.restart(data);
-      }, 0);
-    };
-
+    const handleRestart = (d: {level:number}) => { setTimeout(() => this.scene.restart(d), 0); };
     EventBus.on('restart-scene', handleRestart);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', handleRestart));
 
-    // Clean up our event bus listeners when this scene shuts down or restarts
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      EventBus.off('restart-scene', handleRestart);
-    });
-  }
-
-  // ── Bin helpers ───────────────────────────────────────────────────────────
-  spawnBin() {
-    if (this.bin) this.bin.destroy();
-    const W = this.cameras.main.width;
-    const cfg = LEVELS[this.level - 1];
-
-    const x = Phaser.Math.Between(70, W - 70);
-    const y = this.cameras.main.height * 0.22;
-
-    this.bin = this.physics.add.image(x, y, 'bin')
-      .setScale(cfg.scale)
-      .setImmovable(true);
-    (this.bin.body as Phaser.Physics.Arcade.Body).allowGravity = false;
-
-    if (cfg.movement === 'continuous') {
-      const dir = Math.random() > 0.5 ? 1 : -1;
-      this.bin.setVelocity(cfg.speed * dir, 0)
-        .setCollideWorldBounds(true)
-        .setBounce(1, 0);
-    }
-  }
-
-  jumpBin() {
-    const W = this.cameras.main.width;
-    const cfg = LEVELS[this.level - 1];
-    const newX = Phaser.Math.Between(70, W - 70);
-    this.tweens.add({
-      targets: this.bin,
-      x: newX,
-      scaleX: cfg.scale * 1.15,
-      scaleY: cfg.scale * 1.15,
-      duration: 220,
-      yoyo: true,
-      ease: 'Sine.easeInOut',
-      onComplete: () => {
-        if (this.bin?.body) {
-          this.bin.setScale(cfg.scale);
-          (this.bin.body as Phaser.Physics.Arcade.Body).updateFromGameObject();
-        }
-      },
-    });
-  }
-
-  // ── Trash helpers ─────────────────────────────────────────────────────────
-  spawnOneTrash(retries = 0): Phaser.Physics.Arcade.Image | undefined {
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
 
-    // Require enough space below the trash so user can drag their finger backwards
-    // (max drag is 150px, so leave at least that much space from the bottom)
-    let zoneTop  = H * 0.40;
-    let zoneBot  = H - 160;
-    
-    // Nivel 15-20: Basura aparece mucho mas abajo para forzar al jugador a disparar con más potencia
-    // Pero siempre dejando los 150px de margen inferior para arrastrar la resortera holgadamente.
-    if (this.level >= 15) {
-      zoneTop = H * 0.65;
+    // Background
+    if (this.textures.exists('back_trash')) {
+      const bg = this.add.image(W/2, H/2, 'back_trash');
+      bg.setScale(Math.max(W / bg.width, H / bg.height)).setDepth(-10);
     }
+    this.add.rectangle(W/2, H/2, W, H, 0x000000, 0.25).setDepth(-9);
 
-    const x = Phaser.Math.Between(40, W - 40);
-    const y = Phaser.Math.Between(zoneTop, zoneBot);
+    // Slingshot draw layer
+    this.slingshotGfx = this.add.graphics().setDepth(20);
 
-    // Avoid overlapping existing items
-    const existing = this.trashGroup.getChildren() as Phaser.Physics.Arcade.Image[];
-    if (retries < 8 && existing.some(t => t.active && Phaser.Math.Distance.Between(t.x, t.y, x, y) < 60)) {
-      return this.spawnOneTrash(retries + 1);
-    }
+    // Build bin at TOP
+    this.buildBin(W);
 
-    const tex = Phaser.Utils.Array.GetRandom(TRASH_TEXTURES);
+    // Tommy portrait
+    this.tommyPortrait = this.makePortrait(0);
+    this.tommyPortrait.setPosition(52, 52).setScrollFactor(0).setDepth(30);
 
-    // Use group.create() so physics body is managed by the group
-    const trash = this.trashGroup.create(x, y, tex) as Phaser.Physics.Arcade.Image;
-    trash.setInteractive();
-    trash.setData('inFlight', false);
+    // Timer
+    this.time.addEvent({ delay:1000, loop:true, callback:() => {
+      if (this.done || this.tutorialActive) return;
+      this.timeLeft--;
+      EventBus.emit('game-timer', this.timeLeft);
+      if (this.timeLeft <= 0) { this.done = true; this.time.delayedCall(400, () => EventBus.emit('game-time-up', this.scored)); }
+    }});
 
-    const body = trash.body as Phaser.Physics.Arcade.Body;
-    body.allowGravity = false;
-    body.setVelocity(0, 0);
+    this.input.on('pointerdown', this.onDown, this);
+    this.input.on('pointermove', this.onMove, this);
+    this.input.on('pointerup',   this.onUp,   this);
 
-    // Entrance pop animation (starts visible, just scales in)
-    trash.setAlpha(1).setScale(0);
-    this.tweens.add({
-      targets: trash,
-      scaleX: 1,
-      scaleY: 1,
-      duration: 300,
-      ease: 'Back.easeOut',
-    });
-
-    return trash;
+    if (this.level === 1) { this.tutorialActive = true; this.showTutorial(); }
+    else { this.startSpawning(); }
   }
 
+  buildBin(W: number) {
+    this.binCX    = W / 2;
+    this.binRimY  = 100;
+    this.binHalfW = 62;
+    this.binBodyH = 130;
 
-  showTutorial() {
-    const trashItems = this.trashGroup.getChildren() as Phaser.Physics.Arcade.Image[];
-    if (trashItems.length === 0) return;
-    
-    // Elige la basura mas cercana al centro para el tutorial
-    const trash = trashItems.sort((a,b) => Math.abs(a.x - this.cameras.main.centerX) - Math.abs(b.x - this.cameras.main.centerX))[0];
-    
-    const startX = trash.x;
-    const startY = trash.y;
+    const cx  = this.binCX;
+    const ry  = this.binRimY;
+    const hw  = this.binHalfW;
+    const bh  = this.binBodyH;
+    const bw  = hw * 2;
 
-    const uiGroup = this.add.group();
-    const g = this.add.graphics().setDepth(30);
-    const text = this.add.text(startX, startY - 50, "Drag & Release! 👆", { fontFamily: 'Fredoka One', fontSize: '28px', color: '#FFF', stroke: '#000', strokeThickness: 5 }).setOrigin(0.5).setDepth(30);
-    
-    // Virtual "Finger"
-    const finger = this.add.circle(startX, startY, 22, 0xFFFFFF, 0.85).setDepth(31);
-    finger.setStrokeStyle(3, 0x000000, 0.6);
+    const g = this.add.graphics().setDepth(10);
 
-    const btnBG = this.add.rectangle(this.cameras.main.centerX, this.cameras.main.height - 100, 200, 60, 0x22C55E, 1).setInteractive().setDepth(31).setStrokeStyle(4, 0xFFFFFF);
-    const btnTXT = this.add.text(this.cameras.main.centerX, this.cameras.main.height - 100, "Got It!", { fontFamily: 'Fredoka One', fontSize: '28px', color: '#FFF' }).setOrigin(0.5).setDepth(31);
+    // Shadow
+    g.fillStyle(0x000000, 0.15);
+    g.fillEllipse(cx, ry + bh + 10, bw + 16, 16);
 
-    uiGroup.addMultiple([g, text, finger, btnBG, btnTXT]);
+    // Bin body - bright green
+    g.fillStyle(0x16A34A);
+    g.fillRoundedRect(cx - hw, ry + 10, bw, bh, {tl:4, tr:4, bl:14, br:14});
 
-    // Animate Drag -> Hold -> Snap back
-    const dragTween = this.tweens.add({
-      targets: finger,
-      y: startY + 120, // arrastra hacia abajo
-      duration: 1000,
-      ease: 'Sine.easeInOut',
-      onUpdate: () => {
-         g.clear();
-         g.lineStyle(6, 0xFFFFFF, 0.6);
-         g.beginPath();
-         g.moveTo(startX, startY);
-         g.lineTo(finger.x, finger.y);
-         g.strokePath();
-      },
-      onComplete: () => {
-         g.clear(); // suelta
-         finger.setAlpha(0);
-         this.time.delayedCall(600, () => {
-             if (!finger.active) return;
-             finger.setAlpha(0.85);
-             finger.y = startY;
-         });
-      },
-      repeatDelay: 600,
-      repeat: -1
-    });
+    // Shine strip
+    g.fillStyle(0xFFFFFF, 0.1);
+    g.fillRoundedRect(cx - hw + 8, ry + 18, 22, bh - 24, 6);
 
-    // Remove text and animation on interaction
-    btnBG.once('pointerdown', () => {
-       dragTween.remove();
-       uiGroup.destroy(true);
-       this.tutorialActive = false;
-    });
+    // Ribs
+    g.lineStyle(1.5, 0x000000, 0.1);
+    for (let rx = cx - hw + 32; rx < cx + hw - 10; rx += 26) {
+      g.beginPath(); g.moveTo(rx, ry + 14); g.lineTo(rx, ry + bh - 6); g.strokePath();
+    }
+
+    // Recycle white circle
+    g.fillStyle(0xFFFFFF, 0.88);
+    g.fillCircle(cx, ry + bh * 0.52, 26);
+    g.fillStyle(0x16A34A);
+    for (let i = 0; i < 3; i++) {
+      const a = (i * 120 * Math.PI) / 180 - Math.PI / 2;
+      g.fillTriangle(
+        cx + Math.cos(a)*18, ry + bh*0.52 + Math.sin(a)*18,
+        cx + Math.cos(a+0.9)*10, ry + bh*0.52 + Math.sin(a+0.9)*10,
+        cx + Math.cos(a-0.9)*10, ry + bh*0.52 + Math.sin(a-0.9)*10
+      );
+    }
+
+    // Rim - bright green ring (very visible)
+    g.fillStyle(0x22C55E);
+    g.fillEllipse(cx, ry + 8, bw + 10, 30);
+    g.fillStyle(0x16A34A);
+    g.fillEllipse(cx, ry + 6, bw, 19);
+    // Dark opening interior
+    g.fillStyle(0x052E16);
+    g.fillEllipse(cx, ry + 4, bw - 20, 12);
+
+    // Lid handle
+    g.fillStyle(0x15803D);
+    g.fillRoundedRect(cx - 22, ry - 14, 44, 18, 7);
+    g.fillStyle(0x22C55E);
+    g.fillRoundedRect(cx - 18, ry - 11, 36, 11, 5);
+
+    // Arrow hint inside bin
+    g.fillStyle(0xFFFFFF, 0.35);
+    g.fillTriangle(cx, ry + 38, cx - 10, ry + 25, cx + 10, ry + 25);
+  }
+
+  makePortrait(mood: number): Phaser.GameObjects.Container {
+    const g = this.make.graphics({x:0,y:0,add:false});
+    g.fillStyle(0xFFFFFF, 0.95); g.fillCircle(26,26,26);
+    g.lineStyle(3,0x374151); g.strokeCircle(26,26,26);
+    g.fillStyle(0xFCD34D); g.fillCircle(26,20,16);
+    g.fillStyle(0x000000); g.fillCircle(20,17,2.5); g.fillCircle(32,17,2.5);
+    g.lineStyle(2.5, 0x000000);
+    if (mood===0) { g.beginPath(); g.arc(26,22,6,0.2,Math.PI-0.2,false); g.strokePath(); }
+    else if (mood===1) { g.fillStyle(0xFF3333); g.fillEllipse(26,24,10,9); }
+    else { g.beginPath(); g.arc(26,28,6,Math.PI+0.2,2*Math.PI-0.2,false); g.strokePath(); }
+    const key = `port_${mood}_${Date.now()}`;
+    g.generateTexture(key,52,52); g.destroy();
+    return this.add.container(0,0,[this.add.image(0,0,key).setOrigin(0.5)]);
+  }
+
+  setMood(mood: number) {
+    if (!this.tommyPortrait?.active) return;
+    const g = this.make.graphics({x:0,y:0,add:false});
+    g.fillStyle(0xFFFFFF,0.95); g.fillCircle(26,26,26);
+    g.lineStyle(3,0x374151); g.strokeCircle(26,26,26);
+    g.fillStyle(0xFCD34D); g.fillCircle(26,20,16);
+    g.fillStyle(0x000000); g.fillCircle(20,17,2.5); g.fillCircle(32,17,2.5);
+    g.lineStyle(2.5, 0x000000);
+    if (mood===0) { g.beginPath(); g.arc(26,22,6,0.2,Math.PI-0.2,false); g.strokePath(); }
+    else if (mood===1) { g.fillStyle(0xFF3333); g.fillEllipse(26,24,10,9); }
+    else { g.beginPath(); g.arc(26,28,6,Math.PI+0.2,2*Math.PI-0.2,false); g.strokePath(); }
+    const key = `pm_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    g.generateTexture(key,52,52); g.destroy();
+    this.tommyPortrait.removeAll(true);
+    this.tommyPortrait.add(this.add.image(0,0,key).setOrigin(0.5));
+  }
+
+  startSpawning() {
+    for (let i = 0; i < 3; i++) this.spawnTrash();
+    this.spawnEvent = this.time.addEvent({ delay: this.cfg.spawnRate, loop:true, callback: this.ensureMinTrash, callbackScope: this });
+  }
+
+  spawnTrash() {
+    if (this.done) return;
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const emoji = Phaser.Utils.Array.GetRandom(TRASH_EMOJIS);
+    const emojiGO = this.add.text(0, 0, emoji, { fontSize: '54px' }).setOrigin(0.5);
+    const shadow  = this.add.ellipse(0, 32, 54, 14, 0x000000, 0.2);
+
+    const x = Phaser.Math.Between(65, W - 65);
+    const y = Phaser.Math.Between(Math.floor(H * 0.52), Math.floor(H * 0.82));
+
+    const c = this.add.container(x, y, [shadow, emojiGO]);
+    c.setSize(64, 64).setInteractive().setDepth(8);
+    c.setData('ox', x); c.setData('oy', y);
+
+    this.tweens.add({ targets: c, y: y - 14, duration: 900 + Phaser.Math.Between(0,300), yoyo:true, repeat:-1, ease:'Sine.easeInOut' });
+    this.tweens.add({ targets: shadow, scaleX:0.7, alpha:0.12, duration:900, yoyo:true, repeat:-1, ease:'Sine.easeInOut' });
+
+    this.trashItems.push(c);
   }
 
   ensureMinTrash() {
-    const grounded = (this.trashGroup.getChildren() as Phaser.Physics.Arcade.Image[])
-      .filter(t => t.active && !t.getData('inFlight')).length;
-    // Always keep around 5 options visible to throw
-    if (grounded < 5) {
-      this.time.delayedCall(350, () => this.spawnOneTrash());
-    }
-  }
-
-  setTommyEmotion(emotion: 'neutral'|'smile'|'tense') {
-    if (this.tommy) this.tommy.setTexture('tommy_' + emotion);
-  }
-
-  // ── Callbacks ─────────────────────────────────────────────────────────────
-  handleScore(trashObj: any, binObj: any) {
-    if (this.done) return;
-    trashObj.setData('inFlight', false);
-    trashObj.destroy();
-    this.inFlight = false;
-    this.scored++;
-    this.streak++;
-
-    // Add +2 seconds
-    this.timeLeft += 2;
-    EventBus.emit('game-timer', this.timeLeft);
-    const timeUI = this.add.text(this.cameras.main.centerX + 50, 45, '+2s', {
-      fontFamily: 'Fredoka One', fontSize: '24px', color: '#4ADE80', stroke: '#000', strokeThickness: 4
-    }).setOrigin(0.5).setDepth(30);
-    this.tweens.add({ targets: timeUI, y: 15, alpha: 0, duration: 800, onComplete: () => timeUI.destroy() });
-
-    // Tommy Reaction
-    this.setTommyEmotion('smile');
-    this.tweens.add({ targets: this.tommy, y: 35, yoyo: true, duration: 150, repeat: 1 });
-    this.time.delayedCall(1500, () => {
-      if (!this.isDragging) this.setTommyEmotion('neutral');
-    });
-
-    // Pick personality message
-    const tier = this.streak >= 3 ? 2 : this.streak >= 2 ? 1 : 0;
-    this.showMsg(Phaser.Utils.Array.GetRandom(SCORE_MSGS[tier]), binObj.x, binObj.y - 50, '#FFD700');
-
-    // Confetti burst
-    const prt = this.add.particles(binObj.x, binObj.y, 't_paper', {
-      speed: { min: 80, max: 160 },
-      scale: { start: 0.6, end: 0 },
-      lifespan: 700,
-      quantity: 10,
-      blendMode: 'ADD',
-    });
-    this.time.delayedCall(800, () => prt.destroy());
-
-    if (LEVELS[this.level - 1].movement === 'jump') this.jumpBin();
-
-    EventBus.emit('game-scored-update', this.scored);
-
-    if (this.scored >= 7) {
-      this.done = true;
-      this.timerEvent.remove();
-      this.showMsg('LEVEL CLEAR! 🎉', this.cameras.main.centerX, this.cameras.main.centerY - 60, '#22C55E');
-      this.time.delayedCall(900, () => EventBus.emit('game-level-complete', this.level));
-      return;
-    }
-    this.ensureMinTrash();
-  }
-
-  // ── Timer ─────────────────────────────────────────────────────────────────
-  onTick() {
     if (this.done || this.tutorialActive) return;
-    this.timeLeft--;
-    EventBus.emit('game-timer', this.timeLeft);
+    if (this.trashItems.filter(t => t.active).length < 3) this.spawnTrash();
+  }
 
-    if (this.timeLeft === 5) this.showMsg('HURRY UP! ⏰', this.cameras.main.centerX, 160, '#FF4444');
-    if (this.timeLeft <= 0) {
-      this.done = true;
-      this.timerEvent.remove();
-      EventBus.emit('game-time-up', this.scored);
+  onDown(pointer: Phaser.Input.Pointer) {
+    if (this.done || this.tutorialActive) return;
+    let best: Phaser.GameObjects.Container | null = null;
+    let bestD = 85;
+    for (const item of this.trashItems) {
+      if (!item.active) continue;
+      const d = Phaser.Math.Distance.Between(pointer.x, pointer.y, item.x, item.y);
+      if (d < bestD) { bestD = d; best = item; }
+    }
+    if (best) {
+      this.selectedTrash = best;
+      this.isDragging = true;
+      this.dragOriginX = best.x;
+      this.dragOriginY = best.y;
+      this.tweens.killTweensOf(best);
+      best.setDepth(22);
+      this.tweens.add({ targets: best, scaleX:1.1, scaleY:1.1, duration:80 });
     }
   }
 
-  // ── Input ─────────────────────────────────────────────────────────────────
-  onPointerDown(pointer: Phaser.Input.Pointer) {
-    if (this.inFlight || this.done || this.tutorialActive) return;
-    const all = this.trashGroup.getChildren() as Phaser.Physics.Arcade.Image[];
-    const grounded = all.filter(t => !t.getData('inFlight'));
-
-    let closest: Phaser.Physics.Arcade.Image | null = null;
-    let minD = 110;
-    for (const t of grounded) {
-      const d = Phaser.Math.Distance.Between(pointer.x, pointer.y, t.x, t.y);
-      if (d < minD) { minD = d; closest = t; }
-    }
-    if (!closest) return;
-
-    this.selectedTrash = closest;
-    this.isDragging = true;
-    this.setTommyEmotion('tense'); // Tommy gets tense while aiming
-    
-    this.dragStartX = closest.x; // Set anchor at object position
-    this.dragStartY = closest.y;
-    this.tweens.add({ targets: closest, scaleX: 1.25, scaleY: 1.25, duration: 100 });
-  }
-
-  onPointerMove(pointer: Phaser.Input.Pointer) {
+  onMove(pointer: Phaser.Input.Pointer) {
     if (!this.isDragging || !this.selectedTrash) return;
-    
-    const dx = pointer.x - this.dragStartX;
-    const dy = pointer.y - this.dragStartY;
-    const pull = Math.min(150, Math.hypot(dx, dy));
-    const angle = Math.atan2(dy, dx);
-    
-    // Position trash dragged by pointer
-    const px = this.dragStartX + Math.cos(angle) * pull;
-    const py = this.dragStartY + Math.sin(angle) * pull;
-    this.selectedTrash.setPosition(px, py);
 
-    // Launch vector is opposite of pull
-    const launchDx = this.dragStartX - px;
-    const launchDy = this.dragStartY - py;
+    const ox = this.dragOriginX, oy = this.dragOriginY;
+    const rawDx = pointer.x - ox, rawDy = pointer.y - oy;
+    const rawDist = Math.sqrt(rawDx*rawDx + rawDy*rawDy) || 1;
+    const clampD  = Math.min(rawDist, MAX_PULL);
+    const nx = rawDx / rawDist, ny = rawDy / rawDist;
 
-    const pct = pull / 150;
+    // Clamp item to max pull radius
+    this.selectedTrash.x = ox + nx * clampD;
+    this.selectedTrash.y = oy + ny * clampD;
 
-    // Draw slingshot
-    this.slingshotUI.clear();
-    // Fork frame
-    this.slingshotUI.lineStyle(10, 0x8B4513, 1);
-    this.slingshotUI.beginPath();
-    this.slingshotUI.moveTo(this.dragStartX, this.dragStartY + 40);
-    this.slingshotUI.lineTo(this.dragStartX, this.dragStartY + 10);
-    this.slingshotUI.strokePath();
-    this.slingshotUI.beginPath();
-    this.slingshotUI.moveTo(this.dragStartX, this.dragStartY + 10);
-    this.slingshotUI.lineTo(this.dragStartX - 25, this.dragStartY - 10);
-    this.slingshotUI.strokePath();
-    this.slingshotUI.beginPath();
-    this.slingshotUI.moveTo(this.dragStartX, this.dragStartY + 10);
-    this.slingshotUI.lineTo(this.dragStartX + 25, this.dragStartY - 10);
-    this.slingshotUI.strokePath();
+    const power = clampD / MAX_PULL;
 
-    // Elastic bands
-    this.slingshotUI.lineStyle(6, 0x111111, 1);
-    this.slingshotUI.beginPath();
-    this.slingshotUI.moveTo(this.dragStartX - 25, this.dragStartY - 10);
-    this.slingshotUI.lineTo(px, py);
-    this.slingshotUI.lineTo(this.dragStartX + 25, this.dragStartY - 10);
-    this.slingshotUI.strokePath();
+    this.slingshotGfx.clear();
 
-    // Aim arc (dotted)
-    this.aimUI.clear();
-    this.aimUI.lineStyle(2, 0xFFFFFF, 0.55);
-    for (let i = 1; i <= 9; i += 2) {
-      const t = i / 10;
-      const ax = px + launchDx * 5.0 * t;
-      const ay = py + launchDy * 7.5 * t + 100 * t * t;
-      this.aimUI.fillStyle(0xFFFFFF, 0.55 - t * 0.4);
-      this.aimUI.fillCircle(ax, ay, 4);
+    // Fork points (perpendicular to pull)
+    const px = -ny, py = nx;
+    const fd = 20;
+    const f1x = ox + px*fd, f1y = oy + py*fd;
+    const f2x = ox - px*fd, f2y = oy - py*fd;
+    const cx  = ox + nx*clampD, cy = oy + ny*clampD;
+
+    // Rubber bands
+    this.slingshotGfx.lineStyle(5, 0xFFAA00, 0.9);
+    this.slingshotGfx.beginPath(); this.slingshotGfx.moveTo(f1x,f1y); this.slingshotGfx.lineTo(cx,cy); this.slingshotGfx.strokePath();
+    this.slingshotGfx.beginPath(); this.slingshotGfx.moveTo(f2x,f2y); this.slingshotGfx.lineTo(cx,cy); this.slingshotGfx.strokePath();
+    this.slingshotGfx.fillStyle(0xFFAA00); this.slingshotGfx.fillCircle(f1x,f1y,7); this.slingshotGfx.fillCircle(f2x,f2y,7);
+
+    // Trajectory prediction
+    const lvx = -nx * power * MAX_SPEED, lvy = -ny * power * MAX_SPEED;
+    let sx=ox, sy=oy, svx=lvx, svy=lvy;
+    const dt = 0.06;
+    for (let s=1; s<=10; s++) {
+      svy += GRAVITY*dt; sx += svx*dt; sy += svy*dt;
+      this.slingshotGfx.fillStyle(0xFFFFFF, Math.max(0,0.8-s*0.07));
+      this.slingshotGfx.fillCircle(sx, sy, Math.max(2, 5.5-s*0.35));
     }
 
-    // Power bar
-    this.powerUI.clear();
-    const bx = this.selectedTrash.x - 50;
-    const by = this.selectedTrash.y + 45;
-    this.powerUI.fillStyle(0x000000, 0.4);
-    this.powerUI.fillRoundedRect(bx, by, 100, 10, 5);
-    if (pct > 0.05) {
-      const r = pct > 0.5 ? 255 : Math.floor(pct * 2 * 255);
-      const g2 = pct < 0.5 ? 255 : Math.floor((1 - (pct - 0.5) * 2) * 255);
-      this.powerUI.fillStyle(Phaser.Display.Color.GetColor(r, g2, 40), 1);
-      this.powerUI.fillRoundedRect(bx, by, 100 * pct, 10, 5);
-    }
+    // Power bar (right of origin)
+    const bx = ox + 55, barH = 100, by = oy;
+    this.slingshotGfx.fillStyle(0x333333, 0.8);
+    this.slingshotGfx.fillRoundedRect(bx-9, by-barH/2, 18, barH, 9);
+    const fillH = power * barH;
+    const fillCol = power < 0.4 ? 0x22C55E : power < 0.75 ? 0xFFBB00 : 0xFF4444;
+    this.slingshotGfx.fillStyle(fillCol, 0.95);
+    this.slingshotGfx.fillRoundedRect(bx-7, by+barH/2-fillH, 14, fillH, 7);
   }
 
-  onPointerUp(_pointer: Phaser.Input.Pointer) {
+  onUp(pointer: Phaser.Input.Pointer) {
+    this.slingshotGfx.clear();
     if (!this.isDragging || !this.selectedTrash) return;
     this.isDragging = false;
-    this.setTommyEmotion('neutral');
-    this.aimUI.clear();
-    this.powerUI.clear();
-    this.slingshotUI.clear();
-
     const trash = this.selectedTrash;
     this.selectedTrash = null;
 
-    const launchDx = this.dragStartX - trash.x;
-    const launchDy = this.dragStartY - trash.y;
+    const ox = this.dragOriginX, oy = this.dragOriginY;
+    const dx = pointer.x - ox, dy = pointer.y - oy;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
 
-    if (Math.hypot(launchDx, launchDy) < 10) {
-      this.tweens.add({ targets: trash, x: this.dragStartX, y: this.dragStartY, duration: 150, ease: 'Back.easeOut' });
-      this.tweens.add({ targets: trash, scaleX: 1, scaleY: 1, duration: 100 });
+    // Too weak = snap back
+    if (dist < 18) {
+      this.tweens.add({ targets: trash, x:ox, y:oy, scaleX:1, scaleY:1, duration:200, ease:'Back.easeOut',
+        onComplete: () => this.tweens.add({ targets:trash, y:oy-14, duration:900, yoyo:true, repeat:-1, ease:'Sine.easeInOut' })
+      });
       return;
     }
 
-    this.inFlight = true;
-    trash.setData('inFlight', true).setScale(1);
-    trash.setVelocity(launchDx * 5.0, launchDy * 7.5);
-    (trash.body as Phaser.Physics.Arcade.Body).allowGravity = true;
-    (trash.body as Phaser.Physics.Arcade.Body).setGravityY(80);
+    const power = Math.min(dist / MAX_PULL, 1.0);
+    const nx = dx/dist, ny = dy/dist;
+    // Launch opposite of pull
+    const vx = -nx * power * MAX_SPEED;
+    const vy = -ny * power * MAX_SPEED;
+    const rotDir = dx > 0 ? 1 : -1;
 
-    // Scale illusion (goes big then small → feels like a real throw arc)
-    this.tweens.add({ targets: trash, scaleX: 1.6, scaleY: 1.6, yoyo: true, duration: 420, ease: 'Sine.easeInOut' });
+    this.trashItems = this.trashItems.filter(t => t !== trash);
+    trash.setDepth(22);
 
-    this.time.delayedCall(250, () => this.ensureMinTrash());
+    this.thrownItems.push({ container: trash, vx, vy, rotDir, done: false });
   }
 
-  // ── Floating message ──────────────────────────────────────────────────────
-  showMsg(text: string, x: number, y: number, color: string) {
-    const t = this.add.text(x, y, text, {
-      fontFamily: 'Fredoka One',
-      fontSize: '34px',
-      color,
-      stroke: '#000000',
-      strokeThickness: 5,
-    }).setOrigin(0.5).setDepth(20);
+  onScored(trash: Phaser.GameObjects.Container) {
+    this.scored++;
+    EventBus.emit('game-scored-update', `${this.scored}/${this.cfg.trashGoal}`);
 
-    this.tweens.add({
-      targets: t,
-      y: y - 90,
-      alpha: 0,
-      scaleX: 1.25,
-      scaleY: 1.25,
-      duration: 1300,
-      ease: 'Sine.easeOut',
-      onComplete: () => t.destroy(),
+    this.tweens.add({ targets:trash, scaleX:0, scaleY:0, alpha:0, y:this.binRimY+40, duration:200, ease:'Quad.easeIn', onComplete:()=>trash.destroy() });
+
+    this.showGreat(trash.x, trash.y - 20);
+    this.setMood(1);
+    this.time.delayedCall(1200, () => this.setMood(0));
+    this.ensureMinTrash();
+
+    if (this.scored >= this.cfg.trashGoal) {
+      this.done = true;
+      this.time.delayedCall(600, () => EventBus.emit('game-level-complete', this.level));
+    }
+  }
+
+  onMissed(trash: Phaser.GameObjects.Container) {
+    this.tweens.add({ targets:trash, y:trash.y+200, alpha:0, duration:350, ease:'Quad.easeIn', onComplete:()=>trash.destroy() });
+    this.setMood(2);
+    this.time.delayedCall(1200, () => this.setMood(0));
+    const t = this.add.text(trash.x, trash.y-10, 'Miss!', { fontFamily:'Fredoka One, sans-serif', fontSize:'24px', color:'#FF6B6B', stroke:'#000', strokeThickness:4 }).setOrigin(0.5).setDepth(25);
+    this.tweens.add({ targets:t, y:t.y-60, alpha:0, duration:800, ease:'Quad.easeOut', onComplete:()=>t.destroy() });
+    this.ensureMinTrash();
+  }
+
+  showGreat(x: number, y: number) {
+    const words = ['Great!','Nice!','Perfect!','Awesome!'];
+    const t = this.add.text(x, y, Phaser.Utils.Array.GetRandom(words), {
+      fontFamily:'Fredoka One, sans-serif', fontSize:'32px', color:'#22C55E', stroke:'#000', strokeThickness:5
+    }).setOrigin(0.5).setDepth(26).setScale(0.3);
+    this.tweens.add({ targets:t, scale:1.1, duration:180, ease:'Back.easeOut', onComplete:() =>
+      this.tweens.add({ targets:t, y:y-70, alpha:0, duration:700, onComplete:()=>t.destroy() })
     });
   }
 
-  // ── Update loop ───────────────────────────────────────────────────────────
-  update() {
-    if (this.done) return;
+  showTutorial() {
+    const W = this.cameras.main.width, H = this.cameras.main.height;
+    const ov  = this.add.rectangle(W/2,H/2,W,H,0x000000,0.75).setDepth(40);
+    const pan = this.add.rectangle(W/2,H/2,Math.min(W-40,380),320,0x1E293B).setStrokeStyle(3,0x22C55E).setDepth(41);
+    const ttl = this.add.text(W/2,H/2-115,'Keep the City Clean!',{ fontFamily:'Fredoka One, sans-serif',fontSize:'24px',color:'#22C55E',stroke:'#000',strokeThickness:3 }).setOrigin(0.5).setDepth(42);
+    const bd  = this.add.text(W/2,H/2-20,`Pull the trash BACKWARD\nlike a slingshot and release!\n\nThe arc shows where it lands.\nAim for the bin above!\n\nThrow ${this.cfg.trashGoal} items in 30s!`,{ fontFamily:'Fredoka One, sans-serif',fontSize:'19px',color:'#FFF',align:'center',lineSpacing:6 }).setOrigin(0.5).setDepth(42);
+    const bb  = this.add.rectangle(W/2,H/2+118,190,56,0x22C55E).setInteractive().setDepth(42);
+    const bt  = this.add.text(W/2,H/2+118,"Let's Go!",{ fontFamily:'Fredoka One, sans-serif',fontSize:'22px',color:'#FFF' }).setOrigin(0.5).setDepth(43);
+    this.tweens.add({ targets:[bb,bt], scaleX:1.06, scaleY:1.06, duration:600, yoyo:true, repeat:-1 });
+    bb.once('pointerdown', () => { [ov,pan,ttl,bd,bb,bt].forEach(o=>o.destroy()); this.tutorialActive=false; this.startSpawning(); });
+  }
 
-    const all = this.trashGroup.getChildren() as Phaser.Physics.Arcade.Image[];
-    
-    // Bin hit area made extremely permissive (easy for kids)
-    const binW = 110 * this.bin.scaleX * 1.1; // 110% of graphic width - grazing the side works, but not excessive
-    const binH = 142 * this.bin.scaleY;
-    const binLeft = this.bin.x - binW / 2;
-    const binRight = this.bin.x + binW / 2;
-    const binTop = this.bin.y - binH * 0.9; // Catch it even if it's slightly above
-    const binBottom = this.bin.y + binH * 0.0; // Solo entra en la MITAD SUPERIOR del tacho (y = centro hacia arriba)
+  update(_time: number, delta: number) {
+    const dt = delta / 1000;
+    const H  = this.cameras.main.height;
 
-    for (const trash of all) {
-      if (trash.active && trash.getData('inFlight')) {
-        const H = this.cameras.main.height;
-        const W = this.cameras.main.width;
-        
-        // Custom Hit Detection - completely bypasses Phaser's physics body scaling bugs
-        const vel = (trash.body as Phaser.Physics.Arcade.Body).velocity;
-        if (vel.y > 0) { // falling down
-          if (trash.x > binLeft && trash.x < binRight && trash.y > binTop && trash.y < binBottom) {
-            this.handleScore(trash, this.bin);
-            continue;
-          }
+    for (let i = this.thrownItems.length - 1; i >= 0; i--) {
+      const ti = this.thrownItems[i];
+      if (ti.done) { this.thrownItems.splice(i,1); continue; }
+
+      // Physics step
+      ti.vy += GRAVITY * dt;
+      ti.container.x += ti.vx * dt;
+      ti.container.y += ti.vy * dt;
+      ti.container.angle += ti.rotDir * 4;
+
+      // Hit detection: must be DESCENDING (vy>0) and inside bin mouth
+      if (ti.vy > 0) {
+        const dx = Math.abs(ti.container.x - this.binCX);
+        const dy = ti.container.y - this.binRimY;
+        if (dx < this.binHalfW - 8 && dy >= -5 && dy < 55) {
+          ti.done = true;
+          this.onScored(ti.container);
+          this.thrownItems.splice(i,1);
+          continue;
         }
+      }
 
-        // Detect misses immediately when they fall out of bounds
-        if (trash.y > H + 50 || trash.x < -100 || trash.x > W + 100) {
-          this.streak = 0;
-          this.setTommyEmotion('tense'); // Ouch reaction
-          this.tweens.add({ targets: this.tommy, y: 135, yoyo: true, duration: 200 });
-          this.time.delayedCall(1200, () => {
-            if (!this.isDragging) this.setTommyEmotion('neutral');
-          });
-
-          this.showMsg(Phaser.Utils.Array.GetRandom(MISS_MSGS), this.cameras.main.centerX, this.cameras.main.centerY - 40, '#FF6B6B');
-          trash.destroy();
-          this.inFlight = false;
-          this.ensureMinTrash();
-        }
+      // Out of screen = missed
+      if (ti.container.y > H + 120 || ti.container.x < -150 || ti.container.x > this.cameras.main.width + 150) {
+        ti.done = true;
+        this.onMissed(ti.container);
+        this.thrownItems.splice(i,1);
       }
     }
   }

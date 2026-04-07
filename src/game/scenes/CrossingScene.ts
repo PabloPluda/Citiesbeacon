@@ -21,7 +21,7 @@ export class CrossingScene extends Phaser.Scene {
   init(data?: { level?: number }) {
     this.level = data?.level || 1;
     this.scored = 0;
-    this.timeLeft = 40;
+    this.timeLeft = 45;
     this.done = false;
     this.tutorialActive = false;
   }
@@ -49,6 +49,8 @@ export class CrossingScene extends Phaser.Scene {
         }
       }
     });
+
+    EventBus.emit('game-timer', 45);
 
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
@@ -83,21 +85,40 @@ export class CrossingScene extends Phaser.Scene {
            this.add.rectangle(x - 60 + j*40, H/2, 20, 100, 0xFFFFFF);
        }
        
-       // Traffic light housing
-       this.add.rectangle(x - 100, H/2 - 120, 50, 90, 0x111827).setDepth(10);
-       const lightRed = this.add.text(x - 100, H/2 - 142, "🧍", { fontSize: '32px', color: '#EF4444' }).setOrigin(0.5).setDepth(11);
-       const lightGreen = this.add.text(x - 100, H/2 - 97, "🚶", { fontSize: '32px', color: '#22C55E' }).setOrigin(0.5).setDepth(11);
-       
-       const isRed = Math.random() > 0.5;
-       if (isRed) { lightRed.setAlpha(1); lightGreen.setAlpha(0.2); }
-       else { lightRed.setAlpha(0.2); lightGreen.setAlpha(1); }
+       // Traffic light housing (vertical pole + box)
+       const poleX = x - 100;
+       const poleY = H/2 - 80;
+       // Pole
+       this.add.rectangle(poleX, H/2 - 20, 8, 120, 0x222222).setDepth(10);
+       // Light box (dark rounded housing)
+       this.add.rectangle(poleX, poleY, 46, 100, 0x111111).setDepth(10);
+       this.add.rectangle(poleX, poleY, 42, 96, 0x1A1A1A).setDepth(10);
 
-       this.crossroads.push({ 
-           x, width: 180,
-           lightRed, lightGreen, 
-           state: isRed ? 'red' : 'green', 
-           timer: Phaser.Math.Between(0, 2000),
-           passed: false
+       // Red light circle + person icon
+       const redCircle = this.add.circle(poleX, poleY - 28, 16, 0xFF0000, 1).setDepth(11);
+       const redIcon = this.add.text(poleX, poleY - 28, '🧍', { fontSize: '14px' }).setOrigin(0.5).setDepth(12);
+
+       // Green light circle + walking person icon
+       const greenCircle = this.add.circle(poleX, poleY + 28, 16, 0x00CC44, 1).setDepth(11);
+       const greenIcon = this.add.text(poleX, poleY + 28, '🚶', { fontSize: '14px' }).setOrigin(0.5).setDepth(12);
+
+       const isRed = Math.random() > 0.5;
+       // Dim inactive light
+       if (isRed) {
+         redCircle.setAlpha(1); redIcon.setAlpha(1);
+         greenCircle.setAlpha(0.2); greenIcon.setAlpha(0.2);
+       } else {
+         redCircle.setAlpha(0.2); redIcon.setAlpha(0.2);
+         greenCircle.setAlpha(1); greenIcon.setAlpha(1);
+       }
+
+       this.crossroads.push({
+         x, width: 180,
+         lightRed: redCircle, lightRedIcon: redIcon,
+         lightGreen: greenCircle, lightGreenIcon: greenIcon,
+         state: isRed ? 'red' : 'green',
+         timer: Phaser.Math.Between(0, 2000),
+         passed: false
        });
     }
 
@@ -157,13 +178,18 @@ export class CrossingScene extends Phaser.Scene {
 
   showTutorial() {
       const uig = this.add.group();
-      const bg = this.add.rectangle(this.cameras.main.centerX, this.cameras.main.centerY, 10000, 10000, 0x000, 0.7).setDepth(30);
+      const bg = this.add.rectangle(this.cameras.main.centerX, this.cameras.main.centerY, 10000, 10000, 0x000, 0.7).setDepth(30).setScrollFactor(0);
 
-      const panel = this.add.rectangle(this.cameras.main.centerX, this.cameras.main.centerY, 400, 300, 0xFFFFFF).setDepth(31).setScrollFactor(0);
-      const text = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY - 50, "Hold screen to STOP\nat red lights 🧍!\n\nRelease to WALK\nat green lights 🚶!", { fontFamily: 'Fredoka', fontSize: '24px', color: '#000', align: 'center' }).setOrigin(0.5).setDepth(31).setScrollFactor(0);
+      const panel = this.add.rectangle(this.cameras.main.centerX, this.cameras.main.centerY, 420, 320, 0xFFFFFF).setDepth(31).setScrollFactor(0);
+      const text = this.add.text(
+        this.cameras.main.centerX,
+        this.cameras.main.centerY - 60,
+        "🔴 Red light = STOP!\n🟢 Green light = WALK!\n\nHold screen to stop,\nrelease to walk.",
+        { fontFamily: 'Fredoka One', fontSize: '22px', color: '#222', align: 'center', lineSpacing: 6 }
+      ).setOrigin(0.5).setDepth(32).setScrollFactor(0);
       
-      const btnBG = this.add.rectangle(this.cameras.main.centerX, this.cameras.main.centerY + 90, 180, 60, 0x22C55E).setInteractive().setDepth(31).setScrollFactor(0);
-      const btnTXT = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 90, "Got It!", { fontFamily: 'Fredoka One', fontSize: '26px', color: '#FFF' }).setOrigin(0.5).setDepth(31).setScrollFactor(0);
+      const btnBG = this.add.rectangle(this.cameras.main.centerX, this.cameras.main.centerY + 110, 200, 60, 0x22C55E).setInteractive().setDepth(32).setScrollFactor(0);
+      const btnTXT = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 110, "Got It! 👍", { fontFamily: 'Fredoka One', fontSize: '26px', color: '#FFF' }).setOrigin(0.5).setDepth(32).setScrollFactor(0);
       
       uig.addMultiple([bg, panel, text, btnBG, btnTXT]);
 
@@ -175,20 +201,29 @@ export class CrossingScene extends Phaser.Scene {
 
   penalize() {
       if (this.done || this.tutorialActive) return;
-      this.cameras.main.shake(200, 0.015);
-      
-      // Jump back safely
-      this.tommy.x = Math.max(100, this.tommy.x - 200);
-      
-      // Flash red
-      const flash = this.add.rectangle(this.tommy.x, this.cameras.main.centerY, 1000, 1000, 0xEF4444, 0.4).setDepth(40);
-      this.tweens.add({ targets: flash, alpha: 0, duration: 300, onComplete: () => flash.destroy() });
 
-      // Buzz text
-      const txt = this.add.text(this.tommy.x, this.tommy.y - 40, "-3s!", { fontFamily: 'Fredoka One', fontSize: '32px', color: '#EF4444', stroke: '#FFF', strokeThickness: 5 }).setOrigin(0.5).setDepth(40);
-      this.tweens.add({ targets: txt, y: txt.y - 40, alpha: 0, duration: 800, onComplete: () => txt.destroy() });
+      // Gently push Tommy back (no shake/explosion)
+      const pushBack = 160;
+      this.tommy.x = Math.max(100, this.tommy.x - pushBack);
+      this.tommy.setVelocityX(0);
+
+      // Friendly educational popup
+      const msgBg = this.add.rectangle(this.tommy.x, this.tommy.y - 70, 320, 70, 0xFFF9C4)
+        .setDepth(40).setStrokeStyle(3, 0xF59E0B);
+      const msg = this.add.text(
+        this.tommy.x, this.tommy.y - 70,
+        "🔴 Wait for green light!\nDon't cross on red! 🚦",
+        { fontFamily: 'Fredoka One', fontSize: '16px', color: '#B45309', align: 'center' }
+      ).setOrigin(0.5).setDepth(41);
+
+      this.tweens.add({
+        targets: [msgBg, msg], alpha: 0,
+        delay: 1400, duration: 500,
+        onComplete: () => { msgBg.destroy(); msg.destroy(); }
+      });
 
       this.timeLeft = Math.max(0, this.timeLeft - 3);
+      EventBus.emit('game-timer', this.timeLeft);
   }
 
   update(_time: number, delta: number) {
@@ -207,11 +242,11 @@ export class CrossingScene extends Phaser.Scene {
             cr.timer = 0;
             cr.state = cr.state === 'red' ? 'green' : 'red';
             if (cr.state === 'red') {
-                cr.lightRed.setAlpha(1);
-                cr.lightGreen.setAlpha(0.2);
+                cr.lightRed.setAlpha(1); cr.lightRedIcon?.setAlpha(1);
+                cr.lightGreen.setAlpha(0.2); cr.lightGreenIcon?.setAlpha(0.2);
             } else {
-                cr.lightRed.setAlpha(0.2);
-                cr.lightGreen.setAlpha(1);
+                cr.lightRed.setAlpha(0.2); cr.lightRedIcon?.setAlpha(0.2);
+                cr.lightGreen.setAlpha(1); cr.lightGreenIcon?.setAlpha(1);
             }
         }
 

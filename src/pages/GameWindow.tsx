@@ -86,7 +86,7 @@ function LevelCompleteOverlay({ level, onSeeResults }: { level: number; onSeeRes
 }
 
 // ─── Time-up overlay ──────────────────────────────────────────────────────────
-function TimeUpOverlay({ scored, onRetry, onQuit }: { scored: number; onRetry: () => void; onQuit: () => void }) {
+function TimeUpOverlay({ scored, onRetry, onQuit }: { scored: string; onRetry: () => void; onQuit: () => void }) {
   return (
     <motion.div
       initial={{ y: 60, opacity: 0 }}
@@ -138,9 +138,11 @@ export default function GameWindow() {
 
   const levelRef = useRef(initial);
   const [level, setLevel] = useState(initial);
-  const [scored, setScored] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(35); // Base timer 35s
+  const [scored, setScored] = useState('0/7');
+  const [timeLeft, setTimeLeft] = useState(35);
   const [phase, setPhase] = useState<Phase>('playing');
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [showPreLevel, setShowPreLevel] = useState(false);
 
   useEffect(() => {
     if (containerRef.current && !gameRef.current) {
@@ -157,7 +159,7 @@ export default function GameWindow() {
     EventBus.once('current-scene-ready', onSceneReady);
 
     const onTimer = (t: number) => setTimeLeft(t);
-    const onScored = (n: number) => setScored(n);
+    const onScored = (n: string | number) => setScored(String(n));
 
     const onLevelComplete = (completedLevel: number) => {
       completeLevel(mId, completedLevel);
@@ -169,12 +171,16 @@ export default function GameWindow() {
     EventBus.on('game-scored-update', onScored);
     EventBus.on('game-level-complete', onLevelComplete);
     EventBus.on('game-time-up', onTimeUp);
+    EventBus.on('show-tutorial', () => setShowTutorial(true));
+    EventBus.on('show-pre-level', () => setShowPreLevel(true));
 
     return () => {
       EventBus.off('game-timer', onTimer);
       EventBus.off('game-scored-update', onScored);
       EventBus.off('game-level-complete', onLevelComplete);
       EventBus.off('game-time-up', onTimeUp);
+      EventBus.off('show-tutorial', () => setShowTutorial(false));
+      EventBus.off('show-pre-level', () => setShowPreLevel(false));
       if (gameRef.current) {
         gameRef.current.destroy(true);
         gameRef.current = null;
@@ -190,7 +196,7 @@ export default function GameWindow() {
     const next = levelRef.current + 1;
     levelRef.current = next;
     setLevel(next);
-    setScored(0);
+    setScored('0/7');
     setTimeLeft(35);
     setPhase('playing');
     EventBus.emit('restart-scene', { level: next });
@@ -200,7 +206,7 @@ export default function GameWindow() {
   const handlePlayAgain = () => {
     levelRef.current = 1;
     setLevel(1);
-    setScored(0);
+    setScored('0/7');
     setTimeLeft(35);
     setPhase('playing');
     EventBus.emit('restart-scene', { level: 1 });
@@ -208,7 +214,7 @@ export default function GameWindow() {
 
   // Retry same level
   const handleRetry = () => {
-    setScored(0);
+    setScored('0/7');
     setTimeLeft(35);
     setPhase('playing');
     EventBus.emit('restart-scene', { level: levelRef.current });
@@ -218,8 +224,96 @@ export default function GameWindow() {
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#000' }}>
-      {/* Phaser canvas container */}
+      {/* Phaser canvas */}
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* ─ Tutorial HTML overlay (crisp native text) ──────────────────── */}
+      {showTutorial && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 45,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', pointerEvents: 'none',
+        }}>
+          {/* Title + subtitle — positioned to sit just above the animation area */}
+          <div style={{
+            position: 'absolute', top: '32%', width: '100%',
+            textAlign: 'center', padding: '0 24px', pointerEvents: 'none',
+          }}>
+            <div style={{
+              fontFamily: 'Fredoka One, cursive', fontSize: '1.8rem',
+              color: '#22C55E', textShadow: '0 2px 8px rgba(0,0,0,0.8)', marginBottom: 8,
+            }}>Stretch &amp; Release!</div>
+            <div style={{
+              fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+              color: '#fff', textShadow: '0 1px 5px rgba(0,0,0,0.9)', lineHeight: 1.4,
+            }}>Pull it back like a slingshot,<br/>then let go to launch it in the bin!</div>
+          </div>
+          {/* Got it button — sits below the animation */}
+          <button
+            id="btn-got-it"
+            onClick={() => { setShowTutorial(false); EventBus.emit('tutorial-done'); }}
+            style={{
+              position: 'absolute', bottom: '12%',
+              pointerEvents: 'auto',
+              fontFamily: 'Fredoka One, cursive', fontSize: '1.25rem',
+              background: '#22C55E', color: '#fff',
+              border: '3px solid #166534', borderRadius: 32,
+              padding: '14px 40px',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+              cursor: 'pointer', letterSpacing: '0.02em',
+            }}
+          >Got it! 👍</button>
+        </div>
+      )}
+
+      {/* ─ Pre-level HTML overlay ─────────────────────────────────────── */}
+      {showPreLevel && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 55,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(7,18,37,0.58)',
+        }}>
+          <div style={{
+            background: '#FFFdf5',
+            borderRadius: 26, overflow: 'hidden',
+            width: 'min(340px, calc(100vw - 48px))',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            border: '3px solid #22C55E',
+            textAlign: 'center',
+          }}>
+            {/* Green top bar */}
+            <div style={{
+              background: '#22C55E', padding: '14px 0',
+              fontFamily: 'Fredoka One, cursive', fontSize: '1rem', color: '#fff',
+            }}>City Hero Academy 🌍</div>
+            {/* Content */}
+            <div style={{ padding: '20px 24px 24px' }}>
+              <div style={{ fontSize: '2.4rem', marginBottom: 4 }}>😮</div>
+              <div style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '2rem',
+                color: '#F59E0B', marginBottom: 6,
+              }}>Uh Oh!</div>
+              <div style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '1.1rem',
+                color: '#374151', marginBottom: 20, lineHeight: 1.4,
+              }}>Now the bin is<br/>a bit smaller!</div>
+              <button
+                id="btn-pre-level"
+                onClick={() => { setShowPreLevel(false); EventBus.emit('pre-level-done'); }}
+                style={{
+                  width: '100%',
+                  fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+                  background: '#22C55E', color: '#fff',
+                  border: 'none', borderRadius: 24,
+                  padding: '14px 12px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                  cursor: 'pointer',
+                }}
+              >Let's keep the street clean! 🧹</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─ HUD ─────────────────────────────────────────────────────────────── */}
       <div style={{
@@ -261,7 +355,7 @@ export default function GameWindow() {
           boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
         }}>
           <div style={{ fontFamily: 'Fredoka One', fontSize: '1.5rem', color: 'var(--primary)', lineHeight: 1 }}>
-            {scored}<span style={{ fontSize: '0.9rem', color: '#888' }}>/7</span>
+            {scored}
           </div>
           <div style={{ fontFamily: 'Fredoka', fontSize: '0.65rem', color: '#999' }}>SCORED</div>
         </div>

@@ -1,4 +1,4 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 
 const LEVELS = [
@@ -19,11 +19,12 @@ interface ThrownItem {
 }
 
 export class ThrowToBinScene extends Phaser.Scene {
-  level = 1; scored = 0; timeLeft = 30;
+  level = 1; scored = 0; timeLeft = 40;
   done = false; tutorialActive = false;
 
   binCX   = 0; binRimY  = 0;
   binHalfW = 62; binBodyH = 130;
+  binContainer: Phaser.GameObjects.Container | null = null;
 
   trashItems:  Phaser.GameObjects.Container[] = [];
   thrownItems: ThrownItem[] = [];
@@ -39,10 +40,11 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   init(data?: { level?: number }) {
     this.level = data?.level ?? 1;
-    this.scored = 0; this.timeLeft = 30;
+    this.scored = 0; this.timeLeft = 40;
     this.done = false; this.tutorialActive = false;
     this.isDragging = false; this.selectedTrash = null;
     this.trashItems = []; this.thrownItems = [];
+    this.binContainer = null;
   }
 
   get cfg() { return LEVELS[Math.min(this.level - 1, LEVELS.length - 1)]; }
@@ -71,12 +73,20 @@ export class ThrowToBinScene extends Phaser.Scene {
     // Slingshot draw layer
     this.slingshotGfx = this.add.graphics().setDepth(20);
 
-    // Build bin at TOP
-    this.buildBin(W);
+    // Build bin at TOP — 3% smaller per level
+    const binScale = Math.pow(0.97, this.level - 1);
+    this.buildBin(W, binScale);
 
-    // Tommy portrait
-    this.tommyPortrait = this.makePortrait(0);
-    this.tommyPortrait.setPosition(52, 52).setScrollFactor(0).setDepth(30);
+    // Level 7+: bin moves side to side
+    if (this.level >= 7 && this.binContainer) {
+      const moveRange = Math.min(W * 0.20, 80);
+      this.binContainer.x = W / 2 - moveRange;
+      this.tweens.add({
+        targets: this.binContainer, x: W / 2 + moveRange,
+        duration: 5000, ease: 'Sine.easeInOut', yoyo: true, repeat: -1, delay: 600
+      });
+    }
+
 
     // Timer
     this.time.addEvent({ delay:1000, loop:true, callback:() => {
@@ -91,72 +101,68 @@ export class ThrowToBinScene extends Phaser.Scene {
     this.input.on('pointerup',   this.onUp,   this);
 
     if (this.level === 1) { this.tutorialActive = true; this.showTutorial(); }
-    else { this.startSpawning(); }
+    else { this.tutorialActive = true; this.showPreLevelMessage(); }
   }
 
-  buildBin(W: number) {
+  buildBin(W: number, scale = 1) {
     this.binCX    = W / 2;
     this.binRimY  = 100;
-    this.binHalfW = 62;
-    this.binBodyH = 130;
+    this.binHalfW = Math.round(62 * scale);
+    this.binBodyH = Math.round(130 * scale);
 
-    const cx  = this.binCX;
-    const ry  = this.binRimY;
-    const hw  = this.binHalfW;
-    const bh  = this.binBodyH;
-    const bw  = hw * 2;
+    // Draw relative to cx=0 (container handles world x)
+    const cx = 0;
+    const ry = this.binRimY;
+    const hw = this.binHalfW;
+    const bh = this.binBodyH;
+    const bw = hw * 2;
+    const s  = scale;
 
-    const g = this.add.graphics().setDepth(10);
+    const g = this.add.graphics();
 
-    // Shadow
     g.fillStyle(0x000000, 0.15);
-    g.fillEllipse(cx, ry + bh + 10, bw + 16, 16);
+    g.fillEllipse(cx, ry + bh + 10*s, bw + 16*s, 16*s);
 
-    // Bin body - bright green
     g.fillStyle(0x16A34A);
-    g.fillRoundedRect(cx - hw, ry + 10, bw, bh, {tl:4, tr:4, bl:14, br:14});
+    g.fillRoundedRect(cx - hw, ry + 10*s, bw, bh, { tl:4*s, tr:4*s, bl:14*s, br:14*s });
 
-    // Shine strip
     g.fillStyle(0xFFFFFF, 0.1);
-    g.fillRoundedRect(cx - hw + 8, ry + 18, 22, bh - 24, 6);
+    g.fillRoundedRect(cx - hw + 8*s, ry + 18*s, 22*s, bh - 24*s, 6*s);
 
-    // Ribs
     g.lineStyle(1.5, 0x000000, 0.1);
-    for (let rx = cx - hw + 32; rx < cx + hw - 10; rx += 26) {
-      g.beginPath(); g.moveTo(rx, ry + 14); g.lineTo(rx, ry + bh - 6); g.strokePath();
+    for (let rx = cx - hw + 32*s; rx < cx + hw - 10*s; rx += 26*s) {
+      g.beginPath(); g.moveTo(rx, ry + 14*s); g.lineTo(rx, ry + bh - 6*s); g.strokePath();
     }
 
-    // Recycle white circle
     g.fillStyle(0xFFFFFF, 0.88);
-    g.fillCircle(cx, ry + bh * 0.52, 26);
+    g.fillCircle(cx, ry + bh * 0.52, 26*s);
     g.fillStyle(0x16A34A);
     for (let i = 0; i < 3; i++) {
       const a = (i * 120 * Math.PI) / 180 - Math.PI / 2;
       g.fillTriangle(
-        cx + Math.cos(a)*18, ry + bh*0.52 + Math.sin(a)*18,
-        cx + Math.cos(a+0.9)*10, ry + bh*0.52 + Math.sin(a+0.9)*10,
-        cx + Math.cos(a-0.9)*10, ry + bh*0.52 + Math.sin(a-0.9)*10
+        cx + Math.cos(a)*18*s, ry + bh*0.52 + Math.sin(a)*18*s,
+        cx + Math.cos(a+0.9)*10*s, ry + bh*0.52 + Math.sin(a+0.9)*10*s,
+        cx + Math.cos(a-0.9)*10*s, ry + bh*0.52 + Math.sin(a-0.9)*10*s
       );
     }
 
-    // Rim - bright green ring (very visible)
     g.fillStyle(0x22C55E);
-    g.fillEllipse(cx, ry + 8, bw + 10, 30);
+    g.fillEllipse(cx, ry + 8*s, bw + 10*s, 30*s);
     g.fillStyle(0x16A34A);
-    g.fillEllipse(cx, ry + 6, bw, 19);
-    // Dark opening interior
+    g.fillEllipse(cx, ry + 6*s, bw, 19*s);
     g.fillStyle(0x052E16);
-    g.fillEllipse(cx, ry + 4, bw - 20, 12);
+    g.fillEllipse(cx, ry + 4*s, bw - 20*s, 12*s);
 
-    // Lid handle
     g.fillStyle(0x15803D);
-    g.fillRoundedRect(cx - 22, ry - 14, 44, 18, 7);
+    g.fillRoundedRect(cx - 22*s, ry - 14*s, 44*s, 18*s, 7*s);
     g.fillStyle(0x22C55E);
-    g.fillRoundedRect(cx - 18, ry - 11, 36, 11, 5);
+    g.fillRoundedRect(cx - 18*s, ry - 11*s, 36*s, 11*s, 5*s);
 
-    // Arrow hint inside bin
     g.fillStyle(0xFFFFFF, 0.35);
-    g.fillTriangle(cx, ry + 38, cx - 10, ry + 25, cx + 10, ry + 25);
+    g.fillTriangle(cx, ry + 38*s, cx - 10*s, ry + 25*s, cx + 10*s, ry + 25*s);
+
+    this.binContainer = this.add.container(W / 2, 0, [g]);
+    this.binContainer.setDepth(10);
   }
 
   makePortrait(mood: number): Phaser.GameObjects.Container {
@@ -327,14 +333,9 @@ export class ThrowToBinScene extends Phaser.Scene {
   onScored(trash: Phaser.GameObjects.Container) {
     this.scored++;
     EventBus.emit('game-scored-update', `${this.scored}/${this.cfg.trashGoal}`);
-
     this.tweens.add({ targets:trash, scaleX:0, scaleY:0, alpha:0, y:this.binRimY+40, duration:200, ease:'Quad.easeIn', onComplete:()=>trash.destroy() });
-
     this.showGreat(trash.x, trash.y - 20);
-    this.setMood(1);
-    this.time.delayedCall(1200, () => this.setMood(0));
     this.ensureMinTrash();
-
     if (this.scored >= this.cfg.trashGoal) {
       this.done = true;
       this.time.delayedCall(600, () => EventBus.emit('game-level-complete', this.level));
@@ -343,8 +344,6 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   onMissed(trash: Phaser.GameObjects.Container) {
     this.tweens.add({ targets:trash, y:trash.y+200, alpha:0, duration:350, ease:'Quad.easeIn', onComplete:()=>trash.destroy() });
-    this.setMood(2);
-    this.time.delayedCall(1200, () => this.setMood(0));
     const t = this.add.text(trash.x, trash.y-10, 'Miss!', { fontFamily:'Fredoka One, sans-serif', fontSize:'24px', color:'#FF6B6B', stroke:'#000', strokeThickness:4 }).setOrigin(0.5).setDepth(25);
     this.tweens.add({ targets:t, y:t.y-60, alpha:0, duration:800, ease:'Quad.easeOut', onComplete:()=>t.destroy() });
     this.ensureMinTrash();
@@ -362,17 +361,139 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   showTutorial() {
     const W = this.cameras.main.width, H = this.cameras.main.height;
-    const ov  = this.add.rectangle(W/2,H/2,W,H,0x000000,0.75).setDepth(40);
-    const pan = this.add.rectangle(W/2,H/2,Math.min(W-40,380),320,0x1E293B).setStrokeStyle(3,0x22C55E).setDepth(41);
-    const ttl = this.add.text(W/2,H/2-115,'Keep the City Clean!',{ fontFamily:'Fredoka One, sans-serif',fontSize:'24px',color:'#22C55E',stroke:'#000',strokeThickness:3 }).setOrigin(0.5).setDepth(42);
-    const bd  = this.add.text(W/2,H/2-20,`Pull the trash BACKWARD\nlike a slingshot and release!\n\nThe arc shows where it lands.\nAim for the bin above!\n\nThrow ${this.cfg.trashGoal} items in 30s!`,{ fontFamily:'Fredoka One, sans-serif',fontSize:'19px',color:'#FFF',align:'center',lineSpacing:6 }).setOrigin(0.5).setDepth(42);
-    const bb  = this.add.rectangle(W/2,H/2+118,190,56,0x22C55E).setInteractive().setDepth(42);
-    const bt  = this.add.text(W/2,H/2+118,"Let's Go!",{ fontFamily:'Fredoka One, sans-serif',fontSize:'22px',color:'#FFF' }).setOrigin(0.5).setDepth(43);
-    this.tweens.add({ targets:[bb,bt], scaleX:1.06, scaleY:1.06, duration:600, yoyo:true, repeat:-1 });
-    bb.once('pointerdown', () => { [ov,pan,ttl,bd,bb,bt].forEach(o=>o.destroy()); this.tutorialActive=false; this.startSpawning(); });
+
+    // Soft dark overlay (behind animation)
+    const ov = this.add.rectangle(W/2, H/2, W, H, 0x000000, 0.60).setDepth(40);
+
+    // Demo positions
+    const originX = W / 2;
+    const originY = H * 0.62;
+    const pullX = originX;
+    const pullY = originY + 90;
+    const targetBinX = W / 2;
+    const targetBinY = this.binRimY + 48;
+
+    const demoTrash = this.add.text(originX, originY, '🥤', { fontSize: '52px' })
+      .setOrigin(0.5).setDepth(42);
+    const bandGfx = this.add.graphics().setDepth(41);
+    const fingerGfx = this.add.graphics().setDepth(43);
+
+    const drawFinger = (x: number, y: number, alpha: number) => {
+      if (!fingerGfx.active) return;
+      fingerGfx.clear();
+      if (alpha <= 0) return;
+      fingerGfx.fillStyle(0xFFFFFF, alpha * 0.92);
+      fingerGfx.fillCircle(x, y, 22);
+      fingerGfx.lineStyle(3, 0x222222, alpha);
+      fingerGfx.strokeCircle(x, y, 22);
+      fingerGfx.fillStyle(0x444444, alpha * 0.35);
+      fingerGfx.fillCircle(x, y, 9);
+    };
+
+    const drawBands = (cx: number, cy: number) => {
+      if (!bandGfx.active) return;
+      bandGfx.clear();
+      const fd = 18;
+      bandGfx.lineStyle(4.5, 0xFFAA00, 0.92);
+      bandGfx.beginPath(); bandGfx.moveTo(originX - fd, originY); bandGfx.lineTo(cx, cy); bandGfx.strokePath();
+      bandGfx.beginPath(); bandGfx.moveTo(originX + fd, originY); bandGfx.lineTo(cx, cy); bandGfx.strokePath();
+      bandGfx.fillStyle(0xFFAA00, 1);
+      bandGfx.fillCircle(originX - fd, originY, 7);
+      bandGfx.fillCircle(originX + fd, originY, 7);
+    };
+
+    let animating = true;
+
+    const runAnim = () => {
+      if (!animating) return;
+      demoTrash.setPosition(originX, originY).setAlpha(1).setScale(1).setAngle(0);
+      bandGfx.clear(); fingerGfx.clear();
+
+      // Phase 1: finger appears
+      const p1 = { a: 0 };
+      this.tweens.add({
+        targets: p1, a: 1, duration: 450, ease: 'Sine.easeOut',
+        onUpdate: () => drawFinger(originX, originY, p1.a),
+        onComplete: () => {
+          if (!animating) return;
+          // Phase 2: pull straight DOWN
+          const p2 = { x: originX, y: originY };
+          this.tweens.add({
+            targets: p2, x: pullX, y: pullY,
+            duration: 900, ease: 'Sine.easeInOut',
+            onUpdate: () => {
+              if (!animating) return;
+              demoTrash.setPosition(p2.x, p2.y);
+              drawFinger(p2.x, p2.y, 1);
+              drawBands(p2.x, p2.y);
+            },
+            onComplete: () => {
+              if (!animating) return;
+              this.time.delayedCall(300, () => {
+                if (!animating) return;
+                // Phase 3: finger lifts
+                const p3 = { a: 1 };
+                this.tweens.add({
+                  targets: p3, a: 0, duration: 180,
+                  onUpdate: () => drawFinger(pullX, pullY, p3.a),
+                  onComplete: () => {
+                    if (!animating) return;
+                    bandGfx.clear(); fingerGfx.clear();
+                    // Phase 4: SINGLE smooth flight to bin
+                    this.tweens.add({
+                      targets: demoTrash,
+                      x: targetBinX, y: targetBinY,
+                      duration: 1000, ease: 'Quad.easeIn',
+                      onUpdate: () => { demoTrash.angle += 4; },
+                      onComplete: () => {
+                        if (!animating) return;
+                        this.tweens.add({
+                          targets: demoTrash, scaleX: 0, scaleY: 0, alpha: 0,
+                          duration: 200, ease: 'Quad.easeIn',
+                          onComplete: () => {
+                            if (!animating) return;
+                            this.time.delayedCall(900, runAnim);
+                          }
+                        });
+                      }
+                    });
+                  }
+                });
+              });
+            }
+          });
+        }
+      });
+    };
+
+    this.time.delayedCall(500, runAnim);
+
+    // Emit event so React can show the HTML overlay (crisp text, native emoji)
+    EventBus.emit('show-tutorial');
+
+    const onDone = () => {
+      animating = false;
+      [ov, demoTrash, bandGfx, fingerGfx].forEach(o => { if (o && o.active) { this.tweens.killTweensOf(o); o.destroy(); } });
+      this.tutorialActive = false;
+      this.startSpawning();
+    };
+    EventBus.once('tutorial-done', onDone);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('tutorial-done', onDone));
+  }
+
+  showPreLevelMessage() {
+    // Emit to React — HTML overlay handles UI so text is crisp (no Phaser canvas pixelation)
+    EventBus.emit('show-pre-level');
+    const onDone = () => {
+      this.tutorialActive = false;
+      this.startSpawning();
+    };
+    EventBus.once('pre-level-done', onDone);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('pre-level-done', onDone));
   }
 
   update(_time: number, delta: number) {
+    if (this.binContainer) this.binCX = this.binContainer.x;
     const dt = delta / 1000;
     const H  = this.cameras.main.height;
 
@@ -390,7 +511,7 @@ export class ThrowToBinScene extends Phaser.Scene {
       if (ti.vy > 0) {
         const dx = Math.abs(ti.container.x - this.binCX);
         const dy = ti.container.y - this.binRimY;
-        if (dx < this.binHalfW - 8 && dy >= -5 && dy < 55) {
+        if (dx < this.binHalfW - 4 && dy >= -8 && dy < 65) {
           ti.done = true;
           this.onScored(ti.container);
           this.thrownItems.splice(i,1);

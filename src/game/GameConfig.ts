@@ -4,7 +4,7 @@ export function createGameConfig(parent: string | HTMLElement, InitialSceneClass
   return {
     type: Phaser.AUTO,
     parent: parent,
-    backgroundColor: '#87CEEB', // Sky blue default
+    backgroundColor: '#87CEEB',
     scale: {
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH,

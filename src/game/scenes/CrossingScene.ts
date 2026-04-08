@@ -7,6 +7,7 @@ export class CrossingScene extends Phaser.Scene {
   timeLeft = 40;
   done = false;
   tutorialActive = false;
+  penaltyCooldown = false;
   timerEvent!: Phaser.Time.TimerEvent;
 
   tommy!: Phaser.Physics.Arcade.Image;
@@ -200,30 +201,23 @@ export class CrossingScene extends Phaser.Scene {
   }
 
   penalize() {
-      if (this.done || this.tutorialActive) return;
+    if (this.done || this.tutorialActive || this.penaltyCooldown) return;
 
-      // Gently push Tommy back (no shake/explosion)
-      const pushBack = 160;
-      this.tommy.x = Math.max(100, this.tommy.x - pushBack);
-      this.tommy.setVelocityX(0);
+    this.penaltyCooldown = true;
 
-      // Friendly educational popup
-      const msgBg = this.add.rectangle(this.tommy.x, this.tommy.y - 70, 320, 70, 0xFFF9C4)
-        .setDepth(40).setStrokeStyle(3, 0xF59E0B);
-      const msg = this.add.text(
-        this.tommy.x, this.tommy.y - 70,
-        "🔴 Wait for green light!\nDon't cross on red! 🚦",
-        { fontFamily: 'Fredoka One', fontSize: '16px', color: '#B45309', align: 'center' }
-      ).setOrigin(0.5).setDepth(41);
+    // Push Tommy back
+    const pushBack = 160;
+    this.tommy.x = Math.max(100, this.tommy.x - pushBack);
+    this.tommy.setVelocityX(0);
 
-      this.tweens.add({
-        targets: [msgBg, msg], alpha: 0,
-        delay: 1400, duration: 500,
-        onComplete: () => { msgBg.destroy(); msg.destroy(); }
-      });
+    // Show HTML message overlay via React (crisp, follows screen not world)
+    EventBus.emit('show-crossing-penalty');
 
-      this.timeLeft = Math.max(0, this.timeLeft - 3);
-      EventBus.emit('game-timer', this.timeLeft);
+    this.timeLeft = Math.max(0, this.timeLeft - 3);
+    EventBus.emit('game-timer', this.timeLeft);
+
+    // Cooldown so penalty doesn't fire every frame
+    this.time.delayedCall(2200, () => { this.penaltyCooldown = false; });
   }
 
   update(_time: number, delta: number) {

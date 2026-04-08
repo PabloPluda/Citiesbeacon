@@ -143,6 +143,7 @@ export default function GameWindow() {
   const [phase, setPhase] = useState<Phase>('playing');
   const [showTutorial, setShowTutorial] = useState(false);
   const [showPreLevel, setShowPreLevel] = useState(false);
+  const [showCrossingPenalty, setShowCrossingPenalty] = useState(false);
 
   useEffect(() => {
     if (containerRef.current && !gameRef.current) {
@@ -173,6 +174,11 @@ export default function GameWindow() {
     EventBus.on('game-time-up', onTimeUp);
     EventBus.on('show-tutorial', () => setShowTutorial(true));
     EventBus.on('show-pre-level', () => setShowPreLevel(true));
+    const onCrossingPenalty = () => {
+      setShowCrossingPenalty(true);
+      setTimeout(() => setShowCrossingPenalty(false), 2000);
+    };
+    EventBus.on('show-crossing-penalty', onCrossingPenalty);
 
     return () => {
       EventBus.off('game-timer', onTimer);
@@ -181,6 +187,7 @@ export default function GameWindow() {
       EventBus.off('game-time-up', onTimeUp);
       EventBus.off('show-tutorial', () => setShowTutorial(false));
       EventBus.off('show-pre-level', () => setShowPreLevel(false));
+      EventBus.off('show-crossing-penalty', onCrossingPenalty);
       if (gameRef.current) {
         gameRef.current.destroy(true);
         gameRef.current = null;
@@ -310,6 +317,36 @@ export default function GameWindow() {
                   cursor: 'pointer',
                 }}
               >Let's keep the street clean! 🧹</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─ Crossing penalty overlay ───────────────────────────────────────── */}
+      {showCrossingPenalty && (
+        <div style={{
+          position: 'absolute', top: '28%', left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 60, pointerEvents: 'none',
+          animation: 'penalty-slide-in 0.25s ease-out',
+        }}>
+          <div style={{
+            background: '#FEF3C7',
+            border: '3px solid #F59E0B',
+            borderRadius: 20,
+            padding: '14px 24px',
+            textAlign: 'center',
+            boxShadow: '0 6px 24px rgba(0,0,0,0.35)',
+            minWidth: 240,
+          }}>
+            <div style={{ fontSize: '2rem', marginBottom: 4 }}>🚦</div>
+            <div style={{
+              fontFamily: 'Fredoka One, cursive',
+              fontSize: '1.2rem',
+              color: '#92400E',
+              lineHeight: 1.3,
+            }}>
+              Wait for the<br/>green light! 😊
             </div>
           </div>
         </div>

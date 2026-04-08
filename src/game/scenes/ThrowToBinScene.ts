@@ -166,7 +166,7 @@ export class ThrowToBinScene extends Phaser.Scene {
   }
 
   makePortrait(mood: number): Phaser.GameObjects.Container {
-    const g = this.make.graphics({x:0,y:0,add:false});
+    const g = this.make.graphics({x:0,y:0} as any);
     g.fillStyle(0xFFFFFF, 0.95); g.fillCircle(26,26,26);
     g.lineStyle(3,0x374151); g.strokeCircle(26,26,26);
     g.fillStyle(0xFCD34D); g.fillCircle(26,20,16);
@@ -182,7 +182,7 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   setMood(mood: number) {
     if (!this.tommyPortrait?.active) return;
-    const g = this.make.graphics({x:0,y:0,add:false});
+    const g = this.make.graphics({x:0,y:0} as any);
     g.fillStyle(0xFFFFFF,0.95); g.fillCircle(26,26,26);
     g.lineStyle(3,0x374151); g.strokeCircle(26,26,26);
     g.fillStyle(0xFCD34D); g.fillCircle(26,20,16);

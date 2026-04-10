@@ -20,11 +20,9 @@ const SCENE_MAP: Record<number, any> = {
 };
 
 // ─── Circular countdown timer ─────────────────────────────────────────────────
-function TimerRing({ timeLeft }: { timeLeft: number }) {
+function TimerRing({ timeLeft, maxTime }: { timeLeft: number; maxTime: number }) {
   const r = 22;
   const circ = 2 * Math.PI * r;
-  // Maximum time can be technically more than 35 due to +2s, so we clamp for the circle
-  const maxTime = 35;
   const offset = circ * (1 - Math.min(1, timeLeft / maxTime));
   const color = timeLeft <= 5 ? '#EF4444' : timeLeft <= 10 ? '#F59E0B' : '#22C55E';
   return (
@@ -139,11 +137,17 @@ export default function GameWindow() {
   const levelRef = useRef(initial);
   const [level, setLevel] = useState(initial);
   const [scored, setScored] = useState('0/7');
-  const [timeLeft, setTimeLeft] = useState(35);
+  const [timeLeft, setTimeLeft] = useState(50);
+  const [maxTimeLeft, setMaxTimeLeft] = useState(50); // tracks the starting time for ring
   const [phase, setPhase] = useState<Phase>('playing');
   const [showTutorial, setShowTutorial] = useState(false);
   const [showPreLevel, setShowPreLevel] = useState(false);
   const [showCrossingPenalty, setShowCrossingPenalty] = useState(false);
+  const [showCrossingTutorial, setShowCrossingTutorial] = useState(false);
+  const [showCrossingPraise, setShowCrossingPraise] = useState(false);
+  const [showCrossingStart, setShowCrossingStart] = useState(false);
+  const [crossingStartLevel, setCrossingStartLevel] = useState(1);
+  const [praiseText, setPraiseText] = useState('Well done! 🎉');
 
   useEffect(() => {
     if (containerRef.current && !gameRef.current) {
@@ -159,7 +163,11 @@ export default function GameWindow() {
     };
     EventBus.once('current-scene-ready', onSceneReady);
 
-    const onTimer = (t: number) => setTimeLeft(t);
+    const onTimer = (t: number) => {
+      setTimeLeft(t);
+      // Capture initial timer value as maxTime for the ring
+      setMaxTimeLeft(prev => t > prev ? t : prev);
+    };
     const onScored = (n: string | number) => setScored(String(n));
 
     const onLevelComplete = (completedLevel: number) => {
@@ -179,6 +187,19 @@ export default function GameWindow() {
       setTimeout(() => setShowCrossingPenalty(false), 2000);
     };
     EventBus.on('show-crossing-penalty', onCrossingPenalty);
+    EventBus.on('show-crossing-tutorial', () => setShowCrossingTutorial(true));
+    const onCrossingStart = (data?: { level?: number }) => {
+      setCrossingStartLevel(data?.level ?? 1);
+      setShowCrossingStart(true);
+    };
+    EventBus.on('show-crossing-start', onCrossingStart);
+    const onCrossingPraise = () => {
+      const words = ['Well done! 🎉', 'Great job! 👏', 'Awesome! ⭐', 'Perfect! 🏆'];
+      setPraiseText(words[Math.floor(Math.random() * words.length)]);
+      setShowCrossingPraise(true);
+      setTimeout(() => setShowCrossingPraise(false), 2000);
+    };
+    EventBus.on('show-crossing-praise', onCrossingPraise);
 
     return () => {
       EventBus.off('game-timer', onTimer);
@@ -188,6 +209,9 @@ export default function GameWindow() {
       EventBus.off('show-tutorial', () => setShowTutorial(false));
       EventBus.off('show-pre-level', () => setShowPreLevel(false));
       EventBus.off('show-crossing-penalty', onCrossingPenalty);
+      EventBus.off('show-crossing-tutorial', () => setShowCrossingTutorial(false));
+      EventBus.off('show-crossing-start', onCrossingStart);
+      EventBus.off('show-crossing-praise', onCrossingPraise);
       if (gameRef.current) {
         gameRef.current.destroy(true);
         gameRef.current = null;
@@ -204,7 +228,8 @@ export default function GameWindow() {
     levelRef.current = next;
     setLevel(next);
     setScored('0/7');
-    setTimeLeft(35);
+    setTimeLeft(50);
+    setMaxTimeLeft(50);
     setPhase('playing');
     EventBus.emit('restart-scene', { level: next });
   };
@@ -214,7 +239,8 @@ export default function GameWindow() {
     levelRef.current = 1;
     setLevel(1);
     setScored('0/7');
-    setTimeLeft(35);
+    setTimeLeft(50);
+    setMaxTimeLeft(50);
     setPhase('playing');
     EventBus.emit('restart-scene', { level: 1 });
   };
@@ -222,7 +248,8 @@ export default function GameWindow() {
   // Retry same level
   const handleRetry = () => {
     setScored('0/7');
-    setTimeLeft(35);
+    setTimeLeft(50);
+    setMaxTimeLeft(50);
     setPhase('playing');
     EventBus.emit('restart-scene', { level: levelRef.current });
   };
@@ -322,6 +349,50 @@ export default function GameWindow() {
         </div>
       )}
 
+      {/* ─ Crossing START / GO overlay ────────────────────────────────────────────── */}
+      {showCrossingStart && (
+        <div style={{
+          position: 'absolute', bottom: '16%', left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 66, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+        }}>
+          <div style={{
+            background: 'rgba(15,30,60,0.82)',
+            borderRadius: 22,
+            padding: '14px 26px',
+            textAlign: 'center',
+            boxShadow: '0 8px 28px rgba(0,0,0,0.45)',
+            border: '2px solid rgba(74,222,128,0.7)',
+            minWidth: 220,
+          }}>
+            <div style={{
+              fontFamily: 'Fredoka One, cursive', fontSize: '1.1rem',
+              color: '#86efac', marginBottom: 4,
+            }}>
+              {crossingStartLevel === 1 ? 'Walk safely to school! 🎢' : `Level ${crossingStartLevel} — Ready?`}
+            </div>
+            <div style={{
+              fontFamily: 'Fredoka One, cursive', fontSize: '0.82rem',
+              color: 'rgba(255,255,255,0.7)', marginBottom: 14,
+            }}>
+              Hold screen to stop · Release to walk
+            </div>
+            <button
+              id="btn-crossing-start"
+              onClick={() => { setShowCrossingStart(false); EventBus.emit('crossing-start-done'); }}
+              style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '1.2rem',
+                background: '#22C55E', color: '#fff',
+                border: '2px solid #4ade80', borderRadius: 28,
+                padding: '13px 40px', cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+                letterSpacing: '0.03em',
+              }}
+            >Let's Go! 🚶</button>
+          </div>
+        </div>
+      )}
+
       {/* ─ Crossing penalty overlay ───────────────────────────────────────── */}
       {showCrossingPenalty && (
         <div style={{
@@ -352,6 +423,84 @@ export default function GameWindow() {
         </div>
       )}
 
+      {/* ─ Crossing tutorial HTML overlay (crisp) ───────────────────────────── */}
+      {showCrossingTutorial && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 65,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(7,18,37,0.65)',
+        }}>
+          <div style={{
+            background: '#FFFdf5',
+            borderRadius: 26, overflow: 'hidden',
+            width: 'min(310px, calc(100vw - 48px))',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+            border: '3px solid #22C55E',
+            textAlign: 'center',
+          }}>
+            {/* Green header */}
+            <div style={{
+              background: '#22C55E', padding: '12px 0',
+              fontFamily: 'Fredoka One, cursive', fontSize: '1rem', color: '#fff',
+            }}>City Hero Academy 🌍</div>
+            {/* Body */}
+            <div style={{ padding: '18px 22px 22px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: 6 }}>🚦</div>
+              <div style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '1.5rem',
+                color: '#16A34A', marginBottom: 10,
+              }}>Cross Safely!</div>
+              <div style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '0.95rem',
+                color: '#374151', lineHeight: 1.5, marginBottom: 18,
+              }}>
+                🔴 <strong>Red light</strong> = hold the screen to stop!<br/>
+                🟢 <strong>Green light</strong> = release to walk!<br/>
+                <span style={{ fontSize: '0.85rem', color: '#6B7280' }}>Crossing on red = time penalty ⏱️</span>
+              </div>
+              <button
+                id="btn-crossing-tutorial"
+                onClick={() => { setShowCrossingTutorial(false); EventBus.emit('crossing-tutorial-done'); }}
+                style={{
+                  width: '100%',
+                  fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+                  background: '#22C55E', color: '#fff',
+                  border: 'none', borderRadius: 24,
+                  padding: '13px 12px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                  cursor: 'pointer',
+                }}
+              >Let's cross! 🚶</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─ Crossing praise toast ─────────────────────────────────────────────── */}
+      {showCrossingPraise && (
+        <div style={{
+          position: 'absolute', top: '22%', left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 62, pointerEvents: 'none',
+          animation: 'praise-pop 0.3s ease-out',
+        }}>
+          <div style={{
+            background: 'rgba(22, 163, 74, 0.92)',
+            border: '3px solid #86efac',
+            borderRadius: 22,
+            padding: '12px 28px',
+            textAlign: 'center',
+            boxShadow: '0 6px 24px rgba(0,0,0,0.3)',
+          }}>
+            <div style={{
+              fontFamily: 'Fredoka One, cursive',
+              fontSize: '1.4rem',
+              color: '#fff',
+            }}>{praiseText}</div>
+          </div>
+        </div>
+      )}
+
       {/* ─ HUD ─────────────────────────────────────────────────────────────── */}
       <div style={{
         position: 'absolute', top: 0, left: 0, width: '100%',
@@ -376,7 +525,7 @@ export default function GameWindow() {
 
         {/* Timer */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <TimerRing timeLeft={timeLeft} />
+          <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />
           <span style={{
             fontFamily: 'Fredoka One', fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)',
             textShadow: '1px 1px 2px black', letterSpacing: '0.05em',

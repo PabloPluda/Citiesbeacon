@@ -39,26 +39,26 @@ function getLevelConfig(level: number): LevelConfig {
 }
 
 const LEVELS: LevelConfig[] = [
-  { cols:5, rows:6,  dogDelay:6, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:0, hasDoors:false, time:120 },
-  { cols:5, rows:7,  dogDelay:6, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:0, hasDoors:false, time:110 },
-  { cols:6, rows:7,  dogDelay:5, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:0, hasDoors:false, time:100 },
-  { cols:6, rows:8,  dogDelay:5, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:0, hasDoors:false, time:100 },
-  { cols:7, rows:8,  dogDelay:4, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:0, hasDoors:false, time:90  },
-  { cols:7, rows:9,  dogDelay:4, hasPuddles:true,  numPuddles:3, hasWaterBowls:false, numBowls:0, numCats:0, hasDoors:false, time:90  },
-  { cols:7, rows:9,  dogDelay:4, hasPuddles:true,  numPuddles:4, hasWaterBowls:false, numBowls:0, numCats:0, hasDoors:false, time:85  },
-  { cols:8, rows:9,  dogDelay:3, hasPuddles:true,  numPuddles:4, hasWaterBowls:false, numBowls:0, numCats:0, hasDoors:false, time:85  },
-  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:5, hasWaterBowls:false, numBowls:0, numCats:0, hasDoors:false, time:80  },
-  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:6, hasWaterBowls:false, numBowls:0, numCats:0, hasDoors:false, time:80  },
-  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:4, hasWaterBowls:true,  numBowls:2, numCats:0, hasDoors:false, time:75  },
-  { cols:8, rows:11, dogDelay:3, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:2, numCats:0, hasDoors:false, time:75  },
-  { cols:9, rows:11, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:3, numCats:0, hasDoors:false, time:70  },
-  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:3, numCats:0, hasDoors:false, time:70  },
-  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:3, numCats:0, hasDoors:false, time:65  },
-  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:2, numCats:1, hasDoors:true,  time:65  },
-  { cols:9, rows:13, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:2, numCats:2, hasDoors:true,  time:60  },
-  { cols:10,rows:13, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:2, numCats:2, hasDoors:true,  time:60  },
-  { cols:10,rows:13, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:2, numCats:2, hasDoors:true,  time:55  },
-  { cols:10,rows:14, dogDelay:2, hasPuddles:true,  numPuddles:7, hasWaterBowls:true,  numBowls:3, numCats:3, hasDoors:true,  time:55  },
+  { cols:6, rows:7,  dogDelay:5, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:1, hasDoors:false, time:110 }, // L1  (was L3)
+  { cols:6, rows:8,  dogDelay:5, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:1, hasDoors:false, time:105 }, // L2
+  { cols:7, rows:8,  dogDelay:4, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:1, hasDoors:false, time:100 }, // L3
+  { cols:7, rows:9,  dogDelay:4, hasPuddles:true,  numPuddles:3, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:false, time:95  }, // L4
+  { cols:7, rows:9,  dogDelay:4, hasPuddles:true,  numPuddles:4, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:false, time:90  }, // L5
+  { cols:8, rows:9,  dogDelay:3, hasPuddles:true,  numPuddles:4, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:false, time:90  }, // L6
+  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:5, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:false, time:85  }, // L7
+  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:6, hasWaterBowls:false, numBowls:0, numCats:3, hasDoors:false, time:85  }, // L8
+  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:4, hasWaterBowls:true,  numBowls:2, numCats:3, hasDoors:false, time:80  }, // L9
+  { cols:8, rows:11, dogDelay:3, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:2, numCats:3, hasDoors:false, time:80  }, // L10
+  { cols:9, rows:11, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:3, numCats:3, hasDoors:false, time:75  }, // L11
+  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:3, numCats:3, hasDoors:false, time:75  }, // L12
+  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:3, numCats:4, hasDoors:false, time:70  }, // L13
+  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:2, numCats:4, hasDoors:true,  time:70  }, // L14
+  { cols:9, rows:13, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:2, numCats:4, hasDoors:true,  time:65  }, // L15
+  { cols:10,rows:13, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:2, numCats:4, hasDoors:true,  time:65  }, // L16
+  { cols:10,rows:13, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:2, numCats:4, hasDoors:true,  time:60  }, // L17
+  { cols:10,rows:14, dogDelay:2, hasPuddles:true,  numPuddles:7, hasWaterBowls:true,  numBowls:3, numCats:4, hasDoors:true,  time:60  }, // L18
+  { cols:11,rows:14, dogDelay:2, hasPuddles:true,  numPuddles:7, hasWaterBowls:true,  numBowls:3, numCats:4, hasDoors:true,  time:55  }, // L19
+  { cols:11,rows:15, dogDelay:2, hasPuddles:true,  numPuddles:8, hasWaterBowls:true,  numBowls:3, numCats:4, hasDoors:true,  time:55  }, // L20
 ];
 
 const FUN_MESSAGES = [
@@ -81,26 +81,203 @@ const OWNER_CALLS = [
 
 const MOVE_DUR = 170;   // ms per cell
 
-// ─── Maze generator (recursive backtracker) ───────────────────────────────────
+// ─── BFS solution path ────────────────────────────────────────────────────────
+function computeSolutionPath(grid: Cell[][], cols: number, rows: number): GridPos[] {
+  const goalCol = cols - 1, goalRow = rows - 1;
+  const prev = new Map<string, string>([['0,0', '']]);
+  const queue: GridPos[] = [{ col: 0, row: 0 }];
+  while (queue.length) {
+    const pos = queue.shift()!;
+    const cell = grid[pos.row][pos.col];
+    const nbs = [
+      { col: pos.col,   row: pos.row-1, wall: cell.N },
+      { col: pos.col,   row: pos.row+1, wall: cell.S },
+      { col: pos.col+1, row: pos.row,   wall: cell.E },
+      { col: pos.col-1, row: pos.row,   wall: cell.W },
+    ];
+    for (const nb of nbs) {
+      if (nb.wall || nb.col < 0 || nb.col >= cols || nb.row < 0 || nb.row >= rows) continue;
+      const k = `${nb.col},${nb.row}`;
+      if (prev.has(k)) continue;
+      prev.set(k, `${pos.col},${pos.row}`);
+      if (nb.col === goalCol && nb.row === goalRow) {
+        const path: GridPos[] = [];
+        let cur = `${goalCol},${goalRow}`;
+        while (cur) {
+          const [c, r] = cur.split(',').map(Number);
+          path.unshift({ col: c, row: r });
+          cur = prev.get(cur) ?? '';
+        }
+        return path;
+      }
+      queue.push({ col: nb.col, row: nb.row });
+    }
+  }
+  return [];
+}
+
+// ─── Two-Arm Maze Generator ───────────────────────────────────────────────────
+// DESIGN: From (0,0) two passages open immediately — one EAST (dead-end arm),
+// one SOUTH (solution arm). This guarantees the player sees a hard choice at
+// the very first cell. Both arms are grown to cover at least 25% of the grid
+// before filling in any remaining cells.
+//
+// Arm A (dead-end):  starts EAST, biased AWAY from goal, never touches goal cell.
+//                    Grows until it covers TARGET_DEAD_END_RATIO of total cells.
+// Arm B (solution):  starts SOUTH, fills all remaining unvisited cells including
+//                    the goal. Has mild random bias to produce interesting paths.
 function generateMaze(cols: number, rows: number): Cell[][] {
+  const GOAL_COL = cols - 1, GOAL_ROW = rows - 1;
+  const totalCells = cols * rows;
+  // Dead-end arm targets 28–35% of cells. Larger grids → use lower ratio so
+  // the solution arm still has room to be long.
+  const TARGET_DEAD = Math.floor(totalCells * (totalCells > 60 ? 0.28 : 0.32));
+
+  type Dir = { dc:number; dr:number; from:'N'|'S'|'E'|'W'; to:'N'|'S'|'E'|'W' };
+  const DIRS: Dir[] = [
+    { dc: 0, dr:-1, from:'N', to:'S' },
+    { dc: 0, dr: 1, from:'S', to:'N' },
+    { dc: 1, dr: 0, from:'E', to:'W' },
+    { dc:-1, dr: 0, from:'W', to:'E' },
+  ];
+
+  function shuffled<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function attempt(): Cell[][] | null {
+    const grid: Cell[][] = Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => ({ N: true, S: true, E: true, W: true }))
+    );
+    const visited: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
+
+    visited[0][0] = true;
+    let deadCount = 0;
+
+    // ── ARM A: dead-end arm, leaves (0,0) going EAST ──────────────────────────
+    // Strongly biased away from goal, forbidden from reaching goal cell.
+    function carveDeadArm(c: number, r: number) {
+      if (deadCount >= TARGET_DEAD) return;
+      // Sort with strong away-from-goal bias (always, not just early phase)
+      const dirs = shuffled(DIRS).sort((a, b) => {
+        const aD = Math.abs((c+a.dc) - GOAL_COL) + Math.abs((r+a.dr) - GOAL_ROW);
+        const bD = Math.abs((c+b.dc) - GOAL_COL) + Math.abs((r+b.dr) - GOAL_ROW);
+        return (bD - aD) * 2.0; // strong bias away
+      });
+      for (const d of dirs) {
+        if (deadCount >= TARGET_DEAD) break;
+        const nc = c + d.dc, nr = r + d.dr;
+        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+        if (visited[nr][nc]) continue;
+        if (nc === GOAL_COL && nr === GOAL_ROW) continue; // arm A never reaches goal
+        visited[nr][nc] = true;
+        deadCount++;
+        grid[r][c][d.from] = false;
+        grid[nr][nc][d.to]  = false;
+        carveDeadArm(nc, nr);
+      }
+    }
+
+    // Start arm A from (0,0) going EAST if possible, else NORTH
+    let armAStarted = false;
+    if (cols > 1 && !visited[0][1]) {
+      visited[0][1] = true; deadCount++;
+      grid[0][0]['E'] = false; grid[0][1]['W'] = false;
+      carveDeadArm(1, 0);
+      armAStarted = true;
+    } else if (rows > 1 && !visited[1][0]) {
+      // fallback: arm A goes SOUTH, arm B will go EAST
+      visited[1][0] = true; deadCount++;
+      grid[0][0]['S'] = false; grid[1][0]['N'] = false;
+      carveDeadArm(0, 1);
+      armAStarted = true;
+    }
+    if (!armAStarted) return null; // degenerate grid
+
+    // Verify arm A covered enough cells — if not, this attempt fails
+    if (deadCount < Math.floor(totalCells * 0.22)) return null;
+
+    // ── ARM B: solution arm, leaves (0,0) going SOUTH (or EAST if A went S) ───
+    // Fills ALL remaining unvisited cells. Standard backtracker + mild randomness.
+    function carveSolutionArm(c: number, r: number) {
+      // Slight goal-bias in later half to prevent solution path from being absurdly long
+      const dToGoal = Math.abs(c - GOAL_COL) + Math.abs(r - GOAL_ROW);
+      const dirs = shuffled(DIRS).sort((a, b) => {
+        const aD = Math.abs((c+a.dc) - GOAL_COL) + Math.abs((r+a.dr) - GOAL_ROW);
+        const bD = Math.abs((c+b.dc) - GOAL_COL) + Math.abs((r+b.dr) - GOAL_ROW);
+        // When far from goal, slight away-bias; when close, slight toward-bias
+        const bias = dToGoal > 4 ? (bD - aD) * 0.4 : (aD - bD) * 0.3;
+        return bias;
+      });
+      for (const d of dirs) {
+        const nc = c + d.dc, nr = r + d.dr;
+        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+        if (visited[nr][nc]) continue;
+        visited[nr][nc] = true;
+        grid[r][c][d.from] = false;
+        grid[nr][nc][d.to]  = false;
+        carveSolutionArm(nc, nr);
+      }
+    }
+
+    // Start arm B from (0,0) in the direction arm A did NOT take
+    const armAWentEast = (cols > 1 && grid[0][0]['E'] === false && grid[0][1]['W'] === false);
+    if (!armAWentEast && cols > 1 && !visited[0][1]) {
+      visited[0][1] = true;
+      grid[0][0]['E'] = false; grid[0][1]['W'] = false;
+      carveSolutionArm(1, 0);
+    } else if (rows > 1 && !visited[1][0]) {
+      visited[1][0] = true;
+      grid[0][0]['S'] = false; grid[1][0]['N'] = false;
+      carveSolutionArm(0, 1);
+    }
+
+    // Fill any remaining isolated cells (shouldn't be many)
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (!visited[r][c]) {
+          visited[r][c] = true;
+          carveSolutionArm(c, r);
+        }
+      }
+    }
+
+    // Validate: goal must be reachable and the two arms at (0,0) must be distinct
+    const cell00 = grid[0][0];
+    const openExits = (!cell00.N?1:0) + (!cell00.S?1:0) + (!cell00.E?1:0) + (!cell00.W?1:0);
+    if (openExits < 2) return null;
+    if (!computeSolutionPath(grid, cols, rows).length) return null;
+
+    return grid;
+  }
+
+  // Retry up to 12 times; fallback to a plain backtracker if all fail
+  for (let i = 0; i < 12; i++) {
+    const g = attempt();
+    if (g) return g;
+  }
+  // Fallback: plain DFS backtracker (always produces a valid maze)
   const grid: Cell[][] = Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => ({ N: true, S: true, E: true, W: true }))
   );
-  const visited: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
-
+  const vis: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
   function carve(c: number, r: number) {
-    visited[r][c] = true;
+    vis[r][c] = true;
     const dirs = [
-      { dc: 0, dr: -1, from: 'N' as const, to: 'S' as const },
-      { dc: 0, dr:  1, from: 'S' as const, to: 'N' as const },
-      { dc: 1, dr:  0, from: 'E' as const, to: 'W' as const },
-      { dc:-1, dr:  0, from: 'W' as const, to: 'E' as const },
+      { dc:0, dr:-1, from:'N' as const, to:'S' as const },
+      { dc:0, dr:1,  from:'S' as const, to:'N' as const },
+      { dc:1, dr:0,  from:'E' as const, to:'W' as const },
+      { dc:-1,dr:0,  from:'W' as const, to:'E' as const },
     ].sort(() => Math.random() - 0.5);
     for (const d of dirs) {
-      const nc = c + d.dc, nr = r + d.dr;
-      if (nc >= 0 && nc < cols && nr >= 0 && nr < rows && !visited[nr][nc]) {
-        grid[r][c][d.from] = false;
-        grid[nr][nc][d.to] = false;
+      const nc = c+d.dc, nr = r+d.dr;
+      if (nc >= 0 && nc < cols && nr >= 0 && nr < rows && !vis[nr][nc]) {
+        grid[r][c][d.from] = false; grid[nr][nc][d.to] = false;
         carve(nc, nr);
       }
     }
@@ -149,6 +326,9 @@ export class NotMyDogScene extends Phaser.Scene {
   private waterBowlSprites = new Map<string, Phaser.GameObjects.Text>();
   private cats: CatObj[] = [];
   private doorPairs: DoorPair[] = [];
+  // Main path computed on the fully-open maze (before any door closes a passage).
+  // Used by placeCats and placeDoor so items are guaranteed off the true solution route.
+  private openMainPath: Set<string> = new Set();
 
 
   constructor() { super('NotMyDogScene'); }
@@ -177,6 +357,7 @@ export class NotMyDogScene extends Phaser.Scene {
     this.waterBowlSprites = new Map();
     this.cats = [];
     this.doorPairs = [];
+    this.openMainPath = new Set();
 
   }
 
@@ -221,6 +402,11 @@ export class NotMyDogScene extends Phaser.Scene {
 
     // ── Maze generation ─────────────────────────────────────
     this.maze = generateMaze(this.cfg.cols, this.cfg.rows);
+
+    // Compute main path NOW, on the fully-open maze, before any door closes
+    // a passage. Both placeDoor and placeCats will use this snapshot so that
+    // cats and keys are guaranteed to sit off the true solution route.
+    this.openMainPath = this.mainPathCells();
 
     // ── Place special items ─────────────────────────────────
     // puddles disabled for now
@@ -438,9 +624,8 @@ export class NotMyDogScene extends Phaser.Scene {
 
   private placeCats(fs: number) {
     if (this.cfg.numCats === 0) return;
-    const mainPath = this.mainPathCells();
-    // Cats go in dead-end cells NOT on the main path
-    const ex = new Set(['0,0', `${this.cfg.cols-1},${this.cfg.rows-1}`, ...mainPath]);
+    // Use pre-computed open-maze main path so cats are never on the solution route
+    const mainPath = this.openMainPath;
     const candidates = this.randomCells(this.cfg.numCats * 3, new Set(['0,0', `${this.cfg.cols-1},${this.cfg.rows-1}`]))
       .filter(k => !mainPath.has(k));
     const chosen = candidates.slice(0, this.cfg.numCats);
@@ -451,7 +636,6 @@ export class NotMyDogScene extends Phaser.Scene {
       this.tweens.add({ targets: spr, y: spr.y - 4, yoyo: true, repeat: -1, duration: 900 + Math.random() * 400 });
       this.cats.push({ pos: { col: c, row: r }, sprite: spr, active: true });
     }
-    void ex; // suppress unused warning
   }
 
   private placeDoor() {
@@ -473,13 +657,22 @@ export class NotMyDogScene extends Phaser.Scene {
       const goalKey = `${this.cfg.cols-1},${this.cfg.rows-1}`;
 
       if (!reachable.has(goalKey)) {
-        // Pick lever cell OFF the main path so player must detour
-        const mainPath = this.mainPathCells();
+        // Use the pre-computed open-maze main path so the key is never on the
+        // direct route — the player must detour into a dead-end branch to get it.
         const ex = new Set(['0,0', goalKey, ...this.puddleCells, ...this.waterBowlSprites.keys()]);
-        const offPath = [...reachable].filter(k => !ex.has(k) && !mainPath.has(k));
+        const offPath = [...reachable].filter(k => !ex.has(k) && !this.openMainPath.has(k));
         const candidates = offPath.length >= 2 ? offPath : [...reachable].filter(k => !ex.has(k));
+
         if (candidates.length > 0) {
-          const leverKey = candidates[Math.floor(Math.random() * candidates.length)];
+          // Prefer dead-end cells (only 1 open exit) so the player has to go in
+          // and come back out — maximising the "I need to find the key" feeling.
+          const deadEnds = candidates.filter(k => {
+            const [cc, rr] = k.split(',').map(Number);
+            const cell = this.maze[rr][cc];
+            return (cell.N?0:1)+(cell.S?0:1)+(cell.E?0:1)+(cell.W?0:1) === 1;
+          });
+          const pool = deadEnds.length > 0 ? deadEnds : candidates;
+          const leverKey = pool[Math.floor(Math.random() * pool.length)];
           const [lc, lr] = leverKey.split(',').map(Number);
           const doorSide = p.side === 'E' ? 'E' : 'S';
           const doorCell = { col: p.c1, row: p.r1 };
@@ -487,7 +680,6 @@ export class NotMyDogScene extends Phaser.Scene {
           const fs = Math.round(this.cellSize * 0.5);
           const leverSpr = this.add.text(this.cx(lc), this.cy(lr), '🔧', { fontSize: `${fs}px` })
             .setOrigin(0.5).setDepth(3);
-          // Pulse anim
           this.tweens.add({ targets: leverSpr, scaleX: 1.15, scaleY: 1.15, yoyo: true, repeat: -1, duration: 700 });
 
           this.doorPairs.push({ leverPos: { col: lc, row: lr }, doorCell, doorSide, open: false, leverSprite: leverSpr });
@@ -740,11 +932,18 @@ export class NotMyDogScene extends Phaser.Scene {
   private advanceDog() {
     if (this.isDogMoving || this.done) return;
     if (this.time.now < this.dogDistractedUntil) return;
-    if (this.dogPos.col === this.playerPos.col && this.dogPos.row === this.playerPos.row) return;
 
-    // If player is too far away, freeze dog and warn
-    const TOO_FAR = 8;
     const dist = this.bfsDistance(this.dogPos, this.playerPos);
+    if (dist === 0) return;
+
+    // Stay exactly 1 cell behind the player while exploring —
+    // the dog and player should never overlap mid-maze.
+    // Exception: once the player reaches the goal, allow the dog
+    // to close the gap fully so the level-complete trigger fires.
+    if (!this.playerAtGoal && dist <= 1) return;
+
+    // If player ran too far ahead, freeze dog and warn
+    const TOO_FAR = 8;
     if (dist > TOO_FAR) {
       EventBus.emit('show-dog-message', "Stay close to Firulai — go call him! 🐾");
       return;

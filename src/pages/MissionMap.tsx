@@ -8,7 +8,7 @@ const MISSIONS = [
   { id: 2, title: 'Crossing the right way', icon: '🚶', active: true },
   { id: 3, title: 'Responsible use of electricity', icon: '💡', active: true },
   { id: 4, title: 'Water saver', icon: '💧', active: true },
-  { id: 5, title: 'Park ranger', icon: '🌲', active: false },
+  { id: 5, title: 'Not my dog, still my job', icon: '🐕', active: true },
   { id: 6, title: 'Healthy eating', icon: '🍎', active: false },
 ];
 

@@ -11,12 +11,14 @@ import { ThrowToBinScene } from '../game/scenes/ThrowToBinScene';
 import { CrossingScene } from '../game/scenes/CrossingScene';
 import { LightsOutScene } from '../game/scenes/LightsOutScene';
 import { WaterSaverScene } from '../game/scenes/WaterSaverScene';
+import { NotMyDogScene } from '../game/scenes/NotMyDogScene';
 
 const SCENE_MAP: Record<number, any> = {
   1: ThrowToBinScene,
   2: CrossingScene,
   3: LightsOutScene,
-  4: WaterSaverScene
+  4: WaterSaverScene,
+  5: NotMyDogScene,
 };
 
 // ─── Circular countdown timer ─────────────────────────────────────────────────
@@ -50,7 +52,16 @@ function TimerRing({ timeLeft, maxTime }: { timeLeft: number; maxTime: number })
 }
 
 // ─── Level-complete overlay ───────────────────────────────────────────────────
-function LevelCompleteOverlay({ level, onSeeResults }: { level: number; onSeeResults: () => void }) {
+const LEVEL_COMPLETE_MSG: Record<number, string> = {
+  1: 'You bagged all the trash! 🗑️',
+  2: 'You crossed safely! 🚦',
+  3: 'All lights off! 💡',
+  4: 'Water saved! 💧',
+  5: 'The dog is home! 🏠🐕',
+};
+
+function LevelCompleteOverlay({ level, missionId, onSeeResults }: { level: number; missionId: number; onSeeResults: () => void }) {
+  const msg = LEVEL_COMPLETE_MSG[missionId] ?? 'Level complete!';
   return (
     <motion.div
       initial={{ scale: 0.6, opacity: 0 }}
@@ -64,12 +75,12 @@ function LevelCompleteOverlay({ level, onSeeResults }: { level: number; onSeeRes
         background: 'rgba(10,20,60,0.88)', zIndex: 40, gap: 16,
       }}
     >
-      <div style={{ fontSize: '4rem' }}>🎉</div>
+      <div style={{ fontSize: '4rem' }}>{missionId === 5 ? '🐕' : '🎉'}</div>
       <h2 style={{ fontFamily: 'Fredoka One', color: '#FFD700', fontSize: '2.2rem', textAlign: 'center' }}>
         Level {level} Clear!
       </h2>
-      <p style={{ fontFamily: 'Fredoka', color: '#A0AEC0', fontSize: '1.1rem' }}>
-        You bagged all 7 pieces of trash!
+      <p style={{ fontFamily: 'Fredoka', color: '#A0AEC0', fontSize: '1.1rem', textAlign: 'center' }}>
+        {msg}
       </p>
       <motion.button
         whileTap={{ scale: 0.93 }}
@@ -149,6 +160,12 @@ export default function GameWindow() {
   const [crossingStartLevel, setCrossingStartLevel] = useState(1);
   const [praiseText, setPraiseText] = useState('Well done! 🎉');
 
+  // Dog game overlays
+  const [showDogTutorial, setShowDogTutorial] = useState(false);
+  const [showDogPreLevel, setShowDogPreLevel] = useState(false);
+  const [dogPreLevelInfo, setDogPreLevelInfo] = useState<{ level: number; hasPuddles: boolean; hasWaterBowls: boolean; numCats: number; hasDoors: boolean } | null>(null);
+  const [dogMessage, setDogMessage] = useState<string | null>(null);
+
   useEffect(() => {
     if (containerRef.current && !gameRef.current) {
       const SceneClass = SCENE_MAP[mId] || ThrowToBinScene;
@@ -201,6 +218,25 @@ export default function GameWindow() {
     };
     EventBus.on('show-crossing-praise', onCrossingPraise);
 
+    // Dog game events
+    EventBus.on('show-dog-tutorial', () => setShowDogTutorial(true));
+    const onDogPreLevel = (data?: { level?: number; cfg?: { hasPuddles?: boolean; hasWaterBowls?: boolean; numCats?: number; hasDoors?: boolean } }) => {
+      setDogPreLevelInfo({
+        level: data?.level ?? 1,
+        hasPuddles: data?.cfg?.hasPuddles ?? false,
+        hasWaterBowls: data?.cfg?.hasWaterBowls ?? false,
+        numCats: data?.cfg?.numCats ?? 0,
+        hasDoors: data?.cfg?.hasDoors ?? false,
+      });
+      setShowDogPreLevel(true);
+    };
+    EventBus.on('show-dog-prelevel', onDogPreLevel);
+    const onDogMessage = (msg: string) => {
+      setDogMessage(msg);
+      setTimeout(() => setDogMessage(null), 2500);
+    };
+    EventBus.on('show-dog-message', onDogMessage);
+
     return () => {
       EventBus.off('game-timer', onTimer);
       EventBus.off('game-scored-update', onScored);
@@ -212,6 +248,9 @@ export default function GameWindow() {
       EventBus.off('show-crossing-tutorial', () => setShowCrossingTutorial(false));
       EventBus.off('show-crossing-start', onCrossingStart);
       EventBus.off('show-crossing-praise', onCrossingPraise);
+      EventBus.off('show-dog-tutorial', () => setShowDogTutorial(false));
+      EventBus.off('show-dog-prelevel', onDogPreLevel);
+      EventBus.off('show-dog-message', onDogMessage);
       if (gameRef.current) {
         gameRef.current.destroy(true);
         gameRef.current = null;
@@ -501,6 +540,114 @@ export default function GameWindow() {
         </div>
       )}
 
+      {/* ─ Dog tutorial overlay ──────────────────────────────────────────────── */}
+      {showDogTutorial && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 65,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(7,18,37,0.65)',
+        }}>
+          <div style={{
+            background: '#FFFdf5', borderRadius: 26, overflow: 'hidden',
+            width: 'min(320px, calc(100vw - 48px))',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+            border: '3px solid #22C55E', textAlign: 'center',
+          }}>
+            <div style={{ background: '#22C55E', padding: '12px 0', fontFamily: 'Fredoka One, cursive', fontSize: '1rem', color: '#fff' }}>
+              City Hero Academy 🌍
+            </div>
+            <div style={{ padding: '18px 22px 22px' }}>
+              <div style={{ fontSize: '2.2rem', marginBottom: 6 }}>🐕</div>
+              <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '1.5rem', color: '#16A34A', marginBottom: 10 }}>
+                Not my dog, still my job!
+              </div>
+              <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '1rem', color: '#16A34A', marginBottom: 8 }}>
+                Oh no! This dog is lost! 😮
+              </div>
+              <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '0.92rem', color: '#374151', lineHeight: 1.65, marginBottom: 18 }}>
+                His name tag says <strong>Firulai</strong>! 🏷️<br/>
+                Let's help him find his way home!<br/><br/>
+                🧒 You lead the way through the maze<br/>
+                🐕 Firulai will follow close behind<br/>
+                🏠 Reach the owner at the end to win<br/><br/>
+                <span style={{ fontSize: '0.82rem', color: '#6B7280' }}>
+                  👉 Swipe your finger anywhere on the screen<br/>in the direction you want to go!
+                </span>
+              </div>
+              <button
+                onClick={() => { setShowDogTutorial(false); EventBus.emit('dog-tutorial-done'); }}
+                style={{
+                  width: '100%', fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+                  background: '#22C55E', color: '#fff', border: 'none', borderRadius: 24,
+                  padding: '13px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.25)', cursor: 'pointer',
+                }}
+              >Let's go! 🐾</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─ Dog pre-level overlay ─────────────────────────────────────────────── */}
+      {showDogPreLevel && dogPreLevelInfo && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 65,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(7,18,37,0.65)',
+        }}>
+          <div style={{
+            background: '#FFFdf5', borderRadius: 26, overflow: 'hidden',
+            width: 'min(300px, calc(100vw - 48px))',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+            border: '3px solid #4DA6FF', textAlign: 'center',
+          }}>
+            <div style={{ background: '#4DA6FF', padding: '12px 0', fontFamily: 'Fredoka One, cursive', fontSize: '1rem', color: '#fff' }}>
+              Level {dogPreLevelInfo.level} 🐕
+            </div>
+            <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '1.3rem', color: '#1D4ED8', marginBottom: 10 }}>
+                {dogPreLevelInfo.level <= 5  ? "The maze grows! 🗺️"
+                : dogPreLevelInfo.level <= 10 ? "Watch for puddles! 💦"
+                : dogPreLevelInfo.level <= 15 ? "Find water for the dog! 💧"
+                : "Cats and doors! 😺🔧"}
+              </div>
+              <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '0.88rem', color: '#374151', lineHeight: 1.5, marginBottom: 16 }}>
+                {dogPreLevelInfo.hasPuddles && <span>💦 Puddles slow you down<br/></span>}
+                {dogPreLevelInfo.hasWaterBowls && <span>💧 Grab water bowls for +15s<br/></span>}
+                {dogPreLevelInfo.numCats > 0 && <span>😺 Cats distract your dog<br/></span>}
+                {dogPreLevelInfo.hasDoors && <span>🔧 Find the lever to open doors<br/></span>}
+              </div>
+              <button
+                onClick={() => { setShowDogPreLevel(false); EventBus.emit('dog-prelevel-done'); }}
+                style={{
+                  width: '100%', fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+                  background: '#4DA6FF', color: '#fff', border: 'none', borderRadius: 24,
+                  padding: '13px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.25)', cursor: 'pointer',
+                }}
+              >I'm ready! 🐾</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─ Dog fun message toast — sits just below the HUD strip ──────────────── */}
+      {dogMessage && (
+        <div style={{
+          position: 'absolute', top: 68, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 62, pointerEvents: 'none', animation: 'praise-pop 0.3s ease-out',
+          width: 'max-content', maxWidth: 'calc(100vw - 24px)',
+        }}>
+          <div style={{
+            background: 'rgba(20, 83, 45, 0.93)', border: '2px solid #4ADE80',
+            borderRadius: 18, padding: '7px 20px', textAlign: 'center',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          }}>
+            <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '1.05rem', color: '#fff' }}>
+              {dogMessage}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─ HUD ─────────────────────────────────────────────────────────────── */}
       <div style={{
         position: 'absolute', top: 0, left: 0, width: '100%',
@@ -550,7 +697,7 @@ export default function GameWindow() {
       {/* ─ Overlays ─────────────────────────────────────────────────────────── */}
       <AnimatePresence>
         {phase === 'levelComplete' && (
-          <LevelCompleteOverlay key="lvlcomplete" level={level} onSeeResults={handleSeeResults} />
+          <LevelCompleteOverlay key="lvlcomplete" level={level} missionId={mId} onSeeResults={handleSeeResults} />
         )}
         {phase === 'timeUp' && (
           <TimeUpOverlay key="timeup" scored={scored} onRetry={handleRetry} onQuit={() => navigate('/map')} />

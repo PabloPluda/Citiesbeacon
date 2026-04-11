@@ -150,6 +150,15 @@ function generateMaze(cols: number, rows: number): Cell[][] {
     return a;
   }
 
+  // Arm A is confined to the top half of the grid (rows 0..SPLIT_ROW-1) and
+  // is FORBIDDEN from the left column (col 0). This gives arm B two hard
+  // guarantees across ALL grid sizes:
+  //   1. Col 0 is always arm B's "highway" — arm A can never block it.
+  //   2. The entire bottom half (rows SPLIT_ROW+) is always arm B territory.
+  // Together, arm B can always travel from (0,1) south along col 0 and then
+  // spread right through the bottom half to reach the goal.
+  const SPLIT_ROW = Math.floor(rows / 2);
+
   function attempt(): Cell[][] | null {
     if (cols < 2 || rows < 2) return null;
 
@@ -158,41 +167,28 @@ function generateMaze(cols: number, rows: number): Cell[][] {
     );
     const visited: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
 
-    // ── Reserve BOTH exits from (0,0) up front ────────────────────────────────
-    // Arm A leaves EAST  → (col=1, row=0) = visited[0][1]
-    // Arm B leaves SOUTH → (col=0, row=1) = visited[1][0]
-    //
-    // CRITICAL: mark arm B's starting cell as visited NOW, before carving arm A.
-    // Without this, arm A's DFS snakes back along row 1 and claims (col=0, row=1),
-    // leaving arm B with no starting point — the maze disconnects, all retries fail,
-    // and we fall back to a plain backtracker with no two-arm guarantee.
     visited[0][0] = true;
-    visited[0][1] = true;  // arm A start: col=1, row=0 — passage opened below
-    visited[1][0] = true;  // arm B start: col=0, row=1 — RESERVED, passage opened after arm A
+    visited[0][1] = true;  // arm A start: col=1, row=0
+    visited[1][0] = true;  // arm B start: col=0, row=1 — reserved before arm A carves
+    grid[0][0]['E'] = false;  grid[0][1]['W'] = false;
+    let deadCount = 1;
 
-    grid[0][0]['E'] = false;  grid[0][1]['W'] = false;  // open EAST passage now
-    // South passage opened later, after arm A is done
-    let deadCount = 1;  // arm A start cell already counted
-
-    // ── ARM A: dead-end arm (strong bias away from goal) ──────────────────────
+    // ── ARM A: confined to top half, cols 1+ ──────────────────────────────────
     function carveDeadArm(c: number, r: number) {
       if (deadCount >= TARGET_DEAD) return;
       const dirs = shuffled(DIRS).sort((a, b) => {
         const aD = Math.abs((c+a.dc) - GOAL_COL) + Math.abs((r+a.dr) - GOAL_ROW);
         const bD = Math.abs((c+b.dc) - GOAL_COL) + Math.abs((r+b.dr) - GOAL_ROW);
-        return (bD - aD) * 2.0;  // strong bias away from goal
+        return (bD - aD) * 2.0;
       });
       for (const d of dirs) {
         if (deadCount >= TARGET_DEAD) break;
         const nc = c + d.dc, nr = r + d.dr;
         if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
         if (visited[nr][nc]) continue;
-        if (nc === GOAL_COL && nr === GOAL_ROW) continue;  // arm A can never reach goal
-        // Protect arm B's two expansion cells adjacent to (0,1): South=(0,2) and East=(1,1).
-        // Without this, arm A snakes back along row 1 and visits both (1,1) and (0,2),
-        // completely surrounding the reserved cell (0,1) and leaving arm B with no
-        // unvisited neighbors to expand into — disconnecting the goal from (0,0).
-        if ((nc === 0 && nr === 2) || (nc === 1 && nr === 1)) continue;
+        if (nc === GOAL_COL && nr === GOAL_ROW) continue;
+        if (nc === 0) continue;           // arm A forbidden from left column (arm B highway)
+        if (nr >= SPLIT_ROW) continue;    // arm A forbidden from bottom half (always arm B)
         visited[nr][nc] = true;
         deadCount++;
         grid[r][c][d.from] = false;
@@ -203,10 +199,34 @@ function generateMaze(cols: number, rows: number): Cell[][] {
 
     carveDeadArm(1, 0);
 
-    // Arm A must cover at least 22% of the grid to be a meaningful dead-end
-    if (deadCount < Math.floor(totalCells * 0.22)) return null;
+    // Arm A must cover at least 18% of total cells to be a meaningful dead-end.
+    // (Lower than before because arm A is now constrained to ~half the grid.)
+    if (deadCount < Math.floor(totalCells * 0.18)) return null;
 
-    // ── ARM B: solution arm — fills everything arm A left untouched ───────────
+    // ── Connectivity check: arm B territory must be fully connected ───────────
+    // After arm A, all unvisited cells must form one connected region reachable
+    // from (0,1). If arm A left isolated pockets in the top half, retry.
+    {
+      const unvis = new Set<string>();
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          if (!visited[r][c]) unvis.add(`${c},${r}`);
+      // BFS from (0,1) through unvisited cells using raw grid adjacency (no walls yet)
+      const seen = new Set<string>(['0,1']);
+      const q: string[] = ['0,1'];
+      while (q.length) {
+        const k = q.shift()!;
+        const [bc, br] = k.split(',').map(Number);
+        for (const [dc, dr] of [[0,-1],[0,1],[1,0],[-1,0]] as const) {
+          const nk = `${bc+dc},${br+dr}`;
+          if (seen.has(nk) || !unvis.has(nk)) continue;
+          seen.add(nk); q.push(nk);
+        }
+      }
+      if (seen.size !== unvis.size) return null;  // isolated pockets → retry
+    }
+
+    // ── ARM B: pure random DFS, fills all remaining cells ─────────────────────
     function carveSolutionArm(c: number, r: number) {
       for (const d of shuffled(DIRS)) {
         const nc = c + d.dc, nr = r + d.dr;
@@ -219,22 +239,20 @@ function generateMaze(cols: number, rows: number): Cell[][] {
       }
     }
 
-    // Now open the SOUTH passage and expand arm B from the reserved cell
     grid[0][0]['S'] = false;  grid[1][0]['N'] = false;
     carveSolutionArm(0, 1);
 
-    // Safety net: connect any remaining isolated cells
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
+    // (After the connectivity check, no isolated cells should remain —
+    //  this loop is just a safety net.)
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
         if (!visited[r][c]) { visited[r][c] = true; carveSolutionArm(c, r); }
-      }
-    }
 
-    // Validate: (0,0) must have both EAST and SOUTH open, goal must be reachable
+    // Final validation
     const c0 = grid[0][0];
-    if (c0.E || c0.S) return null;  // either passage missing → bad maze
+    if (c0.E || c0.S) return null;
     const sPath = computeSolutionPath(grid, cols, rows);
-    if (sPath.length < Math.floor(totalCells * 0.25)) return null;  // solution path too short
+    if (sPath.length < Math.floor(totalCells * 0.25)) return null;
 
     return grid;
   }

@@ -81,209 +81,108 @@ const OWNER_CALLS = [
 
 const MOVE_DUR = 170;   // ms per cell
 
-// ─── BFS solution path ────────────────────────────────────────────────────────
-function computeSolutionPath(grid: Cell[][], cols: number, rows: number): GridPos[] {
-  const goalCol = cols - 1, goalRow = rows - 1;
-  const prev = new Map<string, string>([['0,0', '']]);
-  const queue: GridPos[] = [{ col: 0, row: 0 }];
-  while (queue.length) {
-    const pos = queue.shift()!;
-    const cell = grid[pos.row][pos.col];
-    const nbs = [
-      { col: pos.col,   row: pos.row-1, wall: cell.N },
-      { col: pos.col,   row: pos.row+1, wall: cell.S },
-      { col: pos.col+1, row: pos.row,   wall: cell.E },
-      { col: pos.col-1, row: pos.row,   wall: cell.W },
-    ];
-    for (const nb of nbs) {
-      if (nb.wall || nb.col < 0 || nb.col >= cols || nb.row < 0 || nb.row >= rows) continue;
-      const k = `${nb.col},${nb.row}`;
-      if (prev.has(k)) continue;
-      prev.set(k, `${pos.col},${pos.row}`);
-      if (nb.col === goalCol && nb.row === goalRow) {
-        const path: GridPos[] = [];
-        let cur = `${goalCol},${goalRow}`;
-        while (cur) {
-          const [c, r] = cur.split(',').map(Number);
-          path.unshift({ col: c, row: r });
-          cur = prev.get(cur) ?? '';
-        }
-        return path;
-      }
-      queue.push({ col: nb.col, row: nb.row });
-    }
-  }
-  return [];
-}
-
-// ─── Two-Arm Maze Generator ───────────────────────────────────────────────────
-// DESIGN: From (0,0) two passages open immediately — one EAST (dead-end arm),
-// one SOUTH (solution arm). This guarantees the player sees a hard choice at
-// the very first cell. Both arms are grown to cover at least 25% of the grid
-// before filling in any remaining cells.
+// ─── Maze Generator ───────────────────────────────────────────────────────────
 //
-// Arm A (dead-end):  starts EAST, biased AWAY from goal, never touches goal cell.
-//                    Grows until it covers TARGET_DEAD_END_RATIO of total cells.
-// Arm B (solution):  starts SOUTH, fills all remaining unvisited cells including
-//                    the goal. Has mild random bias to produce interesting paths.
+// GUARANTEED TWO-ARM STRUCTURE — works for every grid size, every level:
+//
+//  (0,0) always opens two exits:
+//    EAST  → Arm A (dead-end): a boustrophedon SNAKE across the top rows,
+//            cols 1+. A snake is a simple path — it mathematically CANNOT
+//            surround or isolate Arm B because it has no branches.
+//    SOUTH → Arm B (solution): random DFS that fills every remaining cell.
+//            Because Arm A is a snake confined to cols 1+, col 0 is always
+//            free, so Arm B can always travel south and reach the goal.
+//
+//  No retries, no connectivity checks — the structure is deterministic.
+//
 function generateMaze(cols: number, rows: number): Cell[][] {
-  const GOAL_COL = cols - 1, GOAL_ROW = rows - 1;
   const totalCells = cols * rows;
-  // Dead-end arm targets 28–35% of cells. Larger grids → use lower ratio so
-  // the solution arm still has room to be long.
-  const TARGET_DEAD = Math.floor(totalCells * (totalCells > 60 ? 0.28 : 0.32));
+  // Snake covers ~30 % of the grid.  We never go below row SNAKE_MAX_ROW so
+  // that the bottom portion is always free for Arm B.
+  const TARGET_SNAKE = Math.floor(totalCells * 0.30);
 
-  type Dir = { dc:number; dr:number; from:'N'|'S'|'E'|'W'; to:'N'|'S'|'E'|'W' };
-  const DIRS: Dir[] = [
-    { dc: 0, dr:-1, from:'N', to:'S' },
-    { dc: 0, dr: 1, from:'S', to:'N' },
-    { dc: 1, dr: 0, from:'E', to:'W' },
-    { dc:-1, dr: 0, from:'W', to:'E' },
-  ];
-
-  function shuffled<T>(arr: T[]): T[] {
-    const a = [...arr];
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  }
-
-  // Arm A is confined to the top half of the grid (rows 0..SPLIT_ROW-1) and
-  // is FORBIDDEN from the left column (col 0). This gives arm B two hard
-  // guarantees across ALL grid sizes:
-  //   1. Col 0 is always arm B's "highway" — arm A can never block it.
-  //   2. The entire bottom half (rows SPLIT_ROW+) is always arm B territory.
-  // Together, arm B can always travel from (0,1) south along col 0 and then
-  // spread right through the bottom half to reach the goal.
-  const SPLIT_ROW = Math.floor(rows / 2);
-
-  function attempt(): Cell[][] | null {
-    if (cols < 2 || rows < 2) return null;
-
-    const grid: Cell[][] = Array.from({ length: rows }, () =>
-      Array.from({ length: cols }, () => ({ N: true, S: true, E: true, W: true }))
-    );
-    const visited: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
-
-    visited[0][0] = true;
-    visited[0][1] = true;  // arm A start: col=1, row=0
-    visited[1][0] = true;  // arm B start: col=0, row=1 — reserved before arm A carves
-    grid[0][0]['E'] = false;  grid[0][1]['W'] = false;
-    let deadCount = 1;
-
-    // ── ARM A: confined to top half, cols 1+ ──────────────────────────────────
-    function carveDeadArm(c: number, r: number) {
-      if (deadCount >= TARGET_DEAD) return;
-      const dirs = shuffled(DIRS).sort((a, b) => {
-        const aD = Math.abs((c+a.dc) - GOAL_COL) + Math.abs((r+a.dr) - GOAL_ROW);
-        const bD = Math.abs((c+b.dc) - GOAL_COL) + Math.abs((r+b.dr) - GOAL_ROW);
-        return (bD - aD) * 2.0;
-      });
-      for (const d of dirs) {
-        if (deadCount >= TARGET_DEAD) break;
-        const nc = c + d.dc, nr = r + d.dr;
-        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-        if (visited[nr][nc]) continue;
-        if (nc === GOAL_COL && nr === GOAL_ROW) continue;
-        if (nc === 0) continue;           // arm A forbidden from left column (arm B highway)
-        if (nr >= SPLIT_ROW) continue;    // arm A forbidden from bottom half (always arm B)
-        visited[nr][nc] = true;
-        deadCount++;
-        grid[r][c][d.from] = false;
-        grid[nr][nc][d.to]  = false;
-        carveDeadArm(nc, nr);
-      }
-    }
-
-    carveDeadArm(1, 0);
-
-    // Arm A must cover at least 18% of total cells to be a meaningful dead-end.
-    // (Lower than before because arm A is now constrained to ~half the grid.)
-    if (deadCount < Math.floor(totalCells * 0.18)) return null;
-
-    // ── Connectivity check: arm B territory must be fully connected ───────────
-    // After arm A, all unvisited cells must form one connected region reachable
-    // from (0,1). If arm A left isolated pockets in the top half, retry.
-    {
-      const unvis = new Set<string>();
-      for (let r = 0; r < rows; r++)
-        for (let c = 0; c < cols; c++)
-          if (!visited[r][c]) unvis.add(`${c},${r}`);
-      // BFS from (0,1) through unvisited cells using raw grid adjacency (no walls yet)
-      const seen = new Set<string>(['0,1']);
-      const q: string[] = ['0,1'];
-      while (q.length) {
-        const k = q.shift()!;
-        const [bc, br] = k.split(',').map(Number);
-        for (const [dc, dr] of [[0,-1],[0,1],[1,0],[-1,0]] as const) {
-          const nk = `${bc+dc},${br+dr}`;
-          if (seen.has(nk) || !unvis.has(nk)) continue;
-          seen.add(nk); q.push(nk);
-        }
-      }
-      if (seen.size !== unvis.size) return null;  // isolated pockets → retry
-    }
-
-    // ── ARM B: pure random DFS, fills all remaining cells ─────────────────────
-    function carveSolutionArm(c: number, r: number) {
-      for (const d of shuffled(DIRS)) {
-        const nc = c + d.dc, nr = r + d.dr;
-        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-        if (visited[nr][nc]) continue;
-        visited[nr][nc] = true;
-        grid[r][c][d.from] = false;
-        grid[nr][nc][d.to]  = false;
-        carveSolutionArm(nc, nr);
-      }
-    }
-
-    grid[0][0]['S'] = false;  grid[1][0]['N'] = false;
-    carveSolutionArm(0, 1);
-
-    // (After the connectivity check, no isolated cells should remain —
-    //  this loop is just a safety net.)
-    for (let r = 0; r < rows; r++)
-      for (let c = 0; c < cols; c++)
-        if (!visited[r][c]) { visited[r][c] = true; carveSolutionArm(c, r); }
-
-    // Final validation
-    const c0 = grid[0][0];
-    if (c0.E || c0.S) return null;
-    const sPath = computeSolutionPath(grid, cols, rows);
-    if (sPath.length < Math.floor(totalCells * 0.25)) return null;
-
-    return grid;
-  }
-
-  // Retry up to 12 times; fallback to a plain backtracker if all fail
-  for (let i = 0; i < 12; i++) {
-    const g = attempt();
-    if (g) return g;
-  }
-  // Fallback: plain DFS backtracker (always produces a valid maze)
   const grid: Cell[][] = Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => ({ N: true, S: true, E: true, W: true }))
   );
-  const vis: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
-  function carve(c: number, r: number) {
-    vis[r][c] = true;
-    const dirs = [
-      { dc:0, dr:-1, from:'N' as const, to:'S' as const },
-      { dc:0, dr:1,  from:'S' as const, to:'N' as const },
-      { dc:1, dr:0,  from:'E' as const, to:'W' as const },
-      { dc:-1,dr:0,  from:'W' as const, to:'E' as const },
-    ].sort(() => Math.random() - 0.5);
-    for (const d of dirs) {
-      const nc = c+d.dc, nr = r+d.dr;
-      if (nc >= 0 && nc < cols && nr >= 0 && nr < rows && !vis[nr][nc]) {
-        grid[r][c][d.from] = false; grid[nr][nc][d.to] = false;
-        carve(nc, nr);
+  const visited: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
+
+  // Helper: open the shared wall between two adjacent cells.
+  function openPassage(c1: number, r1: number, c2: number, r2: number) {
+    if      (c2 === c1+1) { grid[r1][c1].E = false; grid[r2][c2].W = false; }
+    else if (c2 === c1-1) { grid[r1][c1].W = false; grid[r2][c2].E = false; }
+    else if (r2 === r1+1) { grid[r1][c1].S = false; grid[r2][c2].N = false; }
+    else if (r2 === r1-1) { grid[r1][c1].N = false; grid[r2][c2].S = false; }
+  }
+
+  // ── Step 1: mark start ────────────────────────────────────────────────────
+  visited[0][0] = true;
+  openPassage(0, 0, 1, 0);   // (0,0) EAST  → Arm A
+  openPassage(0, 0, 0, 1);   // (0,0) SOUTH → Arm B
+
+  // ── Step 2: Arm A — boustrophedon snake, cols 1+, top rows ───────────────
+  // Row 0: left→right  (1,0)(2,0)…(cols-1,0)
+  // Row 1: right→left  (cols-1,1)…(1,1)
+  // Row 2: left→right  (1,2)…
+  // …until TARGET_SNAKE cells are placed.
+  // Being a plain path it can never enclose or isolate any cell.
+  {
+    const snake: Array<[number, number]> = [];
+    let goRight = true;
+    outer:
+    for (let r = 0; r < rows; r++) {
+      if (goRight) {
+        for (let c = 1; c < cols; c++) {
+          snake.push([c, r]);
+          if (snake.length >= TARGET_SNAKE) break outer;
+        }
+      } else {
+        for (let c = cols - 1; c >= 1; c--) {
+          snake.push([c, r]);
+          if (snake.length >= TARGET_SNAKE) break outer;
+        }
       }
+      goRight = !goRight;
+    }
+    visited[snake[0][1]][snake[0][0]] = true;   // (1,0) already connected via openPassage above
+    for (let i = 1; i < snake.length; i++) {
+      const [c, r] = snake[i], [pc, pr] = snake[i - 1];
+      visited[r][c] = true;
+      openPassage(pc, pr, c, r);
     }
   }
-  carve(0, 0);
+
+  // ── Step 3: Arm B — random DFS fills every remaining unvisited cell ───────
+  // Starts at (0,1) which is in col 0 — never touched by Arm A's snake.
+  // From col 0 the DFS can go south freely, then spread into the interior.
+  visited[1][0] = true;   // (col=0, row=1)
+
+  function fillFrom(c: number, r: number) {
+    // Shuffle direction array inline (Fisher-Yates)
+    const dirs: Array<[number, number, 'N'|'S'|'E'|'W', 'N'|'S'|'E'|'W']> = [
+      [0,-1,'N','S'], [0,1,'S','N'], [1,0,'E','W'], [-1,0,'W','E'],
+    ];
+    for (let i = dirs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+    }
+    for (const [dc, dr, from, to] of dirs) {
+      const nc = c + dc, nr = r + dr;
+      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+      if (visited[nr][nc]) continue;
+      visited[nr][nc] = true;
+      grid[r][c][from] = false;
+      grid[nr][nc][to]  = false;
+      fillFrom(nc, nr);
+    }
+  }
+
+  fillFrom(0, 1);   // expands from Arm B start into all remaining cells
+
+  // Safety net: if any cell is still unvisited (shouldn't happen), connect it.
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (!visited[r][c]) { visited[r][c] = true; fillFrom(c, r); }
+
   return grid;
 }
 

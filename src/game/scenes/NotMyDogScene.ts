@@ -151,30 +151,43 @@ function generateMaze(cols: number, rows: number): Cell[][] {
   }
 
   function attempt(): Cell[][] | null {
+    if (cols < 2 || rows < 2) return null;
+
     const grid: Cell[][] = Array.from({ length: rows }, () =>
       Array.from({ length: cols }, () => ({ N: true, S: true, E: true, W: true }))
     );
     const visited: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
 
+    // ── Reserve BOTH exits from (0,0) up front ────────────────────────────────
+    // Arm A leaves EAST  → (col=1, row=0) = visited[0][1]
+    // Arm B leaves SOUTH → (col=0, row=1) = visited[1][0]
+    //
+    // CRITICAL: mark arm B's starting cell as visited NOW, before carving arm A.
+    // Without this, arm A's DFS snakes back along row 1 and claims (col=0, row=1),
+    // leaving arm B with no starting point — the maze disconnects, all retries fail,
+    // and we fall back to a plain backtracker with no two-arm guarantee.
     visited[0][0] = true;
-    let deadCount = 0;
+    visited[0][1] = true;  // arm A start: col=1, row=0 — passage opened below
+    visited[1][0] = true;  // arm B start: col=0, row=1 — RESERVED, passage opened after arm A
 
-    // ── ARM A: dead-end arm, leaves (0,0) going EAST ──────────────────────────
-    // Strongly biased away from goal, forbidden from reaching goal cell.
+    grid[0][0]['E'] = false;  grid[0][1]['W'] = false;  // open EAST passage now
+    // South passage opened later, after arm A is done
+    let deadCount = 1;  // arm A start cell already counted
+
+    // ── ARM A: dead-end arm (strong bias away from goal) ──────────────────────
     function carveDeadArm(c: number, r: number) {
       if (deadCount >= TARGET_DEAD) return;
-      // Sort with strong away-from-goal bias (always, not just early phase)
       const dirs = shuffled(DIRS).sort((a, b) => {
         const aD = Math.abs((c+a.dc) - GOAL_COL) + Math.abs((r+a.dr) - GOAL_ROW);
         const bD = Math.abs((c+b.dc) - GOAL_COL) + Math.abs((r+b.dr) - GOAL_ROW);
-        return (bD - aD) * 2.0; // strong bias away
+        return (bD - aD) * 2.0;  // strong bias away from goal
       });
       for (const d of dirs) {
         if (deadCount >= TARGET_DEAD) break;
         const nc = c + d.dc, nr = r + d.dr;
         if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-        if (visited[nr][nc]) continue;
-        if (nc === GOAL_COL && nr === GOAL_ROW) continue; // arm A never reaches goal
+        if (visited[nr][nc]) continue;              // respects arm B reservation
+        if (nc === GOAL_COL && nr === GOAL_ROW) continue;  // arm A can never reach goal
         visited[nr][nc] = true;
         deadCount++;
         grid[r][c][d.from] = false;
@@ -183,38 +196,14 @@ function generateMaze(cols: number, rows: number): Cell[][] {
       }
     }
 
-    // Start arm A from (0,0) going EAST if possible, else NORTH
-    let armAStarted = false;
-    if (cols > 1 && !visited[0][1]) {
-      visited[0][1] = true; deadCount++;
-      grid[0][0]['E'] = false; grid[0][1]['W'] = false;
-      carveDeadArm(1, 0);
-      armAStarted = true;
-    } else if (rows > 1 && !visited[1][0]) {
-      // fallback: arm A goes SOUTH, arm B will go EAST
-      visited[1][0] = true; deadCount++;
-      grid[0][0]['S'] = false; grid[1][0]['N'] = false;
-      carveDeadArm(0, 1);
-      armAStarted = true;
-    }
-    if (!armAStarted) return null; // degenerate grid
+    carveDeadArm(1, 0);
 
-    // Verify arm A covered enough cells — if not, this attempt fails
+    // Arm A must cover at least 22% of the grid to be a meaningful dead-end
     if (deadCount < Math.floor(totalCells * 0.22)) return null;
 
-    // ── ARM B: solution arm, leaves (0,0) going SOUTH (or EAST if A went S) ───
-    // Fills ALL remaining unvisited cells. Standard backtracker + mild randomness.
+    // ── ARM B: solution arm — fills everything arm A left untouched ───────────
     function carveSolutionArm(c: number, r: number) {
-      // Slight goal-bias in later half to prevent solution path from being absurdly long
-      const dToGoal = Math.abs(c - GOAL_COL) + Math.abs(r - GOAL_ROW);
-      const dirs = shuffled(DIRS).sort((a, b) => {
-        const aD = Math.abs((c+a.dc) - GOAL_COL) + Math.abs((r+a.dr) - GOAL_ROW);
-        const bD = Math.abs((c+b.dc) - GOAL_COL) + Math.abs((r+b.dr) - GOAL_ROW);
-        // When far from goal, slight away-bias; when close, slight toward-bias
-        const bias = dToGoal > 4 ? (bD - aD) * 0.4 : (aD - bD) * 0.3;
-        return bias;
-      });
-      for (const d of dirs) {
+      for (const d of shuffled(DIRS)) {
         const nc = c + d.dc, nr = r + d.dr;
         if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
         if (visited[nr][nc]) continue;
@@ -225,33 +214,22 @@ function generateMaze(cols: number, rows: number): Cell[][] {
       }
     }
 
-    // Start arm B from (0,0) in the direction arm A did NOT take
-    const armAWentEast = (cols > 1 && grid[0][0]['E'] === false && grid[0][1]['W'] === false);
-    if (!armAWentEast && cols > 1 && !visited[0][1]) {
-      visited[0][1] = true;
-      grid[0][0]['E'] = false; grid[0][1]['W'] = false;
-      carveSolutionArm(1, 0);
-    } else if (rows > 1 && !visited[1][0]) {
-      visited[1][0] = true;
-      grid[0][0]['S'] = false; grid[1][0]['N'] = false;
-      carveSolutionArm(0, 1);
-    }
+    // Now open the SOUTH passage and expand arm B from the reserved cell
+    grid[0][0]['S'] = false;  grid[1][0]['N'] = false;
+    carveSolutionArm(0, 1);
 
-    // Fill any remaining isolated cells (shouldn't be many)
+    // Safety net: connect any remaining isolated cells
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        if (!visited[r][c]) {
-          visited[r][c] = true;
-          carveSolutionArm(c, r);
-        }
+        if (!visited[r][c]) { visited[r][c] = true; carveSolutionArm(c, r); }
       }
     }
 
-    // Validate: goal must be reachable and the two arms at (0,0) must be distinct
-    const cell00 = grid[0][0];
-    const openExits = (!cell00.N?1:0) + (!cell00.S?1:0) + (!cell00.E?1:0) + (!cell00.W?1:0);
-    if (openExits < 2) return null;
-    if (!computeSolutionPath(grid, cols, rows).length) return null;
+    // Validate: (0,0) must have both EAST and SOUTH open, goal must be reachable
+    const c0 = grid[0][0];
+    if (c0.E || c0.S) return null;  // either passage missing → bad maze
+    const sPath = computeSolutionPath(grid, cols, rows);
+    if (sPath.length < Math.floor(totalCells * 0.25)) return null;  // solution path too short
 
     return grid;
   }

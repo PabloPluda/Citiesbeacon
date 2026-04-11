@@ -39,26 +39,26 @@ function getLevelConfig(level: number): LevelConfig {
 }
 
 const LEVELS: LevelConfig[] = [
-  { cols:6, rows:7,  dogDelay:5, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:1, hasDoors:false, time:110 }, // L1  (was L3)
+  { cols:6, rows:7,  dogDelay:5, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:1, hasDoors:false, time:110 }, // L1
   { cols:6, rows:8,  dogDelay:5, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:1, hasDoors:false, time:105 }, // L2
-  { cols:7, rows:8,  dogDelay:4, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:1, hasDoors:false, time:100 }, // L3
-  { cols:7, rows:9,  dogDelay:4, hasPuddles:true,  numPuddles:3, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:false, time:95  }, // L4
-  { cols:7, rows:9,  dogDelay:4, hasPuddles:true,  numPuddles:4, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:false, time:90  }, // L5
-  { cols:8, rows:9,  dogDelay:3, hasPuddles:true,  numPuddles:4, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:false, time:90  }, // L6
-  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:5, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:false, time:85  }, // L7
-  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:6, hasWaterBowls:false, numBowls:0, numCats:3, hasDoors:false, time:85  }, // L8
-  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:4, hasWaterBowls:true,  numBowls:2, numCats:3, hasDoors:false, time:80  }, // L9
-  { cols:8, rows:11, dogDelay:3, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:2, numCats:3, hasDoors:false, time:80  }, // L10
-  { cols:9, rows:11, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:3, numCats:3, hasDoors:false, time:75  }, // L11
-  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:3, numCats:3, hasDoors:false, time:75  }, // L12
-  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:3, numCats:4, hasDoors:false, time:70  }, // L13
-  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:2, numCats:4, hasDoors:true,  time:70  }, // L14
-  { cols:9, rows:13, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:true,  numBowls:2, numCats:4, hasDoors:true,  time:65  }, // L15
-  { cols:10,rows:13, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:2, numCats:4, hasDoors:true,  time:65  }, // L16
-  { cols:10,rows:13, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:true,  numBowls:2, numCats:4, hasDoors:true,  time:60  }, // L17
-  { cols:10,rows:14, dogDelay:2, hasPuddles:true,  numPuddles:7, hasWaterBowls:true,  numBowls:3, numCats:4, hasDoors:true,  time:60  }, // L18
-  { cols:11,rows:14, dogDelay:2, hasPuddles:true,  numPuddles:7, hasWaterBowls:true,  numBowls:3, numCats:4, hasDoors:true,  time:55  }, // L19
-  { cols:11,rows:15, dogDelay:2, hasPuddles:true,  numPuddles:8, hasWaterBowls:true,  numBowls:3, numCats:4, hasDoors:true,  time:55  }, // L20
+  { cols:7, rows:8,  dogDelay:4, hasPuddles:false, numPuddles:0, hasWaterBowls:false, numBowls:0, numCats:1, hasDoors:true,  time:110 }, // L3  door intro
+  { cols:7, rows:9,  dogDelay:4, hasPuddles:true,  numPuddles:3, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:true,  time:105 }, // L4
+  { cols:7, rows:9,  dogDelay:4, hasPuddles:true,  numPuddles:4, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:true,  time:100 }, // L5
+  { cols:8, rows:9,  dogDelay:3, hasPuddles:true,  numPuddles:4, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:true,  time:100 }, // L6
+  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:5, hasWaterBowls:false, numBowls:0, numCats:2, hasDoors:true,  time:95  }, // L7
+  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:6, hasWaterBowls:false, numBowls:0, numCats:3, hasDoors:true,  time:95  }, // L8
+  { cols:8, rows:10, dogDelay:3, hasPuddles:true,  numPuddles:4, hasWaterBowls:false, numBowls:0, numCats:3, hasDoors:true,  time:90  }, // L9
+  { cols:8, rows:11, dogDelay:3, hasPuddles:true,  numPuddles:5, hasWaterBowls:false, numBowls:0, numCats:3, hasDoors:true,  time:90  }, // L10
+  { cols:9, rows:11, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:false, numBowls:0, numCats:3, hasDoors:true,  time:85  }, // L11
+  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:false, numBowls:0, numCats:3, hasDoors:true,  time:85  }, // L12
+  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:false, numBowls:0, numCats:4, hasDoors:true,  time:80  }, // L13
+  { cols:9, rows:12, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:false, numBowls:0, numCats:4, hasDoors:true,  time:80  }, // L14
+  { cols:9, rows:13, dogDelay:2, hasPuddles:true,  numPuddles:5, hasWaterBowls:false, numBowls:0, numCats:4, hasDoors:true,  time:75  }, // L15
+  { cols:10,rows:13, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:false, numBowls:0, numCats:4, hasDoors:true,  time:75  }, // L16
+  { cols:10,rows:13, dogDelay:2, hasPuddles:true,  numPuddles:6, hasWaterBowls:false, numBowls:0, numCats:4, hasDoors:true,  time:70  }, // L17
+  { cols:10,rows:14, dogDelay:2, hasPuddles:true,  numPuddles:7, hasWaterBowls:false, numBowls:0, numCats:4, hasDoors:true,  time:70  }, // L18
+  { cols:11,rows:14, dogDelay:2, hasPuddles:true,  numPuddles:7, hasWaterBowls:false, numBowls:0, numCats:4, hasDoors:true,  time:65  }, // L19
+  { cols:11,rows:15, dogDelay:2, hasPuddles:true,  numPuddles:8, hasWaterBowls:false, numBowls:0, numCats:4, hasDoors:true,  time:65  }, // L20
 ];
 
 const FUN_MESSAGES = [
@@ -67,7 +67,6 @@ const FUN_MESSAGES = [
   'Stay together! 🐾',
   'Keep going! 💪',
   "The dog is counting on you! 🐕",
-  "Find the water bowl! 💧",
 ];
 
 const OWNER_CALLS = [
@@ -95,11 +94,11 @@ const MOVE_DUR = 170;   // ms per cell
 //
 //  No retries, no connectivity checks — the structure is deterministic.
 //
-function generateMaze(cols: number, rows: number): Cell[][] {
+function generateMaze(cols: number, rows: number): { grid: Cell[][], armACells: Set<string> } {
   const totalCells = cols * rows;
   // Snake covers ~30 % of the grid.  We never go below row SNAKE_MAX_ROW so
   // that the bottom portion is always free for Arm B.
-  const TARGET_SNAKE = Math.floor(totalCells * 0.30);
+  const TARGET_SNAKE = Math.floor(totalCells * 0.45);
 
   const grid: Cell[][] = Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => ({ N: true, S: true, E: true, W: true }))
@@ -125,6 +124,7 @@ function generateMaze(cols: number, rows: number): Cell[][] {
   // Row 2: left→right  (1,2)…
   // …until TARGET_SNAKE cells are placed.
   // Being a plain path it can never enclose or isolate any cell.
+  const armACells = new Set<string>();
   {
     const snake: Array<[number, number]> = [];
     let goRight = true;
@@ -144,10 +144,12 @@ function generateMaze(cols: number, rows: number): Cell[][] {
       goRight = !goRight;
     }
     visited[snake[0][1]][snake[0][0]] = true;   // (1,0) already connected via openPassage above
+    armACells.add(`${snake[0][0]},${snake[0][1]}`);
     for (let i = 1; i < snake.length; i++) {
       const [c, r] = snake[i], [pc, pr] = snake[i - 1];
       visited[r][c] = true;
       openPassage(pc, pr, c, r);
+      armACells.add(`${c},${r}`);
     }
   }
 
@@ -183,7 +185,7 @@ function generateMaze(cols: number, rows: number): Cell[][] {
     for (let c = 0; c < cols; c++)
       if (!visited[r][c]) { visited[r][c] = true; fillFrom(c, r); }
 
-  return grid;
+  return { grid, armACells };
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
@@ -229,6 +231,8 @@ export class NotMyDogScene extends Phaser.Scene {
   // Main path computed on the fully-open maze (before any door closes a passage).
   // Used by placeCats and placeDoor so items are guaranteed off the true solution route.
   private openMainPath: Set<string> = new Set();
+  // Cells belonging to Arm A (the dead-end snake) — key is always placed here.
+  private armACells: Set<string> = new Set();
 
 
   constructor() { super('NotMyDogScene'); }
@@ -258,6 +262,7 @@ export class NotMyDogScene extends Phaser.Scene {
     this.cats = [];
     this.doorPairs = [];
     this.openMainPath = new Set();
+    this.armACells = new Set();
 
   }
 
@@ -301,7 +306,9 @@ export class NotMyDogScene extends Phaser.Scene {
     bg.fillRect(0, 0, W, H);
 
     // ── Maze generation ─────────────────────────────────────
-    this.maze = generateMaze(this.cfg.cols, this.cfg.rows);
+    const { grid, armACells } = generateMaze(this.cfg.cols, this.cfg.rows);
+    this.maze = grid;
+    this.armACells = armACells;
 
     // Compute main path NOW, on the fully-open maze, before any door closes
     // a passage. Both placeDoor and placeCats will use this snapshot so that
@@ -561,7 +568,9 @@ export class NotMyDogScene extends Phaser.Scene {
         // direct route — the player must detour into a dead-end branch to get it.
         const ex = new Set(['0,0', goalKey, ...this.puddleCells, ...this.waterBowlSprites.keys()]);
         const offPath = [...reachable].filter(k => !ex.has(k) && !this.openMainPath.has(k));
-        const candidates = offPath.length >= 2 ? offPath : [...reachable].filter(k => !ex.has(k));
+        // Prefer cells in Arm A (the dead-end snake) so the player must explore it to find the key
+        const inArmA = offPath.filter(k => this.armACells.has(k));
+        const candidates = inArmA.length > 0 ? inArmA : offPath.length >= 2 ? offPath : [...reachable].filter(k => !ex.has(k));
 
         if (candidates.length > 0) {
           // Prefer dead-end cells (only 1 open exit) so the player has to go in
@@ -690,8 +699,8 @@ export class NotMyDogScene extends Phaser.Scene {
     this.time.addEvent({ delay: 10000, loop: true, callback: () => {
       if (this.done) return;
       const msg = OWNER_CALLS[Math.floor(Math.random() * OWNER_CALLS.length)];
-      // Show bubble just below the owner sprite (bottom-right cell)
-      const bx = this.cx(this.cfg.cols - 1);
+      // Anchor bubble to right edge of screen, just below the owner sprite
+      const bx = this.cameras.main.width - 8;
       const by = this.cy(this.cfg.rows - 1) + Math.round(this.cellSize * 0.7);
       this.ownerBubble?.destroy();
       this.ownerBubble = this.add.text(bx, by, msg, {
@@ -700,9 +709,9 @@ export class NotMyDogScene extends Phaser.Scene {
         color: '#1F2937',
         backgroundColor: '#FEF9C3',
         padding: { x: 6, y: 4 },
-        align: 'center',
+        align: 'right',
         wordWrap: { width: Math.min(160, this.cfg.cols * this.cellSize * 0.8) },
-      }).setOrigin(0.5, 0).setDepth(15);
+      }).setOrigin(1, 0).setDepth(15);
       // Auto-hide after 3s
       this.time.delayedCall(3000, () => {
         this.tweens.add({ targets: this.ownerBubble, alpha: 0, duration: 400,
@@ -734,7 +743,7 @@ export class NotMyDogScene extends Phaser.Scene {
   }
 
   private tryMove(dc: number, dr: number) {
-    if (this.isPlayerMoving || this.done || this.tutorialActive || this.playerAtGoal) return;
+    if (this.isPlayerMoving || this.done || this.tutorialActive) return;
     const { col, row } = this.playerPos;
     const cell = this.maze[row][col];
     // Check if blocked by a closed door → show hint
@@ -833,14 +842,28 @@ export class NotMyDogScene extends Phaser.Scene {
     if (this.isDogMoving || this.done) return;
     if (this.time.now < this.dogDistractedUntil) return;
 
+    // Once the player is at the goal, dog heads straight for the goal cell
+    // (not the player pos, which may wander back). No distance guards apply.
+    if (this.playerAtGoal) {
+      const goalPos = { col: this.cfg.cols - 1, row: this.cfg.rows - 1 };
+      const next = this.bfsNextStep(this.dogPos, goalPos);
+      if (!next) return;
+      this.isDogMoving = true;
+      this.tweens.add({
+        targets: this.dogSprite,
+        x: this.cx(next.col), y: this.cy(next.row),
+        duration: MOVE_DUR, ease: 'Linear',
+        onComplete: () => { this.isDogMoving = false; this.dogPos = { ...next }; this.onDogCell(); }
+      });
+      return;
+    }
+
     const dist = this.bfsDistance(this.dogPos, this.playerPos);
     if (dist === 0) return;
 
     // Stay exactly 1 cell behind the player while exploring —
     // the dog and player should never overlap mid-maze.
-    // Exception: once the player reaches the goal, allow the dog
-    // to close the gap fully so the level-complete trigger fires.
-    if (!this.playerAtGoal && dist <= 1) return;
+    if (dist <= 1) return;
 
     // If player ran too far ahead, freeze dog and warn
     const TOO_FAR = 8;

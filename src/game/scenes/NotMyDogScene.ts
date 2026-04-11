@@ -186,8 +186,13 @@ function generateMaze(cols: number, rows: number): Cell[][] {
         if (deadCount >= TARGET_DEAD) break;
         const nc = c + d.dc, nr = r + d.dr;
         if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-        if (visited[nr][nc]) continue;              // respects arm B reservation
+        if (visited[nr][nc]) continue;
         if (nc === GOAL_COL && nr === GOAL_ROW) continue;  // arm A can never reach goal
+        // Protect arm B's two expansion cells adjacent to (0,1): South=(0,2) and East=(1,1).
+        // Without this, arm A snakes back along row 1 and visits both (1,1) and (0,2),
+        // completely surrounding the reserved cell (0,1) and leaving arm B with no
+        // unvisited neighbors to expand into — disconnecting the goal from (0,0).
+        if ((nc === 0 && nr === 2) || (nc === 1 && nr === 1)) continue;
         visited[nr][nc] = true;
         deadCount++;
         grid[r][c][d.from] = false;

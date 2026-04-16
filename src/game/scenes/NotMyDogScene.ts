@@ -82,108 +82,105 @@ const MOVE_DUR = 170;   // ms per cell
 
 // ─── Maze Generator ───────────────────────────────────────────────────────────
 //
-// GUARANTEED TWO-ARM STRUCTURE — works for every grid size, every level:
+// TWO-ARM STRUCTURE:
 //
-//  (0,0) always opens two exits:
-//    EAST  → Arm A (dead-end): a boustrophedon SNAKE across the top rows,
-//            cols 1+. A snake is a simple path — it mathematically CANNOT
-//            surround or isolate Arm B because it has no branches.
-//    SOUTH → Arm B (solution): random DFS that fills every remaining cell.
-//            Because Arm A is a snake confined to cols 1+, col 0 is always
-//            free, so Arm B can always travel south and reach the goal.
-//
-//  No retries, no connectivity checks — the structure is deterministic.
+//  (0,0) opens two exits:
+//    EAST  → Arm A (dead-end): random DFS confined to top zone, cols 1+.
+//            Col 0 is forbidden → can never reach (0,1) = Arm B start.
+//            Looks like a real maze (not a straight snake).
+//    SOUTH → Arm B (solution): random DFS fills all remaining cells,
+//            ending at the goal which is reserved and connected last
+//            so it is always a true dead-end (1 passage only).
 //
 function generateMaze(cols: number, rows: number): { grid: Cell[][], armACells: Set<string> } {
-  const totalCells = cols * rows;
-  // Snake covers ~30 % of the grid.  We never go below row SNAKE_MAX_ROW so
-  // that the bottom portion is always free for Arm B.
-  const TARGET_SNAKE = Math.floor(totalCells * 0.45);
-
   const grid: Cell[][] = Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => ({ N: true, S: true, E: true, W: true }))
   );
   const visited: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false));
 
-  // Helper: open the shared wall between two adjacent cells.
-  function openPassage(c1: number, r1: number, c2: number, r2: number) {
-    if      (c2 === c1+1) { grid[r1][c1].E = false; grid[r2][c2].W = false; }
-    else if (c2 === c1-1) { grid[r1][c1].W = false; grid[r2][c2].E = false; }
-    else if (r2 === r1+1) { grid[r1][c1].S = false; grid[r2][c2].N = false; }
-    else if (r2 === r1-1) { grid[r1][c1].N = false; grid[r2][c2].S = false; }
-  }
-
-  // ── Step 1: mark start ────────────────────────────────────────────────────
-  visited[0][0] = true;
-  openPassage(0, 0, 1, 0);   // (0,0) EAST  → Arm A
-  openPassage(0, 0, 0, 1);   // (0,0) SOUTH → Arm B
-
-  // ── Step 2: Arm A — boustrophedon snake, cols 1+, top rows ───────────────
-  // Row 0: left→right  (1,0)(2,0)…(cols-1,0)
-  // Row 1: right→left  (cols-1,1)…(1,1)
-  // Row 2: left→right  (1,2)…
-  // …until TARGET_SNAKE cells are placed.
-  // Being a plain path it can never enclose or isolate any cell.
-  const armACells = new Set<string>();
-  {
-    const snake: Array<[number, number]> = [];
-    let goRight = true;
-    outer:
-    for (let r = 0; r < rows; r++) {
-      if (goRight) {
-        for (let c = 1; c < cols; c++) {
-          snake.push([c, r]);
-          if (snake.length >= TARGET_SNAKE) break outer;
-        }
-      } else {
-        for (let c = cols - 1; c >= 1; c--) {
-          snake.push([c, r]);
-          if (snake.length >= TARGET_SNAKE) break outer;
-        }
-      }
-      goRight = !goRight;
-    }
-    visited[snake[0][1]][snake[0][0]] = true;   // (1,0) already connected via openPassage above
-    armACells.add(`${snake[0][0]},${snake[0][1]}`);
-    for (let i = 1; i < snake.length; i++) {
-      const [c, r] = snake[i], [pc, pr] = snake[i - 1];
-      visited[r][c] = true;
-      openPassage(pc, pr, c, r);
-      armACells.add(`${c},${r}`);
-    }
-  }
-
-  // ── Step 3: Arm B — random DFS fills every remaining unvisited cell ───────
-  // Starts at (0,1) which is in col 0 — never touched by Arm A's snake.
-  // From col 0 the DFS can go south freely, then spread into the interior.
-  visited[1][0] = true;   // (col=0, row=1)
-
-  function fillFrom(c: number, r: number) {
-    // Shuffle direction array inline (Fisher-Yates)
-    const dirs: Array<[number, number, 'N'|'S'|'E'|'W', 'N'|'S'|'E'|'W']> = [
-      [0,-1,'N','S'], [0,1,'S','N'], [1,0,'E','W'], [-1,0,'W','E'],
-    ];
-    for (let i = dirs.length - 1; i > 0; i--) {
+  type Dir = [number, number, 'N'|'S'|'E'|'W', 'N'|'S'|'E'|'W'];
+  function rndDirs(): Dir[] {
+    const d: Dir[] = [[0,-1,'N','S'],[0,1,'S','N'],[1,0,'E','W'],[-1,0,'W','E']];
+    for (let i = d.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+      [d[i], d[j]] = [d[j], d[i]];
     }
-    for (const [dc, dr, from, to] of dirs) {
+    return d;
+  }
+
+  // ── Step 1: open both exits from start; reserve goal as dead-end ─────────
+  visited[0][0] = true;
+  // EAST → Arm A entry: open wall between (0,0) and (1,0)
+  grid[0][0].E = false; grid[0][1].W = false;
+  // SOUTH → Arm B entry: open wall between (0,0) and (0,1)
+  grid[0][0].S = false; grid[1][0].N = false;
+
+  // Goal cell (cols-1, rows-1) is marked visited now so DFS skips it.
+  // We connect it with exactly 1 passage at the end → guaranteed dead-end.
+  const goalC = cols - 1, goalR = rows - 1;
+  visited[goalR][goalC] = true;
+
+  // ── Step 2: Arm A — random DFS confined to top zone, cols 1+ ─────────────
+  // Zone: rows 0..armMaxRow, cols 1..cols-1.
+  // armMaxRow sized so Arm A covers ~45 % of total cells.
+  // Col 0 is forbidden → Arm A CANNOT reach (0,1) = Arm B start.
+  const armMaxRow = Math.min(rows - 2, Math.floor(cols * rows * 0.45 / (cols - 1)));
+  const armACells = new Set<string>();
+
+  function fillArmA(c: number, r: number) {
+    for (const [dc, dr, from, to] of rndDirs()) {
+      const nc = c + dc, nr = r + dr;
+      if (nc < 1 || nc >= cols || nr < 0 || nr > armMaxRow) continue;
+      if (visited[nr][nc]) continue;
+      visited[nr][nc] = true;
+      grid[r][c][from] = false;
+      grid[nr][nc][to]  = false;
+      armACells.add(`${nc},${nr}`);
+      fillArmA(nc, nr);
+    }
+  }
+
+  visited[0][1] = true;          // (col=1, row=0) — entry already walled open above
+  armACells.add('1,0');
+  fillArmA(1, 0);
+
+  // ── Step 3: Arm B — random DFS fills all remaining unvisited cells ────────
+  // Starts at (0,1). Col 0 was never touched by Arm A, so it's always free.
+  visited[1][0] = true;          // (col=0, row=1)
+
+  function fillArmB(c: number, r: number) {
+    for (const [dc, dr, from, to] of rndDirs()) {
       const nc = c + dc, nr = r + dr;
       if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
       if (visited[nr][nc]) continue;
       visited[nr][nc] = true;
       grid[r][c][from] = false;
       grid[nr][nc][to]  = false;
-      fillFrom(nc, nr);
+      fillArmB(nc, nr);
     }
   }
 
-  fillFrom(0, 1);   // expands from Arm B start into all remaining cells
+  fillArmB(0, 1);
 
-  // Safety net: if any cell is still unvisited (shouldn't happen), connect it.
+  // Safety net — connect any cell that DFS missed (shouldn't happen)
   for (let r = 0; r < rows; r++)
     for (let c = 0; c < cols; c++)
-      if (!visited[r][c]) { visited[r][c] = true; fillFrom(c, r); }
+      if (!visited[r][c]) { visited[r][c] = true; fillArmB(c, r); }
+
+  // ── Step 4: connect goal with exactly ONE passage → guaranteed dead-end ───
+  // Shuffle so sometimes we enter from N, sometimes from W.
+  const goalNbs = [
+    { c: goalC,   r: goalR - 1, side: 'N' as const, opp: 'S' as const },
+    { c: goalC-1, r: goalR,     side: 'W' as const, opp: 'E' as const },
+  ];
+  goalNbs.sort(() => Math.random() - 0.5);
+  for (const nb of goalNbs) {
+    if (nb.r >= 0 && nb.c >= 0) {
+      grid[goalR][goalC][nb.side] = false;
+      grid[nb.r][nb.c][nb.opp]   = false;
+      break;
+    }
+  }
 
   return { grid, armACells };
 }

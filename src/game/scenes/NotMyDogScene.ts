@@ -82,15 +82,15 @@ const MOVE_DUR = 170;   // ms per cell
 
 // ─── Maze Generator ───────────────────────────────────────────────────────────
 //
-// TWO-ARM STRUCTURE:
+// TWO-ARM STRUCTURE — orientation randomised each level:
 //
-//  (0,0) opens two exits:
-//    EAST  → Arm A (dead-end): random DFS confined to top zone, cols 1+.
-//            Col 0 is forbidden → can never reach (0,1) = Arm B start.
-//            Looks like a real maze (not a straight snake).
-//    SOUTH → Arm B (solution): random DFS fills all remaining cells,
-//            ending at the goal which is reserved and connected last
-//            so it is always a true dead-end (1 passage only).
+//  (0,0) always opens two exits. On each call one of two cases is chosen:
+//    Case A: dead-end arm exits EAST  (occupies top-right zone)
+//    Case B: dead-end arm exits SOUTH (occupies bottom-left zone)
+//
+//  This means the "go right" vs "go down" choice is unpredictable.
+//  Both arms are random DFS trees → identical visual complexity.
+//  Goal cell is reserved and connected last → always a true dead-end.
 //
 function generateMaze(cols: number, rows: number): { grid: Cell[][], armACells: Set<string> } {
   const grid: Cell[][] = Array.from({ length: rows }, () =>
@@ -108,47 +108,8 @@ function generateMaze(cols: number, rows: number): { grid: Cell[][], armACells: 
     return d;
   }
 
-  // ── Step 1: open both exits from start; reserve goal as dead-end ─────────
-  visited[0][0] = true;
-  // EAST → Arm A entry: open wall between (0,0) and (1,0)
-  grid[0][0].E = false; grid[0][1].W = false;
-  // SOUTH → Arm B entry: open wall between (0,0) and (0,1)
-  grid[0][0].S = false; grid[1][0].N = false;
-
-  // Goal cell (cols-1, rows-1) is marked visited now so DFS skips it.
-  // We connect it with exactly 1 passage at the end → guaranteed dead-end.
-  const goalC = cols - 1, goalR = rows - 1;
-  visited[goalR][goalC] = true;
-
-  // ── Step 2: Arm A — random DFS confined to top zone, cols 1+ ─────────────
-  // Zone: rows 0..armMaxRow, cols 1..cols-1.
-  // armMaxRow sized so Arm A covers ~45 % of total cells.
-  // Col 0 is forbidden → Arm A CANNOT reach (0,1) = Arm B start.
-  const armMaxRow = Math.min(rows - 2, Math.floor(cols * rows * 0.45 / (cols - 1)));
-  const armACells = new Set<string>();
-
-  function fillArmA(c: number, r: number) {
-    for (const [dc, dr, from, to] of rndDirs()) {
-      const nc = c + dc, nr = r + dr;
-      if (nc < 1 || nc >= cols || nr < 0 || nr > armMaxRow) continue;
-      if (visited[nr][nc]) continue;
-      visited[nr][nc] = true;
-      grid[r][c][from] = false;
-      grid[nr][nc][to]  = false;
-      armACells.add(`${nc},${nr}`);
-      fillArmA(nc, nr);
-    }
-  }
-
-  visited[0][1] = true;          // (col=1, row=0) — entry already walled open above
-  armACells.add('1,0');
-  fillArmA(1, 0);
-
-  // ── Step 3: Arm B — random DFS fills all remaining unvisited cells ────────
-  // Starts at (0,1). Col 0 was never touched by Arm A, so it's always free.
-  visited[1][0] = true;          // (col=0, row=1)
-
-  function fillArmB(c: number, r: number) {
+  // Generic unconstrained DFS — used for Arm B and the safety net
+  function fillAll(c: number, r: number) {
     for (const [dc, dr, from, to] of rndDirs()) {
       const nc = c + dc, nr = r + dr;
       if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
@@ -156,19 +117,64 @@ function generateMaze(cols: number, rows: number): { grid: Cell[][], armACells: 
       visited[nr][nc] = true;
       grid[r][c][from] = false;
       grid[nr][nc][to]  = false;
-      fillArmB(nc, nr);
+      fillAll(nc, nr);
     }
   }
 
-  fillArmB(0, 1);
+  visited[0][0] = true;
+  const goalC = cols - 1, goalR = rows - 1;
+  visited[goalR][goalC] = true;   // reserved — connected last as a dead-end
 
-  // Safety net — connect any cell that DFS missed (shouldn't happen)
+  const armACells = new Set<string>();
+
+  if (Math.random() < 0.5) {
+    // ── Case A: dead-end arm exits EAST, solution exits SOUTH ───────────────
+    // Arm A zone: rows 0..armMaxRow, cols 1..cols-1   (col 0 forbidden → can't touch (0,1))
+    grid[0][0].E = false; grid[0][1].W = false;   // EAST exit → Arm A entry (1,0)
+    grid[0][0].S = false; grid[1][0].N = false;   // SOUTH exit → Arm B entry (0,1)
+
+    const armMaxRow = Math.min(rows - 2, Math.floor(cols * rows * 0.45 / (cols - 1)));
+    const fillArmA = (c: number, r: number): void => {
+      for (const [dc, dr, from, to] of rndDirs()) {
+        const nc = c + dc, nr = r + dr;
+        if (nc < 1 || nc >= cols || nr < 0 || nr > armMaxRow) continue;
+        if (visited[nr][nc]) continue;
+        visited[nr][nc] = true;
+        grid[r][c][from] = false; grid[nr][nc][to] = false;
+        armACells.add(`${nc},${nr}`);
+        fillArmA(nc, nr);
+      }
+    };
+    visited[0][1] = true; armACells.add('1,0'); fillArmA(1, 0);  // (col=1,row=0)
+    visited[1][0] = true; fillAll(0, 1);                          // Arm B from (col=0,row=1)
+  } else {
+    // ── Case B: dead-end arm exits SOUTH, solution exits EAST ───────────────
+    // Arm A zone: rows 1..rows-1, cols 0..armMaxCol  (row 0 forbidden → can't touch (1,0))
+    grid[0][0].S = false; grid[1][0].N = false;   // SOUTH exit → Arm A entry (0,1)
+    grid[0][0].E = false; grid[0][1].W = false;   // EAST exit  → Arm B entry (1,0)
+
+    const armMaxCol = Math.min(cols - 2, Math.floor(cols * rows * 0.45 / (rows - 1)) - 1);
+    const fillArmA = (c: number, r: number): void => {
+      for (const [dc, dr, from, to] of rndDirs()) {
+        const nc = c + dc, nr = r + dr;
+        if (nc < 0 || nc > armMaxCol || nr < 1 || nr >= rows) continue;
+        if (visited[nr][nc]) continue;
+        visited[nr][nc] = true;
+        grid[r][c][from] = false; grid[nr][nc][to] = false;
+        armACells.add(`${nc},${nr}`);
+        fillArmA(nc, nr);
+      }
+    };
+    visited[1][0] = true; armACells.add('0,1'); fillArmA(0, 1);  // (col=0,row=1)
+    visited[0][1] = true; fillAll(1, 0);                          // Arm B from (col=1,row=0)
+  }
+
+  // Safety net — connect any orphan cells (shouldn't trigger)
   for (let r = 0; r < rows; r++)
     for (let c = 0; c < cols; c++)
-      if (!visited[r][c]) { visited[r][c] = true; fillArmB(c, r); }
+      if (!visited[r][c]) { visited[r][c] = true; fillAll(c, r); }
 
-  // ── Step 4: connect goal with exactly ONE passage → guaranteed dead-end ───
-  // Shuffle so sometimes we enter from N, sometimes from W.
+  // Connect goal with exactly ONE passage → guaranteed dead-end
   const goalNbs = [
     { c: goalC,   r: goalR - 1, side: 'N' as const, opp: 'S' as const },
     { c: goalC-1, r: goalR,     side: 'W' as const, opp: 'E' as const },
@@ -260,6 +266,8 @@ export class NotMyDogScene extends Phaser.Scene {
     this.doorPairs = [];
     this.openMainPath = new Set();
     this.armACells = new Set();
+    this.ownerBubble = undefined;
+    this.ownerBubbleBg = undefined;
 
   }
 
@@ -570,15 +578,7 @@ export class NotMyDogScene extends Phaser.Scene {
         const candidates = inArmA.length > 0 ? inArmA : offPath.length >= 2 ? offPath : [...reachable].filter(k => !ex.has(k));
 
         if (candidates.length > 0) {
-          // Prefer dead-end cells (only 1 open exit) so the player has to go in
-          // and come back out — maximising the "I need to find the key" feeling.
-          const deadEnds = candidates.filter(k => {
-            const [cc, rr] = k.split(',').map(Number);
-            const cell = this.maze[rr][cc];
-            return (cell.N?0:1)+(cell.S?0:1)+(cell.E?0:1)+(cell.W?0:1) === 1;
-          });
-          const pool = deadEnds.length > 0 ? deadEnds : candidates;
-          const leverKey = pool[Math.floor(Math.random() * pool.length)];
+          const leverKey = candidates[Math.floor(Math.random() * candidates.length)];
           const [lc, lr] = leverKey.split(',').map(Number);
           const doorSide = p.side === 'E' ? 'E' : 'S';
           const doorCell = { col: p.c1, row: p.r1 };
@@ -691,30 +691,84 @@ export class NotMyDogScene extends Phaser.Scene {
 
   // ── Owner callout bubble ──────────────────────────────────
   private ownerBubble?: Phaser.GameObjects.Text;
+  private ownerBubbleBg?: Phaser.GameObjects.Graphics;
 
   private scheduleOwnerCall() {
     this.time.addEvent({ delay: 10000, loop: true, callback: () => {
       if (this.done) return;
       const msg = OWNER_CALLS[Math.floor(Math.random() * OWNER_CALLS.length)];
-      // Anchor bubble to right edge of screen, just below the owner sprite
-      const bx = this.cameras.main.width - 8;
-      const by = this.cy(this.cfg.rows - 1) + Math.round(this.cellSize * 0.7);
-      this.ownerBubble?.destroy();
-      this.ownerBubble = this.add.text(bx, by, msg, {
-        fontFamily: 'Arial Rounded MT Bold, Arial, sans-serif',
-        fontSize: `${Math.max(10, Math.round(this.cellSize * 0.38))}px`,
-        color: '#1F2937',
-        backgroundColor: '#FEF9C3',
-        padding: { x: 6, y: 4 },
-        align: 'right',
-        wordWrap: { width: Math.min(160, this.cfg.cols * this.cellSize * 0.8) },
-      }).setOrigin(1, 0).setDepth(15);
-      // Auto-hide after 3s
-      this.time.delayedCall(3000, () => {
-        this.tweens.add({ targets: this.ownerBubble, alpha: 0, duration: 400,
-          onComplete: () => { this.ownerBubble?.destroy(); this.ownerBubble = undefined; } });
+      this.showOwnerBubble(msg);
+      this.time.delayedCall(3500, () => {
+        this.tweens.add({
+          targets: [this.ownerBubble, this.ownerBubbleBg], alpha: 0, duration: 400,
+          onComplete: () => {
+            this.ownerBubble?.destroy(); this.ownerBubble = undefined;
+            this.ownerBubbleBg?.destroy(); this.ownerBubbleBg = undefined;
+          }
+        });
       });
     }});
+  }
+
+  private showOwnerBubble(msg: string) {
+    this.ownerBubble?.destroy();
+    this.ownerBubbleBg?.destroy();
+
+    const W       = this.cameras.main.width;
+    const fontSize = Math.max(12, Math.round(this.cellSize * 0.40));
+    const maxTxtW  = Math.min(155, Math.floor(this.cfg.cols * this.cellSize * 0.6));
+    const pad      = 9;
+    const tailH    = 10;
+    const radius   = 10;
+
+    // Measure text to size the bubble
+    const probe = this.add.text(0, -999, msg, {
+      fontFamily: '"Fredoka One", "Arial Rounded MT Bold", Arial, sans-serif',
+      fontSize: `${fontSize}px`,
+      wordWrap: { width: maxTxtW },
+    }).setVisible(false);
+    const bw = Math.ceil(probe.width)  + pad * 2;
+    const bh = Math.ceil(probe.height) + pad * 2;
+    probe.destroy();
+
+    // Position: float bubble above owner (bottom-right cell), right-anchored
+    const ownerX  = this.cx(this.cfg.cols - 1);
+    const ownerY  = this.cy(this.cfg.rows - 1);
+    const bRight  = Math.min(W - 5, ownerX + Math.floor(bw * 0.35));
+    const bLeft   = Math.max(5, bRight - bw);
+    const bBottom = ownerY - Math.round(this.cellSize * 0.52);
+    const bTop    = bBottom - bh;
+
+    // Draw speech bubble with Graphics
+    const bg = this.add.graphics().setDepth(14);
+
+    // Drop shadow
+    bg.fillStyle(0x000000, 0.15);
+    bg.fillRoundedRect(bLeft + 3, bTop + 3, bw, bh, radius);
+
+    // Tail first (same fill colour as bubble — rounded rect drawn on top hides the join)
+    const tailX = bLeft + bw - Math.round(bw * 0.28);
+    bg.fillStyle(0xFFFDE7, 1);
+    bg.fillTriangle(tailX - 7, bBottom, tailX + 7, bBottom, tailX, bBottom + tailH);
+
+    // Bubble body
+    bg.fillRoundedRect(bLeft, bTop, bw, bh, radius);
+
+    // Border (drawn last, over everything)
+    bg.lineStyle(2, 0xB45309, 1);
+    bg.strokeRoundedRect(bLeft, bTop, bw, bh, radius);
+
+    // Text on top
+    const txt = this.add.text(bLeft + pad, bTop + pad, msg, {
+      fontFamily: '"Fredoka One", "Arial Rounded MT Bold", Arial, sans-serif',
+      fontSize:   `${fontSize}px`,
+      color:      '#1F2937',
+      wordWrap:   { width: maxTxtW },
+      align:      'center',
+    }).setDepth(15);
+
+    this.ownerBubbleBg = bg;
+    this.ownerBubble   = txt;
   }
 
   // ── Player movement ───────────────────────────────────────

@@ -1,3 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Allow text input in forms (body disables user-select for game feel) */
+input, textarea, select {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 :root {
   /* Color Palette */
   --primary: #4DA6FF;

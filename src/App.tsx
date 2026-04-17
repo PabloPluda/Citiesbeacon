@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Home from './pages/Home';
+import Onboarding from './pages/Onboarding';
 import MissionMap from './pages/MissionMap';
 import GameWindow from './pages/GameWindow';
 import Profile from './pages/Profile';
@@ -10,8 +10,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Onboarding — no nav bar, redirects to /profile if already registered */}
+        <Route path="/" element={<Onboarding />} />
+
+        {/* App shell — with bottom nav */}
         <Route element={<Layout />}>
-          <Route path="/" element={<Home />} />
           <Route path="/map" element={<MissionMap />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/game/:missionId" element={<GameWindow />} />

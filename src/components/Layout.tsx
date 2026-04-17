@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Map as MapIcon, User } from 'lucide-react';
+import { Map as MapIcon, User } from 'lucide-react';
 
 export default function Layout() {
   const navigate = useNavigate();
@@ -12,9 +12,8 @@ export default function Layout() {
   }
 
   const navItems = [
-    { path: '/', icon: <Home size={24} />, label: 'Home' },
-    { path: '/map', icon: <MapIcon size={24} />, label: 'City Map' },
-    { path: '/profile', icon: <User size={24} />, label: 'Profile' },
+    { path: '/map',     icon: <MapIcon size={24} />, label: 'Play!'    },
+    { path: '/profile', icon: <User size={24} />,    label: 'Hero Hub' },
   ];
 
   return (

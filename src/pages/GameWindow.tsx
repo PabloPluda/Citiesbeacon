@@ -438,26 +438,19 @@ export default function GameWindow() {
           position: 'absolute', top: '10%', left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 60, pointerEvents: 'none',
+          textAlign: 'center',
           animation: 'penalty-slide-in 0.25s ease-out',
         }}>
+          <div style={{ fontSize: '2rem', lineHeight: 1 }}>🚦</div>
           <div style={{
-            background: '#FEF3C7',
-            border: '3px solid #F59E0B',
-            borderRadius: 20,
-            padding: '14px 24px',
-            textAlign: 'center',
-            boxShadow: '0 6px 24px rgba(0,0,0,0.35)',
-            minWidth: 240,
+            fontFamily: 'Fredoka One, cursive',
+            fontSize: '1.3rem',
+            color: '#FDE68A',
+            textShadow: '0 1px 6px rgba(0,0,0,1), 0 2px 12px rgba(0,0,0,0.9)',
+            lineHeight: 1.3,
+            whiteSpace: 'nowrap',
           }}>
-            <div style={{ fontSize: '2rem', marginBottom: 4 }}>🚦</div>
-            <div style={{
-              fontFamily: 'Fredoka One, cursive',
-              fontSize: '1.2rem',
-              color: '#92400E',
-              lineHeight: 1.3,
-            }}>
-              Wait for the<br/>green light! 😊
-            </div>
+            Wait for the green light! 😊
           </div>
         </div>
       )}

@@ -100,19 +100,15 @@ function drawSmallHouse(g: Phaser.GameObjects.Graphics, x: number, cy: number,
   wallC: number, roofC: number, doorFacesDown: boolean) {
   const hw = 27, hh = 33;
   g.fillStyle(0x000000, 0.07); g.fillEllipse(x+2, cy+hh+4, hw*2+4, 8);
-  // Wall
   g.fillStyle(wallC); g.fillRoundedRect(x-hw, cy-hh, hw*2, hh*2, 3);
-  // Roof (opposite side from door)
   if (doorFacesDown) {
     g.fillStyle(roofC); g.fillRoundedRect(x-hw, cy-hh, hw*2, hh*1.1, 3);
   } else {
     g.fillStyle(roofC); g.fillRoundedRect(x-hw, cy-hh*0.08, hw*2, hh*1.1, 3);
   }
-  // Windows
   g.fillStyle(0xADD8E6, 0.8);
   g.fillRoundedRect(x-hw+5, cy-5, 11, 11, 2);
   g.fillRoundedRect(x+hw-16, cy-5, 11, 11, 2);
-  // Door
   g.fillStyle(0x6B3A1F, 0.85);
   if (doorFacesDown) {
     g.fillRoundedRect(x-5, cy+hh-13, 10, 13, 1);
@@ -128,74 +124,189 @@ function drawTree(g: Phaser.GameObjects.Graphics, x: number, cy: number) {
   g.fillStyle(0x68D391, 0.55); g.fillCircle(x-4, cy-23, 7);
 }
 
-function buildNeighbourhood(scene: Phaser.Scene, worldW: number, H: number, crossX: number[]) {
-  const g = scene.add.graphics().setDepth(1);
+/**
+ * Bakes the ENTIRE static world (grass, sidewalk, trees, houses, roads, markings,
+ * light housings, start house, school) into 2048-px-wide texture chunks once during
+ * scene creation. Each chunk becomes a single Image — one draw call per frame,
+ * camera-culled automatically. Zero per-frame Graphics rendering cost.
+ */
+function buildWorldChunks(
+  scene: Phaser.Scene,
+  worldW: number,
+  H: number,
+  cfg: { crossings: number; speed: number },
+  firstCrossX: number,
+  SPACING: number,
+  schoolX: number,
+) {
+  const CHUNK = 2048;
+  const numChunks = Math.ceil(worldW / CHUNK);
   const GAP = 190;
   const topHouseY = H / 2 - 120;
   const botHouseY = H / 2 + 120;
   const topTreeY  = Math.max(H / 2 - 210, 30);
   const botTreeY  = Math.min(H / 2 + 210, H - 30);
+  const crossX = Array.from({ length: cfg.crossings }, (_, i) => firstCrossX + i * SPACING);
 
-  // Trees first (behind houses)
-  for (let x = 90; x < worldW - 60; x += GAP) {
-    if (crossX.some(cx => Math.abs(x - cx) < 130)) continue;
-    drawTree(g, x - 36, topTreeY);
-    drawTree(g, x + 28, topTreeY - 18);
-    if (topTreeY > 50) drawTree(g, x + 70, topTreeY);
-    drawTree(g, x - 32, botTreeY);
-    drawTree(g, x + 30, botTreeY + 18);
-    if (botTreeY < H - 50) drawTree(g, x + 65, botTreeY);
+  // Remove stale textures from previous levels
+  for (let i = 0; i < 20; i++) {
+    const k = `_world_chunk_${i}`;
+    if (scene.textures.exists(k)) scene.textures.remove(k);
   }
-  // Houses on top of trees
-  for (let x = 90; x < worldW - 60; x += GAP) {
-    if (crossX.some(cx => Math.abs(x - cx) < 130)) continue;
-    const ci = Math.floor(x / GAP) % HOUSE_PALETTE.length;
-    const { wall, roof } = HOUSE_PALETTE[ci];
-    drawSmallHouse(g, x, topHouseY, wall, roof, true);   // door faces sidewalk (down)
-    drawSmallHouse(g, x, botHouseY, wall, roof, false);  // door faces sidewalk (up)
+  // Clean up any old neighbourhood-only chunks from previous code
+  for (let i = 0; i < 10; i++) {
+    const k = `_nbhd_chunk_${i}`;
+    if (scene.textures.exists(k)) scene.textures.remove(k);
   }
-}
 
-// ─── Main house (start) ────────────────────────────────────────────────────────
-function drawStartHouse(scene: Phaser.Scene, x: number, sidewalkY: number) {
-  const g = scene.add.graphics().setDepth(2);
-  const hw = 90, hh = 110, cy = sidewalkY - 100;
-  g.fillStyle(0x52D482, 0.5); g.fillRect(x-hw/2-20, sidewalkY-240, hw+40, 240);
-  g.fillStyle(0x000000, 0.12); g.fillEllipse(x+5, cy+hh/2+8, hw+10, 18);
-  g.fillStyle(0xFFF8E7); g.fillRoundedRect(x-hw/2, cy-hh/2, hw, hh, 4);
-  g.fillStyle(0xC05621); g.fillRoundedRect(x-hw/2, cy-hh/2, hw, hh*0.55, 4);
-  g.fillStyle(0x9C4221); g.fillRect(x-5, cy-hh/2+4, 10, hh*0.5);
-  g.fillStyle(0x8D5524); g.fillRect(x+18, cy-hh/2+8, 14, 16);
-  g.fillStyle(0x6B3A1F); g.fillRect(x+17, cy-hh/2+6, 16, 4);
-  g.fillStyle(0xADD8E6, 0.85); g.fillRoundedRect(x-hw/2+8, cy+6, 20, 18, 2); g.fillRoundedRect(x+hw/2-28, cy+6, 20, 18, 2);
-  g.fillStyle(0x8B4513); g.fillRoundedRect(x-10, cy+hh/2-22, 20, 22, 3);
-  g.fillStyle(0xFFD700, 0.9); g.fillCircle(x+6, cy+hh/2-11, 2.5);
-  g.fillStyle(0xCBD5E1, 0.9); g.fillRect(x-7, cy+hh/2, 14, sidewalkY-(cy+hh/2)+5);
-  scene.add.text(x, cy-hh/2-16, '🏠', { fontSize: '22px' }).setOrigin(0.5).setDepth(3);
-}
+  for (let ci = 0; ci < numChunks; ci++) {
+    const cx0 = ci * CHUNK;
+    const chunkW = Math.min(CHUNK, worldW - cx0);
+    const key = `_world_chunk_${ci}`;
+    const g = scene.add.graphics();
 
-// ─── School (end) ─────────────────────────────────────────────────────────────
-function drawSchool(scene: Phaser.Scene, x: number, sidewalkY: number) {
-  const g = scene.add.graphics().setDepth(2);
-  const sw = 130, sh = 130, cy = sidewalkY - 100;
-  g.fillStyle(0x90CDF4, 0.25); g.fillRoundedRect(x-sw/2-30, sidewalkY-240, sw+60, 240, 6);
-  g.lineStyle(2, 0xFFFFFF, 0.35); g.strokeCircle(x, cy-30, 22);
-  g.fillStyle(0x000000, 0.15); g.fillEllipse(x+6, cy+sh/2+10, sw+20, 22);
-  g.fillStyle(0xBEE3F8); g.fillRoundedRect(x-sw/2, cy-sh/2, sw, sh, 5);
-  g.fillStyle(0x4299E1); g.fillRoundedRect(x-sw/2, cy-sh/2, sw, sh*0.38, 5);
-  [-35, 0, 35].forEach(ox => {
-    g.fillStyle(0xFFFDE7, 0.9); g.fillRoundedRect(x+ox-12, cy-10, 24, 20, 3);
-    g.lineStyle(2, 0x2B6CB0, 0.5); g.strokeRoundedRect(x+ox-12, cy-10, 24, 20, 3);
-    g.lineStyle(1.5, 0x2B6CB0, 0.4);
-    g.beginPath(); g.moveTo(x+ox, cy-10); g.lineTo(x+ox, cy+10); g.strokePath();
-    g.beginPath(); g.moveTo(x+ox-12, cy); g.lineTo(x+ox+12, cy); g.strokePath();
-  });
-  g.fillStyle(0x2D6A4F); g.fillRoundedRect(x-16, cy+sh/2-28, 32, 28, 3);
-  g.fillStyle(0xFFD700, 0.9); g.fillCircle(x+10, cy+sh/2-14, 3);
-  g.fillStyle(0xCBD5E1, 0.9); g.fillRect(x-9, cy+sh/2, 18, sidewalkY-(cy+sh/2)+5);
-  g.fillStyle(0x888888); g.fillRect(x-sw/2+10, cy-sh/2-30, 4, 40);
-  g.fillStyle(0xFF0000); g.fillRect(x-sw/2+14, cy-sh/2-30, 18, 12);
-  scene.add.text(x, cy-sh/2-50, '🏫', { fontSize: '26px' }).setOrigin(0.5).setDepth(3);
+    // ── 1. Grass background
+    g.fillStyle(0x48BB78);
+    g.fillRect(0, 0, chunkW, H);
+
+    // ── 2. Sidewalk strips
+    g.fillStyle(0xCBD5E1);
+    g.fillRect(0, H / 2 - 60, chunkW, 120);
+    g.fillStyle(0xA0AEC0);
+    g.fillRect(0, H / 2 - 58, chunkW, 3);
+    g.fillRect(0, H / 2 + 55, chunkW, 3);
+
+    // ── 3. Trees (behind houses, skipping crossings and landmark zones)
+    for (let x = 90; x < worldW - 60; x += GAP) {
+      if (crossX.some(crX => Math.abs(x - crX) < 130)) continue;
+      if (Math.abs(x - 160) < 130) continue;        // near start house
+      if (Math.abs(x - schoolX) < 200) continue;    // near school
+      if (x + 80 < cx0 || x - 80 > cx0 + chunkW) continue;
+      const lx = x - cx0;
+      drawTree(g, lx - 36, topTreeY);
+      drawTree(g, lx + 28, topTreeY - 18);
+      if (topTreeY > 50) drawTree(g, lx + 70, topTreeY);
+      drawTree(g, lx - 32, botTreeY);
+      drawTree(g, lx + 30, botTreeY + 18);
+      if (botTreeY < H - 50) drawTree(g, lx + 65, botTreeY);
+    }
+
+    // ── 4. Houses
+    for (let x = 90; x < worldW - 60; x += GAP) {
+      if (crossX.some(crX => Math.abs(x - crX) < 130)) continue;
+      if (Math.abs(x - 160) < 130) continue;
+      if (Math.abs(x - schoolX) < 200) continue;
+      if (x + 80 < cx0 || x - 80 > cx0 + chunkW) continue;
+      const lx = x - cx0;
+      const pal = Math.floor(x / GAP) % HOUSE_PALETTE.length;
+      const { wall, roof } = HOUSE_PALETTE[pal];
+      drawSmallHouse(g, lx, topHouseY, wall, roof, true);
+      drawSmallHouse(g, lx, botHouseY, wall, roof, false);
+    }
+
+    // ── 5. Start house (at worldX = 160)
+    {
+      const sx = 160;
+      if (sx + 100 >= cx0 && sx - 100 <= cx0 + chunkW) {
+        const lx = sx - cx0;
+        const hw = 90, hh = 110, cy = H / 2 - 100;
+        g.fillStyle(0x52D482, 0.5); g.fillRect(lx - hw/2 - 20, H/2 - 240, hw + 40, 240);
+        g.fillStyle(0x000000, 0.12); g.fillEllipse(lx + 5, cy + hh/2 + 8, hw + 10, 18);
+        g.fillStyle(0xFFF8E7); g.fillRoundedRect(lx - hw/2, cy - hh/2, hw, hh, 4);
+        g.fillStyle(0xC05621); g.fillRoundedRect(lx - hw/2, cy - hh/2, hw, hh * 0.55, 4);
+        g.fillStyle(0x9C4221); g.fillRect(lx - 5, cy - hh/2 + 4, 10, hh * 0.5);
+        g.fillStyle(0x8D5524); g.fillRect(lx + 18, cy - hh/2 + 8, 14, 16);
+        g.fillStyle(0x6B3A1F); g.fillRect(lx + 17, cy - hh/2 + 6, 16, 4);
+        g.fillStyle(0xADD8E6, 0.85);
+        g.fillRoundedRect(lx - hw/2 + 8, cy + 6, 20, 18, 2);
+        g.fillRoundedRect(lx + hw/2 - 28, cy + 6, 20, 18, 2);
+        g.fillStyle(0x8B4513); g.fillRoundedRect(lx - 10, cy + hh/2 - 22, 20, 22, 3);
+        g.fillStyle(0xFFD700, 0.9); g.fillCircle(lx + 6, cy + hh/2 - 11, 2.5);
+        g.fillStyle(0xCBD5E1, 0.9); g.fillRect(lx - 7, cy + hh/2, 14, H/2 - (cy + hh/2) + 5);
+      }
+    }
+
+    // ── 6. School
+    {
+      const sx = schoolX;
+      if (sx + 150 >= cx0 && sx - 150 <= cx0 + chunkW) {
+        const lx = sx - cx0;
+        const sw = 130, sh = 130, cy = H / 2 - 100;
+        g.fillStyle(0x90CDF4, 0.25); g.fillRoundedRect(lx - sw/2 - 30, H/2 - 240, sw + 60, 240, 6);
+        g.lineStyle(2, 0xFFFFFF, 0.35); g.strokeCircle(lx, cy - 30, 22);
+        g.fillStyle(0x000000, 0.15); g.fillEllipse(lx + 6, cy + sh/2 + 10, sw + 20, 22);
+        g.fillStyle(0xBEE3F8); g.fillRoundedRect(lx - sw/2, cy - sh/2, sw, sh, 5);
+        g.fillStyle(0x4299E1); g.fillRoundedRect(lx - sw/2, cy - sh/2, sw, sh * 0.38, 5);
+        [-35, 0, 35].forEach(ox => {
+          g.fillStyle(0xFFFDE7, 0.9); g.fillRoundedRect(lx + ox - 12, cy - 10, 24, 20, 3);
+          g.lineStyle(2, 0x2B6CB0, 0.5); g.strokeRoundedRect(lx + ox - 12, cy - 10, 24, 20, 3);
+          g.lineStyle(1.5, 0x2B6CB0, 0.4);
+          g.beginPath(); g.moveTo(lx + ox, cy - 10); g.lineTo(lx + ox, cy + 10); g.strokePath();
+          g.beginPath(); g.moveTo(lx + ox - 12, cy); g.lineTo(lx + ox + 12, cy); g.strokePath();
+        });
+        g.fillStyle(0x2D6A4F); g.fillRoundedRect(lx - 16, cy + sh/2 - 28, 32, 28, 3);
+        g.fillStyle(0xFFD700, 0.9); g.fillCircle(lx + 10, cy + sh/2 - 14, 3);
+        g.fillStyle(0xCBD5E1, 0.9); g.fillRect(lx - 9, cy + sh/2, 18, H/2 - (cy + sh/2) + 5);
+        g.fillStyle(0x888888); g.fillRect(lx - sw/2 + 10, cy - sh/2 - 30, 4, 40);
+        g.fillStyle(0xFF0000); g.fillRect(lx - sw/2 + 14, cy - sh/2 - 30, 18, 12);
+        // School crossing yellow line
+        g.fillStyle(0xF6E05E, 0.6); g.fillRect(lx - 3, H/2 - 60, 6, 120);
+      }
+    }
+
+    // ── 7. Roads + markings + light housings (drawn last so road surface overlaps grass/houses)
+    for (let i = 0; i < cfg.crossings; i++) {
+      const x = firstCrossX + i * SPACING;
+      // Skip crossings that don't overlap this chunk at all
+      if (x + 90 < cx0 || x - 90 > cx0 + chunkW) continue;
+      const lx = x - cx0;
+
+      // Road surface
+      g.fillStyle(0x2D3748);
+      g.fillRect(lx - 90, 0, 180, H);
+
+      // Yellow centre dashes (skip crosswalk zone)
+      g.fillStyle(0xEAB308);
+      for (let k = 0; k < Math.ceil(H / 80) + 4; k++) {
+        const dashY = -160 + k * 80, mid = dashY + 20;
+        if (mid > H / 2 - 75 && mid < H / 2 + 75) continue;
+        g.fillRect(lx - 4, dashY - 20, 8, 40);
+      }
+
+      // Zebra stripes
+      for (let j = 0; j < 4; j++) {
+        g.fillStyle(0xFFFFFF, 0.88);
+        g.fillRect(lx - 70 + j * 40, H / 2 - 50, 20, 100);
+      }
+
+      // Stop lines
+      g.fillStyle(0xFFFFFF, 0.85);
+      g.fillRect(lx - 80, H / 2 - 61, 160, 5);
+      g.fillRect(lx - 80, H / 2 + 56, 160, 5);
+
+      // Traffic light pole + housing (only static shell; bulbs are live objects)
+      const poleX = lx - 100;
+      const poleY = H / 2 - 80;
+      g.fillStyle(0x2D3748);
+      g.fillRect(poleX - 4, H / 2 - 80, 8, 120);
+      g.fillStyle(0x111827);
+      g.fillRect(poleX - 23, poleY - 50, 46, 100);
+      g.fillStyle(0x1F2937);
+      g.fillRect(poleX - 21, poleY - 48, 42, 96);
+    }
+
+    g.generateTexture(key, chunkW, H);
+    g.destroy();
+
+    // One image per chunk — single draw call/frame, camera-culled automatically
+    scene.add.image(cx0 + chunkW / 2, H / 2, key).setDepth(1);
+  }
+
+  // Emoji text objects for landmarks (not bakeable into Canvas 2D textures reliably)
+  const startCy = H / 2 - 100;
+  scene.add.text(160, startCy - 55 - 16, '🏠', { fontSize: '22px' }).setOrigin(0.5).setDepth(3);
+  const schoolCy = H / 2 - 100;
+  scene.add.text(schoolX, schoolCy - 65 - 50, '🏫', { fontSize: '26px' }).setOrigin(0.5).setDepth(3);
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
@@ -211,7 +322,6 @@ export class CrossingScene extends Phaser.Scene {
   private lifeIndicators: Phaser.GameObjects.Graphics[] = [];
 
   tommy!: Phaser.Physics.Arcade.Image;
-  tommyPortrait!: Phaser.GameObjects.Image;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
@@ -245,7 +355,6 @@ export class CrossingScene extends Phaser.Scene {
     EventBus.on('restart-scene', handleRestart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', handleRestart));
 
-    const W = this.cameras.main.width;
     const H = this.cameras.main.height;
     const SPACING = 490;
     const firstCrossX = 500;
@@ -257,7 +366,7 @@ export class CrossingScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, worldW, H);
     this.cameras.main.setBounds(0, 0, worldW, H);
 
-    // Car textures
+    // ── Car textures (baked once, reused across levels via texture cache)
     const carG = this.add.graphics();
     CAR_MODELS.forEach(model => {
       CAR_COLORS.slice(0, 5).forEach((color, ci) => {
@@ -271,44 +380,18 @@ export class CrossingScene extends Phaser.Scene {
     });
     carG.destroy();
 
-    // Grass
-    this.add.rectangle(worldW / 2, H / 2, worldW, H, 0x48BB78);
-    // Sidewalk
-    this.add.rectangle(worldW / 2, H / 2, worldW, 120, 0xCBD5E1);
-    this.add.rectangle(worldW / 2, H / 2 - 58, worldW, 3, 0xA0AEC0);
-    this.add.rectangle(worldW / 2, H / 2 + 58, worldW, 3, 0xA0AEC0);
-
-    // Neighbourhood decoration (houses + trees both sides)
-    buildNeighbourhood(this, worldW, H, Array.from({ length: cfg.crossings }, (_, i) => firstCrossX + i * SPACING));
-
-    // Start house
-    drawStartHouse(this, 160, H / 2);
+    // ── Bake entire static world into chunk textures (zero per-frame drawing cost)
+    buildWorldChunks(this, worldW, H, cfg, firstCrossX, SPACING, this.schoolX);
 
     this.carGroup = this.physics.add.group();
     this.crossroads = [];
 
-    // Crossroads
+    // ── Live traffic light bulbs only (alpha changes each cycle — can't bake)
     for (let i = 0; i < cfg.crossings; i++) {
       const x = firstCrossX + i * SPACING;
-      this.add.rectangle(x, H / 2, 180, H, 0x2D3748).setDepth(2);
-      // Yellow dashes (skip crosswalk zone)
-      for (let k = 0; k < Math.ceil(H / 80) + 4; k++) {
-        const dashY = -160 + k * 80, mid = dashY + 20;
-        if (mid > H / 2 - 75 && mid < H / 2 + 75) continue;
-        this.add.rectangle(x, dashY, 8, 40, 0xEAB308).setDepth(3);
-      }
-      // Zebra stripes
-      for (let j = 0; j < 4; j++) {
-        this.add.rectangle(x - 60 + j * 40, H / 2, 20, 100, 0xFFFFFF).setAlpha(0.88).setDepth(3);
-      }
-      // Stop lines
-      this.add.rectangle(x, H / 2 - 58, 160, 5, 0xFFFFFF).setAlpha(0.85).setDepth(3);
-      this.add.rectangle(x, H / 2 + 58, 160, 5, 0xFFFFFF).setAlpha(0.85).setDepth(3);
-      // Traffic light
-      const poleX = x - 100, poleY = H / 2 - 80;
-      this.add.rectangle(poleX, H / 2 - 20, 8, 120, 0x2D3748).setDepth(10);
-      this.add.rectangle(poleX, poleY, 46, 100, 0x111827).setDepth(10);
-      this.add.rectangle(poleX, poleY, 42, 96, 0x1F2937).setDepth(10);
+      const poleX = x - 100;
+      const poleY = H / 2 - 80;
+
       const redCircle   = this.add.circle(poleX, poleY - 28, 16, 0xFF0000).setDepth(11);
       const redIcon     = this.add.text(poleX, poleY - 28, '🧍', { fontSize: '14px' }).setOrigin(0.5).setDepth(12);
       const greenCircle = this.add.circle(poleX, poleY + 28, 16, 0x00CC44).setDepth(11);
@@ -321,16 +404,12 @@ export class CrossingScene extends Phaser.Scene {
         lightRed: redCircle, lightRedIcon: redIcon,
         lightGreen: greenCircle, lightGreenIcon: greenIcon,
         state: isRed ? 'red' : 'green',
-        timer: Phaser.Math.Between(0, 2500),
+        timer: Phaser.Math.Between(0, 2000),
         passed: false, isCrossing: false,
       });
     }
 
-    // School
-    drawSchool(this, this.schoolX, H / 2);
-    this.add.rectangle(this.schoolX, H / 2, 6, 120, 0xF6E05E).setAlpha(0.6).setDepth(4);
-
-    // Tommy textures
+    // ── Tommy textures
     if (!this.textures.exists('tommy_top')) {
       const tg = this.make.graphics({ x: 0, y: 0 });
       tg.fillStyle(0x3B82F6); tg.fillCircle(20, 20, 20);
@@ -350,24 +429,20 @@ export class CrossingScene extends Phaser.Scene {
     }
 
     this.tommy = this.physics.add.image(220, H / 2, 'tommy_top').setDepth(5);
-    this.cameras.main.startFollow(this.tommy, true, 0.08, 0.08, -W / 4, 0);
+    // Camera follow handled manually in update() with delta-compensated lerp
 
-    this.add.rectangle(W - 60, 60, 80, 80, 0xFFFFFF).setDepth(20).setScrollFactor(0);
-    this.tommyPortrait = this.add.image(W - 60, 60, 'portrait_smile').setDepth(21).setScrollFactor(0);
-
-    // Lives: 3 small traffic-light indicators, top-left, fixed to screen
+    // Lives: 3 small traffic-light indicators, fixed to screen
     this.buildLifeIndicators();
 
     this.physics.add.overlap(this.tommy, this.carGroup, () => this.penalize());
 
-    // ── Tutorial (level 1) then START button; or just START button ────────────
+    // ── Tutorial (level 1) then START button; or just START button
     if (this.level === 1) {
       EventBus.emit('show-crossing-tutorial');
       const onTutDone = () => EventBus.emit('show-crossing-start', { level: this.level });
       EventBus.once('crossing-tutorial-done', onTutDone);
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('crossing-tutorial-done', onTutDone));
     } else {
-      // Small delay so player can see the house
       this.time.delayedCall(300, () => EventBus.emit('show-crossing-start', { level: this.level }));
     }
 
@@ -444,9 +519,14 @@ export class CrossingScene extends Phaser.Scene {
       return;
     }
 
-    let upcomingRed = false;
+    const W = this.cameras.main.width;
     const H = this.cameras.main.height;
     const tommyX = this.tommy.x;
+
+    // Delta-compensated smooth camera follow (frame-rate independent)
+    const targetScrollX = tommyX - W * 0.35;
+    const lerpFactor = 1 - Math.pow(0.92, delta * 60 / 1000);
+    this.cameras.main.scrollX += (targetScrollX - this.cameras.main.scrollX) * lerpFactor;
 
     if (tommyX >= this.schoolX - 30) {
       this.done = true;
@@ -462,16 +542,25 @@ export class CrossingScene extends Phaser.Scene {
 
       if (!cr.isCrossing) {
         cr.timer += delta;
-        const cycle = 3500 + this.level * 80;
+        // Green (ped walks) is shorter; red (ped waits) is longer → more stops required
+        const cycle = cr.state === 'green'
+          ? 1800 + this.level * 30   // green: 1.8s at L1 → 2.4s at L20
+          : 2600 + this.level * 40;  // red:   2.6s at L1 → 3.4s at L20
         if (cr.timer > cycle) {
-          cr.timer = 0;
-          cr.state = cr.state === 'red' ? 'green' : 'red';
-          if (cr.state === 'red') {
-            cr.lightRed.setAlpha(1); cr.lightRedIcon?.setAlpha(1);
-            cr.lightGreen.setAlpha(0.2); cr.lightGreenIcon?.setAlpha(0.2);
+          const nextState = cr.state === 'red' ? 'green' : 'red';
+          // Small guard: don't flip to red if Tommy is very close — avoids unfair gotchas
+          if (nextState === 'red' && tommyX > cr.x - 100 && tommyX < cr.x) {
+            cr.timer = cycle - 300;
           } else {
-            cr.lightRed.setAlpha(0.2); cr.lightRedIcon?.setAlpha(0.2);
-            cr.lightGreen.setAlpha(1); cr.lightGreenIcon?.setAlpha(1);
+            cr.timer = 0;
+            cr.state = nextState;
+            if (cr.state === 'red') {
+              cr.lightRed.setAlpha(1); cr.lightRedIcon?.setAlpha(1);
+              cr.lightGreen.setAlpha(0.2); cr.lightGreenIcon?.setAlpha(0.2);
+            } else {
+              cr.lightRed.setAlpha(0.2); cr.lightRedIcon?.setAlpha(0.2);
+              cr.lightGreen.setAlpha(1); cr.lightGreenIcon?.setAlpha(1);
+            }
           }
         }
       }
@@ -489,16 +578,13 @@ export class CrossingScene extends Phaser.Scene {
         ) as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
         car.cr = cr;
         car.dir = isDown ? 'down' : 'up';
-        car.setDepth(6); // above neighbourhood (1), roads (2-3), Tommy (5)
+        car.setDepth(6);
         car.setVelocityY(isDown ? 170 : -170);
-        // DOWN-going cars rotate 180° so headlights face direction of travel
         if (isDown) car.setAngle(180);
         this.time.delayedCall(10000, () => { if (car.active) car.destroy(); });
       }
 
       if (isInside && cr.state === 'red') this.penalize();
-      if (cr.x > tommyX && cr.x < tommyX + 450) upcomingRed = cr.state === 'red';
-
       if (!cr.passed && tommyX > cr.x + 100) {
         cr.passed = true;
         this.scored++;
@@ -507,20 +593,49 @@ export class CrossingScene extends Phaser.Scene {
       }
     });
 
-    // Cars stop at stop lines
+    // Cars stop at stop lines — front of car at line, queue behind each other
     this.carGroup.getChildren().forEach(child => {
       const c = child as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
+      if (!c.active || !c.body) return;
       const stopTop = H / 2 - 60, stopBot = H / 2 + 60;
+      const FRONT = 44; // car half-height
+
       if (c.cr.state === 'green') {
-        if (c.dir === 'down' && c.y > stopTop - 85 && c.y < stopTop) c.setVelocityY(0);
-        if (c.dir === 'up'   && c.y < stopBot + 85 && c.y > stopBot) c.setVelocityY(0);
+        // pedestrian green → cars must stop before the crossing
+        if (c.dir === 'down') {
+          if (c.y >= stopTop - FRONT) return;
+          let nearestAhead = Infinity;
+          this.carGroup.getChildren().forEach(o2 => {
+            const oc = o2 as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
+            if (oc === c || !oc.active || oc.cr !== c.cr || oc.dir !== 'down') return;
+            const ob = oc.body as Phaser.Physics.Arcade.Body;
+            if (ob && Math.abs(ob.velocity.y) < 5 && oc.y > c.y) {
+              nearestAhead = Math.min(nearestAhead, oc.y);
+            }
+          });
+          const stopTarget = nearestAhead < Infinity ? nearestAhead - 100 : stopTop - FRONT;
+          if (stopTarget > 0 && c.y > stopTarget - 30) c.setVelocityY(0);
+        } else {
+          if (c.y <= stopBot + FRONT) return;
+          let nearestAhead = -Infinity;
+          this.carGroup.getChildren().forEach(o2 => {
+            const oc = o2 as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
+            if (oc === c || !oc.active || oc.cr !== c.cr || oc.dir !== 'up') return;
+            const ob = oc.body as Phaser.Physics.Arcade.Body;
+            if (ob && Math.abs(ob.velocity.y) < 5 && oc.y < c.y) {
+              nearestAhead = Math.max(nearestAhead, oc.y);
+            }
+          });
+          const stopTarget = nearestAhead > -Infinity ? nearestAhead + 100 : stopBot + FRONT;
+          if (stopTarget < H && c.y < stopTarget + 30) c.setVelocityY(0);
+        }
       } else {
+        // pedestrian red → cars go
         if (c.dir === 'down' && c.body?.velocity.y === 0) c.setVelocityY(170);
         if (c.dir === 'up'   && c.body?.velocity.y === 0) c.setVelocityY(-170);
       }
     });
 
-    this.tommyPortrait.setTexture(upcomingRed ? 'portrait_gasp' : 'portrait_smile');
     const isStopping = this.input.activePointer.isDown;
     this.tommy.setVelocityX(isStopping ? 0 : getLevelCfg(this.level).speed);
   }

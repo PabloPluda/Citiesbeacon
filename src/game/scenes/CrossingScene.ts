@@ -3,10 +3,11 @@ import { EventBus } from '../EventBus';
 
 // ─── Level config ──────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
-  return {
-    crossings: Math.min(7 + level, 15),
-    time: 50 + (level - 1) * 4,
-  };
+  // L1: 10 crossings.  L2+: 10+level (12, 13, 14, 15 …), capped at 30.
+  const crossings = level === 1 ? 10 : Math.min(10 + level, 30);
+  // Speed starts gentle (135 px/s at L1) and climbs ~7 px/s per level.
+  const speed = Math.round(135 + (level - 1) * 7);
+  return { crossings, speed };
 }
 
 // ─── Car helpers ───────────────────────────────────────────────────────────────
@@ -201,18 +202,20 @@ function drawSchool(scene: Phaser.Scene, x: number, sidewalkY: number) {
 export class CrossingScene extends Phaser.Scene {
   level = 1;
   scored = 0;
-  timeLeft = 50;
   done = false;
   tutorialActive = false;
   penaltyCooldown = false;
-  timerEvent!: Phaser.Time.TimerEvent;
+
+  // Lives system
+  livesLost = 0;
+  private lifeIndicators: Phaser.GameObjects.Graphics[] = [];
 
   tommy!: Phaser.Physics.Arcade.Image;
   tommyPortrait!: Phaser.GameObjects.Image;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
-  crossCount = 8;
+  crossCount = 10;
   schoolX = 0;
 
   constructor() { super('CrossingScene'); }
@@ -220,12 +223,12 @@ export class CrossingScene extends Phaser.Scene {
   init(data?: { level?: number }) {
     this.level = data?.level || 1;
     this.scored = 0;
-    const cfg = getLevelCfg(this.level);
-    this.timeLeft = cfg.time;
-    this.crossCount = cfg.crossings;
+    this.crossCount = getLevelCfg(this.level).crossings;
     this.done = false;
-    this.tutorialActive = true; // always start paused until GO button
+    this.tutorialActive = true;
     this.penaltyCooldown = false;
+    this.livesLost = 0;
+    this.lifeIndicators = [];
     this.crossroads = [];
     this.carTextureKeys = {};
     this.schoolX = 0;
@@ -234,7 +237,6 @@ export class CrossingScene extends Phaser.Scene {
   create() {
     const cfg = getLevelCfg(this.level);
     EventBus.emit('current-scene-ready', this);
-    EventBus.emit('game-timer', this.timeLeft);
     EventBus.emit('game-scored-update', `0/${cfg.crossings}`);
 
     const handleRestart = (data: { level: number }) => {
@@ -242,20 +244,6 @@ export class CrossingScene extends Phaser.Scene {
     };
     EventBus.on('restart-scene', handleRestart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', handleRestart));
-
-    // Timer
-    this.timerEvent = this.time.addEvent({
-      delay: 1000, loop: true,
-      callback: () => {
-        if (this.done || this.tutorialActive) return;
-        this.timeLeft--;
-        EventBus.emit('game-timer', this.timeLeft);
-        if (this.timeLeft <= 0) {
-          this.done = true;
-          this.time.delayedCall(400, () => EventBus.emit('game-time-up', this.scored));
-        }
-      }
-    });
 
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
@@ -367,6 +355,9 @@ export class CrossingScene extends Phaser.Scene {
     this.add.rectangle(W - 60, 60, 80, 80, 0xFFFFFF).setDepth(20).setScrollFactor(0);
     this.tommyPortrait = this.add.image(W - 60, 60, 'portrait_smile').setDepth(21).setScrollFactor(0);
 
+    // Lives: 3 small traffic-light indicators, top-left, fixed to screen
+    this.buildLifeIndicators();
+
     this.physics.add.overlap(this.tommy, this.carGroup, () => this.penalize());
 
     // ── Tutorial (level 1) then START button; or just START button ────────────
@@ -388,12 +379,63 @@ export class CrossingScene extends Phaser.Scene {
   penalize() {
     if (this.done || this.tutorialActive || this.penaltyCooldown) return;
     this.penaltyCooldown = true;
+    this.livesLost++;
+
+    // Push Tommy back
     this.tommy.x = Math.max(220, this.tommy.x - 160);
     this.tommy.setVelocityX(0);
     EventBus.emit('show-crossing-penalty');
-    this.timeLeft = Math.max(0, this.timeLeft - 3);
-    EventBus.emit('game-timer', this.timeLeft);
+
+    // Big red traffic-light flies from centre → corresponding life indicator
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const lifeIdx = this.livesLost - 1;
+    const bigLight = this.add.text(W / 2, H / 3, '🚦', { fontSize: '72px' })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(30);
+    const targetX = 24 + lifeIdx * 48;
+    const targetY = 34;
+    this.tweens.add({
+      targets: bigLight,
+      x: targetX, y: targetY,
+      scaleX: 0.12, scaleY: 0.12,
+      duration: 700, ease: 'Cubic.easeIn',
+      onComplete: () => {
+        bigLight.destroy();
+        this.markLifeLost(lifeIdx);
+        if (this.livesLost >= 3) {
+          this.done = true;
+          this.tommy.setVelocityX(0);
+          this.time.delayedCall(400, () => EventBus.emit('game-time-up', this.scored));
+        }
+      }
+    });
+
     this.time.delayedCall(2200, () => { this.penaltyCooldown = false; });
+  }
+
+  private buildLifeIndicators() {
+    for (let i = 0; i < 3; i++) {
+      const g = this.add.graphics()
+        .setScrollFactor(0).setDepth(25)
+        .setPosition(24 + i * 48, 34);
+      this.redrawIndicator(g, false);
+      this.lifeIndicators.push(g);
+    }
+  }
+
+  private redrawIndicator(g: Phaser.GameObjects.Graphics, lost: boolean) {
+    g.clear();
+    const w = 26, h = 48, r = 4;
+    g.fillStyle(0x111827);          g.fillRoundedRect(-w/2, -h/2, w, h, r);
+    g.fillStyle(lost ? 0xFF2222 : 0x3A1A1A); g.fillCircle(0, -h/4, 9);
+    if (lost) { g.fillStyle(0xFF8888, 0.35); g.fillCircle(-3, -h/4 - 3, 4); }
+    g.fillStyle(0x0A2A0A);          g.fillCircle(0, h/4, 9);
+    g.lineStyle(1.5, 0x4B5563, 1);  g.strokeRoundedRect(-w/2, -h/2, w, h, r);
+  }
+
+  private markLifeLost(index: number) {
+    if (index >= 0 && index < this.lifeIndicators.length)
+      this.redrawIndicator(this.lifeIndicators[index], true);
   }
 
   update(_time: number, delta: number) {
@@ -480,7 +522,6 @@ export class CrossingScene extends Phaser.Scene {
 
     this.tommyPortrait.setTexture(upcomingRed ? 'portrait_gasp' : 'portrait_smile');
     const isStopping = this.input.activePointer.isDown;
-    const speed = 150 + (this.level * 8);
-    this.tommy.setVelocityX(isStopping ? 0 : speed);
+    this.tommy.setVelocityX(isStopping ? 0 : getLevelCfg(this.level).speed);
   }
 }

@@ -435,7 +435,7 @@ export default function GameWindow() {
       {/* ─ Crossing penalty overlay ───────────────────────────────────────── */}
       {showCrossingPenalty && (
         <div style={{
-          position: 'absolute', top: '28%', left: '50%',
+          position: 'absolute', top: '10%', left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 60, pointerEvents: 'none',
           animation: 'penalty-slide-in 0.25s ease-out',
@@ -670,9 +670,9 @@ export default function GameWindow() {
           <ChevronLeft size={24} color="var(--primary)" />
         </button>
 
-        {/* Timer */}
+        {/* Timer — hidden for CrossingScene (mission 2) which uses lives instead */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />
+          {mId !== 2 && <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />}
           <span style={{
             fontFamily: 'Fredoka One', fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)',
             textShadow: '1px 1px 2px black', letterSpacing: '0.05em',

@@ -393,7 +393,7 @@ export class CrossingScene extends Phaser.Scene {
     const bigLight = this.add.text(W / 2, H / 3, '🚦', { fontSize: '72px' })
       .setOrigin(0.5).setScrollFactor(0).setDepth(30);
     const targetX = 24 + lifeIdx * 48;
-    const targetY = 34;
+    const targetY = 100;
     this.tweens.add({
       targets: bigLight,
       x: targetX, y: targetY,
@@ -417,7 +417,7 @@ export class CrossingScene extends Phaser.Scene {
     for (let i = 0; i < 3; i++) {
       const g = this.add.graphics()
         .setScrollFactor(0).setDepth(25)
-        .setPosition(24 + i * 48, 34);
+        .setPosition(24 + i * 48, 100);
       this.redrawIndicator(g, false);
       this.lifeIndicators.push(g);
     }

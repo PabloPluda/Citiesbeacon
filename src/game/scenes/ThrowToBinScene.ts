@@ -2,10 +2,18 @@ import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 
 const LEVELS = [
-  {trashGoal:7,spawnRate:2400},{trashGoal:7,spawnRate:2200},{trashGoal:7,spawnRate:2000},
-  {trashGoal:8,spawnRate:1900},{trashGoal:8,spawnRate:1800},{trashGoal:9,spawnRate:1700},
-  {trashGoal:9,spawnRate:1600},{trashGoal:10,spawnRate:1500},{trashGoal:10,spawnRate:1400},
-  {trashGoal:11,spawnRate:1300},{trashGoal:11,spawnRate:1200},{trashGoal:12,spawnRate:1100},
+  { trashGoal:10, spawnRate:2400, time:180 }, // L1
+  { trashGoal:11, spawnRate:2200, time:160 }, // L2
+  { trashGoal:12, spawnRate:2000, time:160 }, // L3
+  { trashGoal:13, spawnRate:1900, time:160 }, // L4
+  { trashGoal:14, spawnRate:1800, time:160 }, // L5
+  { trashGoal:14, spawnRate:1700, time:160 }, // L6
+  { trashGoal:14, spawnRate:1600, time:160 }, // L7
+  { trashGoal:14, spawnRate:1500, time:160 }, // L8
+  { trashGoal:14, spawnRate:1400, time:160 }, // L9
+  { trashGoal:14, spawnRate:1300, time:160 }, // L10
+  { trashGoal:14, spawnRate:1200, time:160 }, // L11
+  { trashGoal:14, spawnRate:1100, time:160 }, // L12
 ];
 
 const TRASH_EMOJIS = ['🥤','🍌','🍾','🥫','📦','🗞️'];
@@ -40,7 +48,7 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   init(data?: { level?: number }) {
     this.level = data?.level ?? 1;
-    this.scored = 0; this.timeLeft = 40;
+    this.scored = 0; this.timeLeft = this.cfg.time;
     this.done = false; this.tutorialActive = false;
     this.isDragging = false; this.selectedTrash = null;
     this.trashItems = []; this.thrownItems = [];

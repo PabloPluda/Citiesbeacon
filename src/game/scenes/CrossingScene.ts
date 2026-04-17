@@ -3,11 +3,13 @@ import { EventBus } from '../EventBus';
 
 // ─── Level config ──────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
-  // L1: 10 crossings.  L2+: 10+level (12, 13, 14, 15 …), capped at 30.
+  // L1: 10 crossings.  L2+: 10+level (12, 13, 14, …), capped at 30.
   const crossings = level === 1 ? 10 : Math.min(10 + level, 30);
-  // Speed starts gentle (135 px/s at L1) and climbs ~7 px/s per level.
-  const speed = Math.round(135 + (level - 1) * 7);
-  return { crossings, speed };
+  // Base speed is the same every level (minimum).  Within-level bonus grows
+  // with level so Tommy accelerates more aggressively on higher levels.
+  const baseSpeed = 155;
+  const maxBonus  = level <= 1 ? 0 : Math.min((level - 1) * 10, 100);
+  return { crossings, baseSpeed, maxBonus };
 }
 
 // ─── Car helpers ───────────────────────────────────────────────────────────────
@@ -134,7 +136,7 @@ function buildWorldChunks(
   scene: Phaser.Scene,
   worldW: number,
   H: number,
-  cfg: { crossings: number; speed: number },
+  cfg: { crossings: number; baseSpeed: number; maxBonus: number },
   firstCrossX: number,
   SPACING: number,
   schoolX: number,
@@ -637,6 +639,8 @@ export class CrossingScene extends Phaser.Scene {
     });
 
     const isStopping = this.input.activePointer.isDown;
-    this.tommy.setVelocityX(isStopping ? 0 : getLevelCfg(this.level).speed);
+    const { baseSpeed, maxBonus, crossings } = getLevelCfg(this.level);
+    const bonus = maxBonus * Math.min(this.scored / crossings, 1);
+    this.tommy.setVelocityX(isStopping ? 0 : Math.round(baseSpeed + bonus));
   }
 }

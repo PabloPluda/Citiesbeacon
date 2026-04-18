@@ -38,8 +38,8 @@ function getLevelCfg(level: number) {
   else if (level <= 8)  { minFloors = 3; maxFloors = 5; winCols = 3; }
   else if (level <= 15) { minFloors = 4; maxFloors = 8; winCols = 3; }
   else                  { minFloors = 6; maxFloors = 8; winCols = 4; }
-  const minSpeed = 50;
-  const maxSpeed = Math.min(56 + level * 3, 85);
+  const minSpeed = 68;
+  const maxSpeed = Math.min(74 + level * 5, 135);
   const litRate  = 0.13 + level * 0.008;
   return { minFloors, maxFloors, winCols, minSpeed, maxSpeed, litRate };
 }

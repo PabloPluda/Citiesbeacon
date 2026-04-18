@@ -3,51 +3,56 @@ import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
 
 const MISSION_ID  = 4;
-const RIVER_RATIO = 0.28;   // top 28% = river/nature zone
-const FLOOR_RATIO = 0.84;   // character floor at 84%
-const CHAR_SPEED  = 145;    // px/sec
-const CLOSE_SECS  = 1.0;    // seconds to close a faucet
+const RIVER_RATIO = 0.28;
+const CHAR_SPEED  = 150;
+const CLOSE_SECS  = 0.9;
+const SINK_W      = 60;
+const SINK_H      = 50;
+const WALL_W      = 80;   // wall strip width on each side
 
-// ─── Level config ─────────────────────────────────────────────────────────────
+// ─── Level config ──────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
-  const time           = 60;
-  const openInterval   = Math.max(1.2, 5.5 - level * 0.18);
-  const maxDripping    = Math.min(3, 1 + Math.floor(level / 3));
-  const drainPerFaucet = 1.2 + level * 0.12;   // %/sec per open faucet
-  return { time, openInterval, maxDripping, drainPerFaucet };
-}
+  let faucetCount: number, time: number;
+  if      (level <= 3)  { faucetCount = 6;  time = 45;  }
+  else if (level <= 8)  { faucetCount = 8;  time = 80;  }
+  else if (level <= 14) { faucetCount = 10; time = 100; }
+  else                  { faucetCount = 12; time = 120; }
 
-// Level 1-3: 4 faucets (2 left, 2 right)
-const FAUCET_XR = [0.14, 0.35, 0.65, 0.86];
+  const openInterval   = Math.max(1.0, 5.2 - level * 0.2);
+  const maxDripping    = Math.min(Math.floor(faucetCount * 0.55), 1 + Math.floor(level / 3));
+  const drainPerFaucet = 1.0 + level * 0.1;
+  return { time, faucetCount, openInterval, maxDripping, drainPerFaucet };
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Faucet {
   id:         number;
   x:          number;
-  side:       1 | -1;   // 1 = spout faces right, -1 = left
+  y:          number;
+  wallSide:   -1 | 1;   // -1 = left wall, 1 = right wall
   isDripping: boolean;
   queued:     boolean;
   bodyGfx:    Phaser.GameObjects.Graphics;
-  dropsGfx:   Phaser.GameObjects.Graphics;
+  dripsGfx:   Phaser.GameObjects.Graphics;
   badge:      Phaser.GameObjects.Text;
-  dirtyBody:  boolean;  // needs redraw
+  dirtyBody:  boolean;
 }
 
 type CharState = 'idle' | 'moving' | 'closing';
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
 export class WaterSaverScene extends Phaser.Scene {
-  level    = 1;
-  timeLeft = 60;
-  done     = false;
-  waterPct = 100;
+  level      = 1;
+  timeLeft   = 45;
+  done       = false;
+  waterPct   = 100;
   lastVitPct = 101;
 
-  faucets:  Faucet[]   = [];
-  queue:    number[]   = [];
+  faucets:   Faucet[]  = [];
+  queue:     number[]  = [];
   charState: CharState = 'idle';
-  charX    = 0;
-  charY    = 0;
+  charX      = 0;
+  charY      = 0;
   closingTimer = 0;
   currentId: number | null = null;
 
@@ -64,7 +69,6 @@ export class WaterSaverScene extends Phaser.Scene {
   walkPhase  = 0;
   waveOff    = 0;
   riverH     = 0;
-  floorY     = 0;
   W = 0; H = 0;
 
   constructor() { super('WaterSaverScene'); }
@@ -77,19 +81,19 @@ export class WaterSaverScene extends Phaser.Scene {
       if (reg != null) { this.registry.remove('startLevel'); this.level = reg; }
       else { this.level = Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20); }
     }
-    this.waterPct    = 100;
-    this.lastVitPct  = 101;
-    this.done        = false;
-    this.faucets     = [];
-    this.queue       = [];
-    this.charState   = 'idle';
-    this.currentId   = null;
-    this.dropPhase   = 0;
-    this.walkPhase   = 0;
-    this.waveOff     = 0;
-    this.treeGfxList = [];
+    this.waterPct     = 100;
+    this.lastVitPct   = 101;
+    this.done         = false;
+    this.faucets      = [];
+    this.queue        = [];
+    this.charState    = 'idle';
+    this.currentId    = null;
+    this.dropPhase    = 0;
+    this.walkPhase    = 0;
+    this.waveOff      = 0;
+    this.treeGfxList  = [];
     this.flowerGfxList = [];
-    this.nextOpen = Math.max(2.0, 5.0 - this.level * 0.12);
+    this.nextOpen     = Math.max(2.5, 5.5 - this.level * 0.15);
   }
 
   create() {
@@ -99,9 +103,8 @@ export class WaterSaverScene extends Phaser.Scene {
     const cfg = getLevelCfg(this.level);
     this.timeLeft = cfg.time;
     this.riverH   = Math.round(H * RIVER_RATIO);
-    this.floorY   = Math.round(H * FLOOR_RATIO);
     this.charX    = W / 2;
-    this.charY    = this.floorY;
+    this.charY    = this.riverH + (H - this.riverH) / 2;
 
     EventBus.emit('current-scene-ready', this);
     EventBus.emit('game-timer', this.timeLeft);
@@ -110,10 +113,9 @@ export class WaterSaverScene extends Phaser.Scene {
     EventBus.on('restart-scene', onRestart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', onRestart));
 
-    this.buildBg();
+    this.buildBathroomFloor();
     this.buildRiver();
-    this.buildPipes();
-    this.buildFaucets();
+    this.buildFaucets(cfg.faucetCount);
     this.buildCharacter();
 
     this.time.addEvent({
@@ -130,58 +132,69 @@ export class WaterSaverScene extends Phaser.Scene {
     });
   }
 
-  // ── Backgrounds ───────────────────────────────────────────────────────────────
+  // ── Bathroom floor ────────────────────────────────────────────────────────────
 
-  buildBg() {
+  buildBathroomFloor() {
     const W = this.W, H = this.H;
     const rH = this.riverH;
+    const g = this.add.graphics().setDepth(0);
 
-    // Room walls / floor
-    const room = this.add.graphics().setDepth(0);
-    room.fillStyle(0xFFFBF0);
-    room.fillRect(0, rH, W, H - rH);
-    // Subtle wall lines
-    room.lineStyle(1, 0xE8DCC8, 0.6);
-    for (let y = rH + 32; y < this.floorY; y += 32) {
-      room.lineBetween(0, y, W, y);
-    }
-    // Floor tile strip
-    room.fillStyle(0xD6C9B0);
-    room.fillRect(0, this.floorY + 3, W, H - this.floorY - 3);
-    // Floor line
-    room.lineStyle(3, 0xB0A090, 0.8);
-    room.lineBetween(0, this.floorY + 3, W, this.floorY + 3);
+    // Center corridor floor — large creamy off-white tiles
+    g.fillStyle(0xEDE7E0);
+    g.fillRect(0, rH, W, H - rH);
+
+    // Large tile squares (subtle, no harsh lines)
+    const TILE = 80;
+    g.lineStyle(1, 0xD4CCBF, 0.22);
+    for (let x = TILE; x < W - WALL_W; x += TILE) g.lineBetween(x, rH, x, H);
+    for (let y = rH + TILE; y < H; y += TILE) g.lineBetween(WALL_W, y, W - WALL_W, y);
+
+    // Left wall strip (matte ceramic look)
+    g.fillStyle(0xD9D2CA);
+    g.fillRect(0, rH, WALL_W, H - rH);
+    // Left counter edge
+    g.lineStyle(2.5, 0xB8B0A8);
+    g.lineBetween(WALL_W, rH, WALL_W, H);
+
+    // Right wall strip
+    g.fillStyle(0xD9D2CA);
+    g.fillRect(W - WALL_W, rH, WALL_W, H - rH);
+    // Right counter edge
+    g.lineStyle(2.5, 0xB8B0A8);
+    g.lineBetween(W - WALL_W, rH, W - WALL_W, H);
+
+    // Mirror strip on left wall (top decorative element above sinks)
+    g.fillStyle(0xC5D8E4, 0.55);
+    g.fillRect(2, rH + 4, WALL_W - 4, 12);
+    g.fillStyle(0xC5D8E4, 0.55);
+    g.fillRect(W - WALL_W + 2, rH + 4, WALL_W - 4, 12);
+
+    // River/bathroom divider
+    g.lineStyle(3, 0xA09890, 0.8);
+    g.lineBetween(0, rH, W, rH);
   }
 
   // ── River zone ────────────────────────────────────────────────────────────────
 
   buildRiver() {
-    const W = this.W, H = this.H;
+    const W = this.W;
     const rH = this.riverH;
 
-    // Sky
     const sky = this.add.graphics().setDepth(1);
     sky.fillGradientStyle(0x87CEEB, 0x87CEEB, 0xB8E4F7, 0xB8E4F7, 1);
     sky.fillRect(0, 0, W, rH * 0.5);
 
-    // Static river bank (grass)
     const bank = this.add.graphics().setDepth(1);
     bank.fillStyle(0x4ADE80);
     bank.fillRect(0, rH * 0.45, W, rH * 0.55);
-
-    // Lower bright grass strip at river bottom
     bank.fillStyle(0x16A34A);
     bank.fillRect(0, rH - 14, W, 14);
-
-    // River channel bed (always visible)
     bank.fillStyle(0x0EA5E9);
     bank.fillRoundedRect(8, rH * 0.38, W - 16, rH * 0.42, 8);
 
-    // Animated water fill (redrawn each frame)
     this.riverFillGfx = this.add.graphics().setDepth(3);
     this.waveGfx      = this.add.graphics().setDepth(4);
 
-    // Trees
     const treeXs = [W * 0.07, W * 0.22, W * 0.50, W * 0.78, W * 0.93];
     for (const tx of treeXs) {
       const g = this.add.graphics().setDepth(5);
@@ -189,7 +202,6 @@ export class WaterSaverScene extends Phaser.Scene {
       this.treeGfxList.push(g);
     }
 
-    // Flowers
     const flowerData = [
       { x: W * 0.13, c: 0xFF6B6B }, { x: W * 0.30, c: 0xFFD93D },
       { x: W * 0.44, c: 0xFF8E53 }, { x: W * 0.56, c: 0x86EFAC },
@@ -201,7 +213,6 @@ export class WaterSaverScene extends Phaser.Scene {
       this.flowerGfxList.push(g);
     }
 
-    // Percentage text
     this.pctTxt = this.add.text(W / 2, rH * 0.62, '💧 100%', {
       fontFamily: 'Fredoka One', fontSize: '20px',
       color: '#0C4A6E', stroke: '#FFFFFF', strokeThickness: 3,
@@ -210,14 +221,14 @@ export class WaterSaverScene extends Phaser.Scene {
 
   drawTree(g: Phaser.GameObjects.Graphics, x: number, baseY: number, vit: number) {
     g.clear();
-    const crownColor = vit > 0.6 ? 0x16A34A : vit > 0.3 ? 0xCA8A04 : 0x92400E;
-    const darkCrown  = vit > 0.6 ? 0x15803D : vit > 0.3 ? 0xA16207 : 0x78350F;
+    const crown = vit > 0.6 ? 0x16A34A : vit > 0.3 ? 0xCA8A04 : 0x92400E;
+    const dark  = vit > 0.6 ? 0x15803D : vit > 0.3 ? 0xA16207 : 0x78350F;
     g.fillStyle(0x78350F);
     g.fillRect(x - 4, baseY - 22, 8, 22);
-    g.fillStyle(crownColor);
+    g.fillStyle(crown);
     g.fillCircle(x, baseY - 26, 17);
     if (vit > 0.35) {
-      g.fillStyle(darkCrown);
+      g.fillStyle(dark);
       g.fillCircle(x - 8, baseY - 22, 11);
       g.fillCircle(x + 8, baseY - 20, 10);
     }
@@ -225,8 +236,7 @@ export class WaterSaverScene extends Phaser.Scene {
 
   drawFlower(g: Phaser.GameObjects.Graphics, x: number, y: number, vit: number, color: number) {
     g.clear();
-    const stemColor = vit > 0.5 ? 0x16A34A : 0xCA8A04;
-    g.lineStyle(2, stemColor);
+    g.lineStyle(2, vit > 0.5 ? 0x16A34A : 0xCA8A04);
     g.lineBetween(x, y, x, y + 14);
     if (vit < 0.25) return;
     g.fillStyle(color);
@@ -245,13 +255,13 @@ export class WaterSaverScene extends Phaser.Scene {
     for (let i = 0; i < this.treeGfxList.length; i++) {
       this.drawTree(this.treeGfxList[i], treeXs[i], rH * 0.55, vit);
     }
-    const flowerData = [
+    const fds = [
       { x: W * 0.13, c: 0xFF6B6B }, { x: W * 0.30, c: 0xFFD93D },
       { x: W * 0.44, c: 0xFF8E53 }, { x: W * 0.56, c: 0x86EFAC },
       { x: W * 0.70, c: 0xFFD93D }, { x: W * 0.87, c: 0xFF6B6B },
     ];
     for (let i = 0; i < this.flowerGfxList.length; i++) {
-      this.drawFlower(this.flowerGfxList[i], flowerData[i].x, rH * 0.42, vit, flowerData[i].c);
+      this.drawFlower(this.flowerGfxList[i], fds[i].x, rH * 0.42, vit, fds[i].c);
     }
   }
 
@@ -270,7 +280,6 @@ export class WaterSaverScene extends Phaser.Scene {
       this.riverFillGfx.fillRoundedRect(8, fillY, W - 16, 5, 3);
     }
 
-    // Wave lines
     this.waveGfx.clear();
     if (fillH > 6) {
       this.waveGfx.lineStyle(2, 0xFFFFFF, 0.28);
@@ -285,89 +294,139 @@ export class WaterSaverScene extends Phaser.Scene {
     this.pctTxt.setColor(pct > 50 ? '#0C4A6E' : pct > 25 ? '#92400E' : '#EF4444');
   }
 
-  // ── Pipes ─────────────────────────────────────────────────────────────────────
+  // ── Sinks / Faucets ───────────────────────────────────────────────────────────
 
-  buildPipes() {
-    const W = this.W;
-    const g = this.add.graphics().setDepth(2);
-    for (const xr of FAUCET_XR) {
-      const fx = W * xr;
-      g.lineStyle(6, 0x94A3B8, 0.65);
-      g.lineBetween(fx, this.riverH, fx, this.floorY - 55);
-      g.fillStyle(0x64748B);
-      g.fillCircle(fx, this.riverH, 6);
-      // Pipe connector dot at faucet elbow
-      g.fillStyle(0x94A3B8);
-      g.fillCircle(fx, this.floorY - 55, 5);
+  buildFaucets(count: number) {
+    const W = this.W, H = this.H;
+    const perSide = count / 2;
+    const my    = 48;
+    const playH = H - this.riverH - my * 2;
+    const leftX  = WALL_W / 2;
+    const rightX = W - WALL_W / 2;
+
+    let id = 0;
+    for (let i = 0; i < perSide; i++) {
+      const fy = this.riverH + my + playH * (i + 0.5) / perSide;
+      this.makeSink(id++, leftX,  fy, -1);
+      this.makeSink(id++, rightX, fy,  1);
     }
   }
 
-  // ── Faucets ───────────────────────────────────────────────────────────────────
+  makeSink(id: number, x: number, y: number, wallSide: -1 | 1) {
+    const bodyGfx  = this.add.graphics().setDepth(5);
+    const dripsGfx = this.add.graphics().setDepth(7);
+    const badge    = this.add.text(x, y - SINK_H / 2 - 12, '', {
+      fontFamily: 'Fredoka One', fontSize: '14px', color: '#FFFFFF',
+      backgroundColor: '#2563EB', padding: { x: 6, y: 3 },
+    }).setOrigin(0.5, 1).setDepth(11).setVisible(false);
 
-  buildFaucets() {
-    const W = this.W;
-    for (let i = 0; i < FAUCET_XR.length; i++) {
-      const fx    = W * FAUCET_XR[i];
-      const side  = (fx < W / 2 ? 1 : -1) as 1 | -1;
+    const f: Faucet = {
+      id, x, y, wallSide,
+      isDripping: false, queued: false,
+      bodyGfx, dripsGfx, badge, dirtyBody: true,
+    };
+    this.drawSink(f, false);
+    this.faucets.push(f);
 
-      const bodyGfx  = this.add.graphics().setDepth(8);
-      const dropsGfx = this.add.graphics().setDepth(9);
-      const badge    = this.add.text(fx, this.floorY - 70, '', {
-        fontFamily: 'Fredoka One', fontSize: '13px', color: '#FFFFFF',
-        backgroundColor: '#3B82F6', padding: { x: 5, y: 3 },
-      }).setOrigin(0.5, 1).setDepth(11).setVisible(false);
-
-      const f: Faucet = {
-        id: i, x: fx, side,
-        isDripping: false, queued: false,
-        bodyGfx, dropsGfx, badge, dirtyBody: true,
-      };
-      this.drawFaucetBody(f, false);
-      this.faucets.push(f);
-
-      const zone = this.add.zone(fx, this.floorY - 30, 66, 72)
-        .setInteractive().setDepth(12);
-      zone.on('pointerdown', () => {
-        if (this.done || !f.isDripping || f.queued) return;
-        f.queued = true;
-        this.queue.push(i);
-        f.badge.setText(`#${this.queue.length}`).setVisible(true);
-      });
-    }
+    const zone = this.add.zone(x, y, SINK_W + 22, SINK_H + 22)
+      .setInteractive().setDepth(12);
+    zone.on('pointerdown', () => {
+      if (this.done || !f.isDripping || f.queued) return;
+      f.queued = true;
+      this.queue.push(id);
+      f.badge.setText(`#${this.queue.length}`).setVisible(true);
+      f.dirtyBody = true;
+    });
   }
 
-  drawFaucetBody(f: Faucet, highlighted: boolean) {
+  drawSink(f: Faucet, highlighted: boolean) {
     const g  = f.bodyGfx;
-    const fx = f.x, fy = this.floorY;
-    const s  = f.side;
+    const { x, y, wallSide: ws } = f;
+    const bx = x - SINK_W / 2, by = y - SINK_H / 2;
     g.clear();
 
-    const pipeCol   = f.isDripping ? 0x7DD3FC : 0x94A3B8;
-    const handleCol = f.isDripping ? 0xEF4444 : 0x22C55E;
+    // ── Counter surface ──
+    g.fillStyle(0xCBC4BC);
+    g.fillRoundedRect(bx - 6, by - 6, SINK_W + 12, SINK_H + 12, 8);
+    // Counter highlight edge (inner bevel)
+    g.lineStyle(1.5, 0xE0D8D0, 0.7);
+    g.strokeRoundedRect(bx - 4, by - 4, SINK_W + 8, SINK_H + 8, 7);
 
-    // Vertical pipe (floor up 55px)
-    g.fillStyle(pipeCol);
-    g.fillRect(fx - 4, fy - 55, 8, 55);
+    // ── Porcelain basin ──
+    const basinFill = f.isDripping ? 0xC8E8F5 : 0xF4F2EF;
+    g.fillStyle(basinFill);
+    g.fillRoundedRect(bx, by, SINK_W, SINK_H, 10);
+    // Basin inner shadow (subtle depth)
+    g.lineStyle(2, 0xB8B0A8, 0.45);
+    g.strokeRoundedRect(bx, by, SINK_W, SINK_H, 10);
+    g.lineStyle(1, 0xFFFFFF, 0.5);
+    g.strokeRoundedRect(bx + 2, by + 2, SINK_W - 4, SINK_H - 4, 8);
 
-    // Horizontal elbow (pointing outward based on side)
-    g.fillRect(fx - 4 + (s < 0 ? -20 : 0), fy - 55, 24, 8);
+    // ── Water fill (when dripping) ──
+    if (f.isDripping) {
+      g.fillStyle(0x38BDF8, 0.45);
+      g.fillRoundedRect(bx + 4, by + 4, SINK_W - 8, SINK_H - 8, 7);
+      // Water shimmer line
+      g.fillStyle(0xFFFFFF, 0.28);
+      g.fillRoundedRect(bx + 5, by + 5, SINK_W - 10, 6, 3);
+    }
 
-    // Drip tip cap
-    g.fillStyle(pipeCol);
-    g.fillCircle(fx + s * 20, fy - 51, 5);
+    // ── Drain (bottom center) ──
+    const drainCol = f.isDripping ? 0x0369A1 : 0x8E9CAA;
+    g.fillStyle(drainCol);
+    g.fillCircle(x, y + 10, 6);
+    g.fillStyle(basinFill);
+    g.fillCircle(x, y + 10, 3.5);
+    // Cross slits
+    g.lineStyle(1.2, drainCol, 0.8);
+    g.lineBetween(x - 4, y + 10, x + 4, y + 10);
+    g.lineBetween(x, y + 6.5, x, y + 13.5);
 
-    // Handle bar (lever)
-    g.fillStyle(handleCol);
-    g.fillRoundedRect(fx - 11, fy - 63, 22, 7, 3);
+    // ── Faucet assembly (top of basin) ──
+    const spoutDir = ws < 0 ? 1 : -1;    // left wall → spout points right (toward center)
+    const fY       = by + 8;              // faucet base Y
+    const chrome   = f.isDripping ? 0x9EC8DC : 0xD0D5D8;
+    const chromeLt = f.isDripping ? 0xBCDBEA : 0xE8EBED;
+    const handle   = f.isDripping ? 0xDC2626 : 0x16A34A;
+    const handleDk = f.isDripping ? 0xB91C1C : 0x15803D;
 
-    // Knob
-    g.fillStyle(0x475569);
-    g.fillCircle(fx, fy - 63, 5);
+    // Pipe base (vertical)
+    g.fillStyle(chrome);
+    g.fillRoundedRect(x - 4.5, fY - 2, 9, 16, 4);
+    g.fillStyle(chromeLt);
+    g.fillRoundedRect(x - 2, fY - 1, 4, 7, 2);
 
-    // Highlight ring when targeted
+    // Spout arm (horizontal, toward center)
+    const armStart = spoutDir > 0 ? x : x - 20;
+    g.fillStyle(chrome);
+    g.fillRoundedRect(armStart, fY + 8, 21, 6, 3);
+    g.fillStyle(chromeLt);
+    g.fillRoundedRect(armStart, fY + 8, 21, 3, 2);
+    // Spout tip (rounded end)
+    g.fillStyle(chrome);
+    g.fillCircle(x + spoutDir * 18, fY + 11, 5);
+    // Inner opening
+    g.fillStyle(f.isDripping ? 0x38BDF8 : 0x6B7280);
+    g.fillCircle(x + spoutDir * 18, fY + 11, 2.5);
+
+    // Handle lever (T-bar)
+    g.fillStyle(handle);
+    g.fillRoundedRect(x - 12, fY - 6, 24, 6, 3);
+    g.fillStyle(handleDk);
+    g.fillRoundedRect(x - 3, fY - 12, 6, 14, 3);
+    // Knob center
+    g.fillStyle(handle);
+    g.fillCircle(x, fY - 3, 5);
+    g.fillStyle(0xFFFFFF, 0.35);
+    g.fillCircle(x - 1.5, fY - 4.5, 2);
+
+    // ── Selection ring ──
     if (highlighted) {
-      g.lineStyle(3, 0xFBBF24, 1);
-      g.strokeCircle(fx, fy - 34, 28);
+      g.lineStyle(3.5, 0xFBBF24, 1);
+      g.strokeRoundedRect(bx - 7, by - 7, SINK_W + 14, SINK_H + 14, 10);
+    } else if (f.queued) {
+      g.lineStyle(2.5, 0x60A5FA, 0.9);
+      g.strokeRoundedRect(bx - 7, by - 7, SINK_W + 14, SINK_H + 14, 10);
     }
   }
 
@@ -376,53 +435,59 @@ export class WaterSaverScene extends Phaser.Scene {
   buildCharacter() {
     this.charGfx = this.add.graphics().setDepth(15);
     this.toolTxt = this.add.text(0, 0, '🔧', {
-      fontSize: '22px',
-    }).setOrigin(0.5, 1).setDepth(16).setVisible(false);
+      fontSize: '20px',
+    }).setOrigin(0.5).setDepth(16).setVisible(false);
     this.redrawChar();
   }
 
   redrawChar() {
     const g  = this.charGfx;
     const cx = this.charX, cy = this.charY;
-    const isMoving = this.charState === 'moving';
-    const dir = (this.currentId !== null && this.faucets[this.currentId])
-      ? (this.faucets[this.currentId].x > cx ? 1 : -1) : 1;
-    const leg = isMoving ? Math.sin(this.walkPhase * 9) * 9 : 0;
-    const arm = isMoving ? Math.sin(this.walkPhase * 9) * 7 : 0;
-
     g.clear();
+
     // Shadow
-    g.fillStyle(0x000000, 0.12);
-    g.fillEllipse(cx, cy + 2, 32, 7);
-    // Legs
+    g.fillStyle(0x000000, 0.13);
+    g.fillEllipse(cx, cy + 18, 30, 11);
+
+    // Legs (animated when walking)
+    const ls = this.charState === 'moving' ? Math.sin(this.walkPhase * 10) * 7 : 0;
     g.fillStyle(0x1E3A5F);
-    g.fillRect(cx - 7, cy - 18, 6, 20 + leg);
-    g.fillRect(cx + 1, cy - 18, 6, 20 - leg);
-    // Shoes
-    g.fillStyle(0x1C1917);
-    g.fillEllipse(cx - 4,  cy + 2 + leg, 14, 7);
-    g.fillEllipse(cx + 4,  cy + 2 - leg, 14, 7);
-    // Body
+    g.fillEllipse(cx - 5, cy + 10 + ls, 8, 15);
+    g.fillEllipse(cx + 5, cy + 10 - ls, 8, 15);
+
+    // Body (blue shirt)
     g.fillStyle(0x3B82F6);
-    g.fillRoundedRect(cx - 10, cy - 38, 20, 22, 5);
+    g.fillEllipse(cx, cy + 2, 24, 20);
+    g.fillStyle(0x2563EB);
+    g.fillEllipse(cx, cy - 2, 22, 12);
+
     // Arms
     g.lineStyle(5, 0xFED7AA);
     if (this.charState === 'closing') {
-      g.lineBetween(cx - 10, cy - 30, cx - 20, cy - 50);
-      g.lineBetween(cx + 10, cy - 30, cx + 20, cy - 50);
+      g.lineBetween(cx - 12, cy - 1, cx - 22, cy - 14);
+      g.lineBetween(cx + 12, cy - 1, cx + 22, cy - 14);
     } else {
-      g.lineBetween(cx - 10, cy - 30, cx - dir * 3 - 16, cy - 22 - arm);
-      g.lineBetween(cx + 10, cy - 30, cx + dir * 3 + 16, cy - 22 + arm);
+      const as = this.charState === 'moving' ? Math.sin(this.walkPhase * 10 + Math.PI) * 7 : 0;
+      g.lineBetween(cx - 12, cy - 1, cx - 22, cy + 3 - as);
+      g.lineBetween(cx + 12, cy - 1, cx + 22, cy + 3 + as);
     }
+
     // Head
     g.fillStyle(0xFED7AA);
-    g.fillCircle(cx, cy - 50, 12);
+    g.fillCircle(cx, cy - 12, 11);
     // Hair
     g.fillStyle(0x78350F);
-    g.fillRoundedRect(cx - 11, cy - 62, 22, 9, 4);
-    // Eye (facing direction)
+    g.fillRoundedRect(cx - 11, cy - 24, 22, 11, 6);
+
+    // Eyes (look toward target when moving)
+    let eyeAngle = 0;
+    if (this.charState === 'moving' && this.currentId !== null && this.faucets[this.currentId]) {
+      const t = this.faucets[this.currentId];
+      eyeAngle = Math.atan2(t.y - cy, t.x - cx);
+    }
     g.fillStyle(0x1C1917);
-    g.fillCircle(cx + dir * 4, cy - 52, 2);
+    g.fillCircle(cx + Math.cos(eyeAngle + 0.42) * 5, cy - 12 + Math.sin(eyeAngle + 0.42) * 5, 2);
+    g.fillCircle(cx + Math.cos(eyeAngle - 0.42) * 5, cy - 12 + Math.sin(eyeAngle - 0.42) * 5, 2);
   }
 
   // ── Update ────────────────────────────────────────────────────────────────────
@@ -434,34 +499,32 @@ export class WaterSaverScene extends Phaser.Scene {
     this.dropPhase += dt;
     this.waveOff   += dt * 1.8;
 
-    // Auto-open
+    // Auto-open faucets
     this.nextOpen -= dt;
     if (this.nextOpen <= 0) {
       this.tryAutoOpen(cfg.maxDripping);
-      this.nextOpen = cfg.openInterval * (0.75 + Math.random() * 0.5);
+      this.nextOpen = cfg.openInterval * (0.7 + Math.random() * 0.6);
     }
 
-    // Drain
+    // Drain river
     const dripping = this.faucets.filter(f => f.isDripping).length;
     this.waterPct  = Math.max(0, this.waterPct - dripping * cfg.drainPerFaucet * dt);
 
-    // River visuals
     this.drawRiverFill();
     if (Math.abs(this.waterPct - this.lastVitPct) >= 2) {
       this.updateVitality();
       this.lastVitPct = this.waterPct;
     }
 
-    // Faucet drop animations
+    // Sink animations
     for (const f of this.faucets) {
-      if (f.isDripping) this.animDrops(f);
-      if (f.dirtyBody) { this.drawFaucetBody(f, f.id === this.currentId); f.dirtyBody = false; }
+      if (f.isDripping) this.animDrip(f);
+      else f.dripsGfx.clear();
+      if (f.dirtyBody) { this.drawSink(f, f.id === this.currentId); f.dirtyBody = false; }
     }
 
-    // Character
     this.tickCharacter(dt);
 
-    // Lose
     if (this.waterPct <= 0) {
       this.done = true;
       this.time.delayedCall(400, () => EventBus.emit('game-time-up', '0'));
@@ -477,26 +540,36 @@ export class WaterSaverScene extends Phaser.Scene {
     f.dirtyBody  = true;
 
     // Alert rings
-    const cx = f.x, cy = this.floorY - 34;
     for (let i = 0; i < 3; i++) {
-      this.time.delayedCall(i * 110, () => {
-        const r = this.add.circle(cx, cy, 16 + i * 10, 0xEF4444, 0).setDepth(20);
+      this.time.delayedCall(i * 100, () => {
+        const r = this.add.circle(f.x, f.y, 22 + i * 10, 0xEF4444, 0).setDepth(20);
         r.setStrokeStyle(2.5, 0xEF4444, 1);
-        this.tweens.add({ targets: r, scale: 1.9, alpha: 0, duration: 420, onComplete: () => r.destroy() });
+        this.tweens.add({ targets: r, scale: 1.8, alpha: 0, duration: 420, onComplete: () => r.destroy() });
       });
     }
   }
 
-  animDrops(f: Faucet) {
-    const g  = f.dropsGfx;
+  animDrip(f: Faucet) {
+    const g  = f.dripsGfx;
+    const ws = f.wallSide;
+    const fY = f.y - SINK_H / 2 + 8;
+    // Spout tip position (top-down)
+    const spoutX = f.x + (ws < 0 ? 1 : -1) * 18;
+    const spoutY = fY + 11;
     g.clear();
-    const sx = f.x + f.side * 20;
-    const sy = this.floorY - 46;
-    for (let i = 0; i < 4; i++) {
-      const t = (this.dropPhase * 2.6 + i * 0.75) % 1;
-      g.fillStyle(0x38BDF8, (1 - t) * 0.9);
-      g.fillCircle(sx + Math.sin(t * 5) * 2, sy + t * 52, 3.5 - t * 1.8);
+
+    // Ripple rings expanding from spout impact
+    for (let i = 0; i < 3; i++) {
+      const t = (this.dropPhase * 2.4 + i * 0.34) % 1;
+      g.lineStyle(1.5, 0x38BDF8, (1 - t) * 0.6);
+      g.strokeCircle(spoutX, spoutY, t * 13 + 2);
     }
+
+    // Animated water drop from tip
+    const td = (this.dropPhase * 3.5) % 1;
+    const dropY = fY + 5 + td * 9;
+    g.fillStyle(0x7DD3FC, 0.9 * (1 - td * 0.4));
+    g.fillCircle(spoutX, dropY, 3 - td * 1.2);
   }
 
   tickCharacter(dt: number) {
@@ -512,16 +585,19 @@ export class WaterSaverScene extends Phaser.Scene {
         const target = this.faucets[this.currentId!];
         if (!target) { this.charState = 'idle'; break; }
         const dx   = target.x - this.charX;
-        const dist = Math.abs(dx);
-        if (dist < 4) {
-          this.charX     = target.x;
-          this.charState = 'closing';
+        const dy   = target.y - this.charY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 5) {
+          this.charX        = target.x;
+          this.charY        = target.y;
+          this.charState    = 'closing';
           this.closingTimer = CLOSE_SECS;
-          this.toolTxt.setPosition(this.charX, this.charY - 68).setVisible(true);
-          // highlight targeted faucet
-          target.dirtyBody = true;
+          this.toolTxt.setPosition(this.charX, this.charY - 36).setVisible(true);
+          target.dirtyBody  = true;
         } else {
-          this.charX   += Math.sign(dx) * Math.min(CHAR_SPEED * dt, dist);
+          const step = Math.min(CHAR_SPEED * dt, dist);
+          this.charX    += (dx / dist) * step;
+          this.charY    += (dy / dist) * step;
           this.walkPhase += dt;
         }
         break;
@@ -529,18 +605,18 @@ export class WaterSaverScene extends Phaser.Scene {
 
       case 'closing':
         this.closingTimer -= dt;
+        this.toolTxt.setPosition(this.charX, this.charY - 36);
         if (this.closingTimer <= 0) {
           this.toolTxt.setVisible(false);
           const f = this.faucets[this.currentId!];
           if (f) {
             f.isDripping = false;
             f.queued     = false;
-            f.dropsGfx.clear();
+            f.dripsGfx.clear();
             f.badge.setVisible(false);
-            f.dirtyBody = true;
+            f.dirtyBody  = true;
           }
           this.queue.shift();
-          // Renumber badges
           for (let i = 0; i < this.queue.length; i++) {
             this.faucets[this.queue[i]].badge.setText(`#${i + 1}`);
           }

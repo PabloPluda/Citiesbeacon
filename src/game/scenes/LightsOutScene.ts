@@ -7,38 +7,42 @@ const WIN_H      = 44;
 const WIN_GAP_X  = 14;
 const WIN_GAP_Y  = 16;
 const WALL_PAD   = 22;
-const FLOOR_H    = WIN_H + WIN_GAP_Y;   // 60
+const FLOOR_H    = WIN_H + WIN_GAP_Y;
 const ROOF_H     = 34;
 const BASE_H     = 44;
 const BLDG_GAP   = 14;
 const GROUND_H   = 50;
-const ACCEL_TIME = 50;
+const ACCEL_TIME = 50;   // seconds to reach max scroll speed
 
-// Meter balance
-const DANGER_START  = 0.5;
-const WIN_THRESH    = 0.04;    // danger <= this → win
-const LOSE_THRESH   = 0.96;   // danger >= this → lose
-const TAP_REWARD    = 0.05;   // correct tap → danger decreases
-const MISS_PENALTY  = 0.035;  // empty window scrolls off → danger increases
-const WRONG_PENALTY = 0.07;   // tapping occupied window → danger increases
+// Score deltas
+const SCORE_CORRECT = 1;
+const SCORE_MISS    = -2;  // empty window scrolls away
+const SCORE_WRONG   = -3;  // tap occupied window
 
-// Meter bar layout (Phaser canvas coords, below React HUD)
-const BAR_X = 48;
-const BAR_Y = 52;
-const BAR_H = 14;
+// Meter bar layout — left gap leaves room for the back button
+const BAR_LEFT   = 72;   // x start (right of back button)
+const BAR_RIGHT  = 20;   // x margin from right edge
+const BAR_Y      = 80;   // y position
+const BAR_H      = 18;
 
 const WALL_COLORS = [0x2D3561, 0x1A2744, 0x2D3748, 0x3B3054, 0x1E3A2F, 0x3D2B1F, 0x2A2A4A];
 const ROOF_COLORS = [0x3B4A6B, 0x2D3A5C, 0x3A3054, 0x4A3020, 0x1E3B28];
 
-// ─── Level config ─────────────────────────────────────────────────────────────
+// ─── Level helpers ────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
   const floors   = level <= 2 ? 2 : level <= 5 ? 4 : level <= 10 ? 6 : 8;
   const winCols  = level <= 2 ? 2 : level <= 5 ? 3 : 4;
   const minSpeed = 80;
-  const maxSpeed = Math.min(88 + level * 9, 200);  // slower ceiling
-  // Probability per second that an OFF window turns on (scales with level)
+  const maxSpeed = Math.min(88 + level * 9, 200);
   const litRate  = 0.38 + level * 0.018;
   return { floors, winCols, minSpeed, maxSpeed, litRate };
+}
+
+function getThresholds(level: number): { win: number; lose: number } {
+  if (level <= 3)  return { win: 20, lose: 20 };
+  if (level <= 7)  return { win: 40, lose: 40 };
+  if (level <= 15) return { win: 60, lose: 60 };
+  return { win: 80, lose: 80 };
 }
 
 function bldgDims(floors: number, winCols: number) {
@@ -67,28 +71,26 @@ interface Building {
 // ─── Scene ────────────────────────────────────────────────────────────────────
 export class LightsOutScene extends Phaser.Scene {
   level       = 1;
-  scored      = 0;
-  danger      = DANGER_START;  // 0 = all green (win), 1 = all red (lose)
-  timeLeft    = 120;
+  score       = 0;
+  streak      = 0;
   done        = false;
 
-  scrollSpeed = 80;
-  worldRight  = 0;
-  W           = 0;
-  buildings:  Building[] = [];
-  meterGfx!:  Phaser.GameObjects.Graphics;
-  barW        = 0;
-  groundY     = 0;
+  scrollSpeed  = 80;
+  worldRight   = 0;
+  W            = 0;
+  sceneStartMs = 0;
 
-  timerEvent!: Phaser.Time.TimerEvent;
+  buildings: Building[] = [];
+  meterGfx!: Phaser.GameObjects.Graphics;
+  barW       = 0;
+  groundY    = 0;
 
   constructor() { super('LightsOutScene'); }
 
   init(data?: { level?: number }) {
     this.level       = data?.level ?? 1;
-    this.scored      = 0;
-    this.danger      = DANGER_START;
-    this.timeLeft    = 120;
+    this.score       = 0;
+    this.streak      = 0;
     this.done        = false;
     this.buildings   = [];
     this.worldRight  = 0;
@@ -96,15 +98,15 @@ export class LightsOutScene extends Phaser.Scene {
   }
 
   create() {
-    this.W = this.cameras.main.width;
+    this.W            = this.cameras.main.width;
+    this.sceneStartMs = this.time.now;
     const W = this.W;
     const H = this.cameras.main.height;
     this.groundY = H - GROUND_H;
-    this.barW    = W - BAR_X * 2;
+    this.barW    = W - BAR_LEFT - BAR_RIGHT;
 
     EventBus.emit('current-scene-ready', this);
-    EventBus.emit('game-scored-update', '💡 0');
-    EventBus.emit('game-timer', this.timeLeft);
+    // No timer or score shown in the React HUD for this scene
 
     const handleRestart = (d: { level: number }) => {
       setTimeout(() => this.scene.restart(d), 0);
@@ -137,28 +139,14 @@ export class LightsOutScene extends Phaser.Scene {
     this.add.circle(W - 55, 55, 26, 0xFFF8DC, 0.9).setDepth(1);
     this.add.circle(W - 43, 50, 24, 0x1A3060, 0.95).setDepth(1);
 
-    // ── Continuous sidewalk base — full width, visible in gaps between buildings
+    // Ground + continuous sidewalk base
     this.add.rectangle(W / 2, this.groundY + GROUND_H / 2, W, GROUND_H, 0x1C1C2E).setDepth(2);
     this.add.rectangle(W / 2, this.groundY - BASE_H / 2, W, BASE_H + 4, 0x1E1E30).setDepth(4);
     this.add.rectangle(W / 2, this.groundY, W, 6, 0x4A4A7A).setDepth(5);
 
-    // ── Meter bar
+    // ── Meter bar (Phaser canvas layer, fixed to screen)
     this.meterGfx = this.add.graphics().setDepth(58).setScrollFactor(0);
     this.drawMeter();
-
-    // ── Timer
-    this.timerEvent = this.time.addEvent({
-      delay: 1000, loop: true,
-      callback: () => {
-        if (this.done) return;
-        this.timeLeft--;
-        EventBus.emit('game-timer', this.timeLeft);
-        if (this.timeLeft <= 0) {
-          this.done = true;
-          this.time.delayedCall(400, () => EventBus.emit('game-time-up', this.scored));
-        }
-      },
-    });
 
     // ── Global tap handler
     const onTap = (pointer: Phaser.Input.Pointer) => {
@@ -182,7 +170,7 @@ export class LightsOutScene extends Phaser.Scene {
     this.input.on('pointerdown', onTap);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.off('pointerdown', onTap));
 
-    // ── Pre-fill screen (some windows already lit for buildings in right half)
+    // Pre-fill screen
     while (this.worldRight < W + 200) {
       this.spawnBuilding(true);
     }
@@ -190,57 +178,114 @@ export class LightsOutScene extends Phaser.Scene {
     if (this.level === 1) this.showTutorial();
   }
 
-  // ── Meter ─────────────────────────────────────────────────────────────────────
+  // ── Meter bar ────────────────────────────────────────────────────────────────
 
   drawMeter() {
-    const g = this.meterGfx;
+    const g   = this.meterGfx;
+    const bw  = this.barW;
+    const cx  = BAR_LEFT + bw / 2;
+    const { win, lose } = getThresholds(this.level);
     g.clear();
 
-    // Dark frame background
-    g.fillStyle(0x0F172A);
-    g.fillRoundedRect(BAR_X - 2, BAR_Y - 2, this.barW + 4, BAR_H + 4, 6);
+    // Outer shadow
+    g.fillStyle(0x000000, 0.45);
+    g.fillRoundedRect(BAR_LEFT - 1, BAR_Y + 2, bw + 2, BAR_H, 9);
 
-    // Full green background (represents the best possible state)
-    g.fillStyle(0x22C55E);
-    g.fillRoundedRect(BAR_X, BAR_Y, this.barW, BAR_H, 5);
+    // ── Background halves
+    // Left = red zone
+    g.fillStyle(0xAA1111);
+    g.fillRect(BAR_LEFT, BAR_Y, bw / 2, BAR_H);
+    // Right = green zone
+    g.fillStyle(0x0F7A2A);
+    g.fillRect(cx, BAR_Y, bw / 2, BAR_H);
+    // Round left edge
+    g.fillStyle(0xAA1111);
+    g.fillCircle(BAR_LEFT + 4, BAR_Y + BAR_H / 2, BAR_H / 2);
+    // Round right edge
+    g.fillStyle(0x0F7A2A);
+    g.fillCircle(BAR_LEFT + bw - 4, BAR_Y + BAR_H / 2, BAR_H / 2);
 
-    // Danger fill from the left — grows as danger increases
-    if (this.danger > 0.01) {
-      const fillW = this.danger * this.barW;
-      // Color interpolates: green → yellow → red based on danger
-      const rr = Math.min(255, Math.round(0x22 + (0xEF - 0x22) * this.danger));
-      const gg = Math.min(255, Math.round(0xC5 - (0xC5 - 0x44) * this.danger));
-      const bb = Math.round(0x5E * (1 - this.danger));
-      g.fillStyle(Phaser.Display.Color.GetColor(rr, gg, bb));
-      g.fillRoundedRect(BAR_X, BAR_Y, Math.max(fillW, 6), BAR_H, 5);
+    // ── Bright fill showing score progress
+    const innerH = BAR_H - 6;
+    const innerY = BAR_Y + 3;
+    const maxFill = bw / 2 - 6;
+
+    if (this.score > 0) {
+      const fw = Math.min((this.score / win) * maxFill, maxFill);
+      g.fillStyle(0x22C55E);   // bright green
+      g.fillRect(cx + 2, innerY, fw, innerH);
+      // Glow tip
+      g.fillStyle(0x86EFAC, 0.7);
+      g.fillRect(cx + 2 + fw - 3, innerY, 3, innerH);
+    } else if (this.score < 0) {
+      const fw = Math.min((Math.abs(this.score) / lose) * maxFill, maxFill);
+      g.fillStyle(0xEF4444);   // bright red
+      g.fillRect(cx - 2 - fw, innerY, fw, innerH);
+      // Glow tip
+      g.fillStyle(0xFCA5A5, 0.7);
+      g.fillRect(cx - 2 - fw, innerY, 3, innerH);
     }
 
-    // Centre divider marker
-    g.lineStyle(2, 0xFFFFFF, 0.5);
-    g.lineBetween(BAR_X + this.barW / 2, BAR_Y - 3, BAR_X + this.barW / 2, BAR_Y + BAR_H + 3);
+    // ── Centre divider (white)
+    g.fillStyle(0xFFFFFF);
+    g.fillRect(cx - 1, BAR_Y - 2, 3, BAR_H + 4);
 
-    // Outer frame
-    g.lineStyle(2, 0x475569, 0.8);
-    g.strokeRoundedRect(BAR_X, BAR_Y, this.barW, BAR_H, 5);
+    // ── Outer rounded border
+    g.lineStyle(2.5, 0xFFFFFF, 0.25);
+    g.strokeRoundedRect(BAR_LEFT, BAR_Y, bw, BAR_H, 9);
+
+    // ── End icons (drawn as tiny emoji-like shapes)
+    // Red skull on left end
+    g.fillStyle(0xFF6666);
+    g.fillCircle(BAR_LEFT + 8, BAR_Y + BAR_H / 2, 5);
+    // Green star on right end
+    g.fillStyle(0x4ADE80);
+    g.fillCircle(BAR_LEFT + bw - 8, BAR_Y + BAR_H / 2, 5);
   }
 
-  changeDanger(delta: number) {
-    this.danger = Math.max(0, Math.min(1, this.danger + delta));
+  changeScore(delta: number) {
+    const { win, lose } = getThresholds(this.level);
+    this.score += delta;
     this.drawMeter();
     if (this.done) return;
-    if (this.danger >= LOSE_THRESH) {
-      this.done = true;
-      this.time.delayedCall(300, () => EventBus.emit('game-time-up', this.scored));
-    } else if (this.danger <= WIN_THRESH) {
+    if (this.score >= win) {
       this.done = true;
       EventBus.emit('game-level-complete', this.level);
+    } else if (this.score <= -lose) {
+      this.done = true;
+      this.time.delayedCall(300, () => EventBus.emit('game-time-up', this.score));
     }
+  }
+
+  // ── Streak messages ───────────────────────────────────────────────────────────
+
+  showStreakMessage(n: number) {
+    const msgs: Record<number, string> = {
+      5:  'Good Job! ⭐',
+      10: 'Awesome! 🔥',
+      15: 'On Fire! 🌟',
+      20: 'AMAZING! 💥',
+    };
+    const text = msgs[n] ?? `${n}x Combo! ✨`;
+    const W = this.W;
+    const msg = this.add.text(W / 2, BAR_Y + BAR_H + 20, text, {
+      fontFamily: 'Fredoka One', fontSize: '22px', color: '#FCD34D',
+      stroke: '#000000', strokeThickness: 4,
+    }).setOrigin(0.5, 0).setDepth(60).setScrollFactor(0).setAlpha(0);
+
+    this.tweens.add({
+      targets: msg, alpha: 1, y: BAR_Y + BAR_H + 14,
+      duration: 180, ease: 'Power2',
+      onComplete: () => {
+        this.time.delayedCall(1100, () => {
+          this.tweens.add({ targets: msg, alpha: 0, duration: 280, onComplete: () => msg.destroy() });
+        });
+      },
+    });
   }
 
   // ── Buildings ─────────────────────────────────────────────────────────────────
 
-  // prefill=true: buildings already on-screen at game start — windows in the
-  // right half can be pre-lit so the screen isn't totally dark from the start.
   spawnBuilding(prefill = false) {
     const cfg = getLevelCfg(this.level);
     const { floors, winCols } = cfg;
@@ -253,7 +298,7 @@ export class LightsOutScene extends Phaser.Scene {
 
     const container = this.add.container(startX, topY).setDepth(10);
 
-    // ── Facade
+    // Facade
     const facade = this.add.graphics();
     facade.fillStyle(wallColor);
     facade.fillRect(0, ROOF_H, width, height - ROOF_H);
@@ -276,7 +321,7 @@ export class LightsOutScene extends Phaser.Scene {
     }
     container.add(facade);
 
-    // ── Windows — all start OFF; pre-fill can light some in the right half
+    // Windows — all OFF; prefill can pre-light windows in the right half
     const windows: WinInfo[] = [];
     for (let r = 0; r < floors; r++) {
       for (let c = 0; c < winCols; c++) {
@@ -284,11 +329,10 @@ export class LightsOutScene extends Phaser.Scene {
         const floorTop = ROOF_H + r * FLOOR_H;
         const ly = floorTop + (FLOOR_H - WIN_H) / 2;
 
-        // Pre-fill: allow a window to start lit only if it's in the right half
         let state: WinState = 'OFF';
         if (prefill) {
-          const winCenterX = startX + lx + WIN_W / 2;
-          if (winCenterX > this.W / 2 && winCenterX < this.W + 50 && Math.random() < 0.3) {
+          const winCX = startX + lx + WIN_W / 2;
+          if (winCX > this.W / 2 && winCX < this.W + 50 && Math.random() < 0.30) {
             state = Math.random() < 0.30 ? 'OCCUPIED' : 'EMPTY';
           }
         }
@@ -306,8 +350,7 @@ export class LightsOutScene extends Phaser.Scene {
       }
     }
 
-    const building: Building = { container, width, windows };
-    this.buildings.push(building);
+    this.buildings.push({ container, width, windows });
     this.worldRight = startX + width;
   }
 
@@ -346,25 +389,36 @@ export class LightsOutScene extends Phaser.Scene {
     const wy = bldg.container.y + w.ly + WIN_H / 2;
 
     if (w.state === 'OCCUPIED') {
-      this.cameras.main.shake(100, 0.014);
-      const flash = this.add.rectangle(wx, wy, WIN_W + 12, WIN_H + 12, 0xEF4444, 0.7).setDepth(60);
-      this.tweens.add({ targets: flash, alpha: 0, duration: 400, onComplete: () => flash.destroy() });
-      const noTxt = this.add.text(wx, wy - 28, '🚫', { fontSize: '30px' }).setOrigin(0.5).setDepth(61);
-      this.tweens.add({ targets: noTxt, y: wy - 52, alpha: 0, duration: 700, onComplete: () => noTxt.destroy() });
+      // Wrong tap — no shake, just a floating penalty number
+      const penalty = this.add.text(wx, wy - 10, `${SCORE_WRONG}`, {
+        fontFamily: 'Fredoka One', fontSize: '28px', color: '#FF4444',
+        stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0.5, 1).setDepth(62).setScrollFactor(0);
+      // Convert world position to screen position for scrollFactor(0) text
+      penalty.setPosition(wx, wy - 10);
+      this.tweens.add({ targets: penalty, y: wy - 55, alpha: 0, duration: 750, onComplete: () => penalty.destroy() });
+
+      this.streak = 0;
       this.turnOffWindow(bldg, idx);
-      this.changeDanger(WRONG_PENALTY);
+      this.changeScore(SCORE_WRONG);
+
     } else {
       // Correct tap
-      this.scored++;
-      EventBus.emit('game-scored-update', `💡 ${this.scored}`);
-      this.turnOffWindow(bldg, idx);
-
+      this.streak++;
       const pop = this.add.circle(wx, wy, 10, 0xFEF08A, 0.9).setDepth(60);
       this.tweens.add({ targets: pop, scale: 3.5, alpha: 0, duration: 300, onComplete: () => pop.destroy() });
-      const star = this.add.text(wx, wy - 22, '⭐', { fontSize: '24px' }).setOrigin(0.5).setDepth(61);
+      const star = this.add.text(wx, wy - 10, `+${SCORE_CORRECT}`, {
+        fontFamily: 'Fredoka One', fontSize: '22px', color: '#FCD34D',
+        stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0.5, 1).setDepth(62);
       this.tweens.add({ targets: star, y: wy - 50, alpha: 0, duration: 600, onComplete: () => star.destroy() });
 
-      this.changeDanger(-TAP_REWARD);
+      if (this.streak === 5 || this.streak === 10 || this.streak === 15 || this.streak === 20) {
+        this.showStreakMessage(this.streak);
+      }
+
+      this.turnOffWindow(bldg, idx);
+      this.changeScore(SCORE_CORRECT);
     }
   }
 
@@ -377,7 +431,6 @@ export class LightsOutScene extends Phaser.Scene {
     const objs: Phaser.GameObjects.GameObject[] = [];
 
     objs.push(this.add.rectangle(cx, cy, W, H, 0x000000, 0.78).setDepth(80));
-
     objs.push(this.add.text(cx, cy - 165, '🌙 Turn Off Empty Lights!', {
       fontFamily: 'Fredoka One', fontSize: '24px', color: '#FFFFFF',
     }).setOrigin(0.5).setDepth(81));
@@ -386,8 +439,8 @@ export class LightsOutScene extends Phaser.Scene {
     const g1 = this.add.graphics().setDepth(81);
     g1.fillStyle(0xFEF08A); g1.fillRoundedRect(cx - 125, y0, WIN_W + 16, WIN_H + 16, 4);
     g1.lineStyle(2, 0x556080); g1.strokeRoundedRect(cx - 125, y0, WIN_W + 16, WIN_H + 16, 4);
-    objs.push(g1, this.add.text(cx - 117 + WIN_W / 2, y0 + WIN_H + 22, '✅ Tap!', {
-      fontFamily: 'Fredoka One', fontSize: '18px', color: '#4ADE80',
+    objs.push(g1, this.add.text(cx - 117 + WIN_W / 2, y0 + WIN_H + 22, '✅ Tap! (+1)', {
+      fontFamily: 'Fredoka One', fontSize: '17px', color: '#4ADE80',
     }).setOrigin(0.5).setDepth(81));
 
     const g2 = this.add.graphics().setDepth(81);
@@ -396,18 +449,18 @@ export class LightsOutScene extends Phaser.Scene {
     objs.push(g2);
     objs.push(this.add.text(cx + 60 + WIN_W / 2, y0 + (WIN_H + 16) * 0.56, '👤', {
       fontSize: '22px' }).setOrigin(0.5).setDepth(82));
-    objs.push(this.add.text(cx + 60 + WIN_W / 2, y0 + WIN_H + 22, '❌ Leave!', {
-      fontFamily: 'Fredoka One', fontSize: '18px', color: '#F87171',
+    objs.push(this.add.text(cx + 60 + WIN_W / 2, y0 + WIN_H + 22, '❌ Leave! (-3)', {
+      fontFamily: 'Fredoka One', fontSize: '17px', color: '#F87171',
     }).setOrigin(0.5).setDepth(81));
 
-    objs.push(this.add.text(cx, cy + 32, '🟢 Turn off lights → bar goes green\n🔴 Miss lights → bar goes red', {
-      fontFamily: 'Fredoka One', fontSize: '16px', color: '#CBD5E1', align: 'center',
+    objs.push(this.add.text(cx, cy + 32, '🟢 Turn off lights → bar goes green\n🔴 Miss or tap people → bar goes red', {
+      fontFamily: 'Fredoka One', fontSize: '15px', color: '#CBD5E1', align: 'center',
     }).setOrigin(0.5).setDepth(81));
 
-    const btnBg = this.add.rectangle(cx, cy + 115, 190, 50, 0x22C55E).setDepth(81);
+    const btnBg = this.add.rectangle(cx, cy + 108, 190, 50, 0x22C55E).setDepth(81);
     btnBg.setStrokeStyle(3, 0x15803D);
     btnBg.setInteractive();
-    objs.push(btnBg, this.add.text(cx, cy + 115, '🌙 Got It!', {
+    objs.push(btnBg, this.add.text(cx, cy + 108, '🌙 Got It!', {
       fontFamily: 'Fredoka One', fontSize: '22px', color: '#FFFFFF',
     }).setOrigin(0.5).setDepth(82));
 
@@ -423,50 +476,47 @@ export class LightsOutScene extends Phaser.Scene {
     const dt = delta / 1000;
     const cfg = getLevelCfg(this.level);
 
-    // Accelerate toward maxSpeed
-    const elapsed = 120 - this.timeLeft;
+    // Accelerate toward maxSpeed using elapsed scene time
+    const elapsed = (this.time.now - this.sceneStartMs) / 1000;
     const t = Math.min(elapsed / ACCEL_TIME, 1);
     this.scrollSpeed = cfg.minSpeed + (cfg.maxSpeed - cfg.minSpeed) * t;
 
     const dx = this.scrollSpeed * dt;
 
-    // Move all buildings
     for (const b of this.buildings) {
       b.container.x -= dx;
     }
     this.worldRight -= dx;
 
-    // Per-window logic: dynamic lighting + missed-window detection
+    // Per-window: dynamic lighting + missed-window detection
     for (const b of this.buildings) {
       const bx = b.container.x;
       for (const w of b.windows) {
-        const winCenterX = bx + w.lx + WIN_W / 2;
+        const winCX = bx + w.lx + WIN_W / 2;
 
-        // Randomly light up OFF windows — only while in the RIGHT half of screen
-        // (player still has the full left half to react and tap)
-        if (w.state === 'OFF' && winCenterX > W / 2 && winCenterX < W + 100) {
+        // Light up OFF windows only while in the right half of screen
+        if (w.state === 'OFF' && winCX > W / 2 && winCX < W + 100) {
           if (Math.random() < cfg.litRate * dt) {
-            const newState: WinState = Math.random() < 0.30 ? 'OCCUPIED' : 'EMPTY';
-            w.state = newState;
-            this.drawWindow(w.lightGfx, w.lx, w.ly, newState);
-            w.personTxt.setVisible(newState === 'OCCUPIED');
+            const ns: WinState = Math.random() < 0.30 ? 'OCCUPIED' : 'EMPTY';
+            w.state = ns;
+            this.drawWindow(w.lightGfx, w.lx, w.ly, ns);
+            w.personTxt.setVisible(ns === 'OCCUPIED');
           }
         }
 
-        // EMPTY window scrolled off without being tapped → penalty
+        // EMPTY window scrolled off → penalty + reset streak
         if (w.state === 'EMPTY' && bx + w.lx + WIN_W < 0) {
-          w.state = 'OFF';  // prevent double-counting
-          this.changeDanger(MISS_PENALTY);
+          w.state = 'OFF';
+          this.streak = 0;
+          this.changeScore(SCORE_MISS);
         }
       }
     }
 
-    // Spawn new buildings ahead of the right edge
     while (this.worldRight < W + 320) {
       this.spawnBuilding(false);
     }
 
-    // Destroy buildings fully off the left edge
     this.buildings = this.buildings.filter(b => {
       if (b.container.x + b.width < -60) {
         b.container.destroy(true);

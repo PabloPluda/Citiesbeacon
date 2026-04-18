@@ -663,9 +663,9 @@ export default function GameWindow() {
           <ChevronLeft size={24} color="var(--primary)" />
         </button>
 
-        {/* Timer — hidden for CrossingScene (mission 2) which uses lives instead */}
+        {/* Timer — hidden for CrossingScene (2) and LightsOutScene (3) */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          {mId !== 2 && <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />}
+          {mId !== 2 && mId !== 3 && <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />}
           <span style={{
             fontFamily: 'Fredoka One', fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)',
             textShadow: '1px 1px 2px black', letterSpacing: '0.05em',
@@ -674,17 +674,19 @@ export default function GameWindow() {
           </span>
         </div>
 
-        {/* Scored */}
-        <div style={{
-          background: 'rgba(255,255,255,0.92)', borderRadius: 20,
-          padding: '6px 14px', textAlign: 'center',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
-        }}>
-          <div style={{ fontFamily: 'Fredoka One', fontSize: '1.5rem', color: 'var(--primary)', lineHeight: 1 }}>
-            {scored}
+        {/* Scored — hidden for LightsOutScene (uses in-canvas meter bar instead) */}
+        {mId !== 3 && (
+          <div style={{
+            background: 'rgba(255,255,255,0.92)', borderRadius: 20,
+            padding: '6px 14px', textAlign: 'center',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
+          }}>
+            <div style={{ fontFamily: 'Fredoka One', fontSize: '1.5rem', color: 'var(--primary)', lineHeight: 1 }}>
+              {scored}
+            </div>
+            <div style={{ fontFamily: 'Fredoka', fontSize: '0.65rem', color: '#999' }}>SCORED</div>
           </div>
-          <div style={{ fontFamily: 'Fredoka', fontSize: '0.65rem', color: '#999' }}>SCORED</div>
-        </div>
+        )}
       </div>
 
       {/* ─ Overlays ─────────────────────────────────────────────────────────── */}

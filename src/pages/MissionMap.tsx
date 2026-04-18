@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ChevronLeft, Lock } from 'lucide-react';
@@ -18,6 +19,7 @@ export default function MissionMap() {
   const navigate = useNavigate();
   const { getRankInfo, getHighestLevel, getPuzzlePieces } = useProgressStore();
   const { rank, currentCP, nextCP } = getRankInfo();
+  const [startLevels, setStartLevels] = useState<Record<number, number>>({});
 
   return (
     <div style={{
@@ -150,61 +152,94 @@ export default function MissionMap() {
             const highestLevel = getHighestLevel(mission.id);
             const puzzlePieces = getPuzzlePieces(mission.id);
             const isComplete = highestLevel >= 12;
+            const maxPlayable = Math.max(1, highestLevel + 1 > 20 ? 20 : highestLevel + 1);
+            const pickedLevel = startLevels[mission.id] ?? maxPlayable;
 
             return (
-              <motion.div
-                key={mission.id}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => navigate(`/game/${mission.id}`)}
-                style={{
-                  width: '100%', maxWidth: '400px',
-                  backgroundColor: 'white',
-                  borderRadius: '24px', padding: '20px',
-                  display: 'flex', alignItems: 'center', gap: '16px',
-                  boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
-                  cursor: 'pointer',
-                  border: `4px solid ${isComplete ? 'var(--secondary)' : 'var(--primary)'}`,
-                  marginLeft: i % 2 === 0 ? '-20px' : '20px' // Staggered placement
-                }}
-              >
-                <div style={{
-                  minWidth: '64px', height: '64px',
-                  backgroundColor: '#E6F3FF',
-                  borderRadius: '16px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '2.2rem'
-                }}>
-                  {mission.icon}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.3rem', lineHeight: '1.2' }}>{mission.title}</h3>
-                  <p style={{ margin: 0, color: '#888', fontSize: '0.85rem', marginTop: 4 }}>Mission {mission.id} • Active</p>
-                  
-                  {/* Progress bar */}
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontFamily: 'Fredoka', fontSize: '0.78rem', color: 'var(--primary)' }}>
-                        {isComplete ? '✅ Complete!' : highestLevel === 0 ? 'Not started' : `Level ${highestLevel} / 20`}
-                      </span>
-                      <span style={{ fontFamily: 'Fredoka', fontSize: '0.78rem', color: '#aaa' }}>
-                        🧩 {puzzlePieces}/20
-                      </span>
-                    </div>
-                    <div style={{ height: 6, background: '#EEE', borderRadius: 99 }}>
-                      <div style={{
-                        height: '100%',
-                        width: `${(highestLevel / 20) * 100}%`,
-                        background: isComplete ? 'var(--secondary)' : 'var(--primary)',
-                        borderRadius: 99,
-                        transition: 'width 0.4s ease',
-                      }} />
+              <div key={mission.id} style={{
+                width: '100%', maxWidth: '400px',
+                marginLeft: i % 2 === 0 ? '-20px' : '20px',
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <motion.div
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => navigate(`/game/${mission.id}`, { state: { startLevel: pickedLevel } })}
+                  style={{
+                    backgroundColor: 'white',
+                    borderRadius: '24px', padding: '20px',
+                    display: 'flex', alignItems: 'center', gap: '16px',
+                    boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
+                    cursor: 'pointer',
+                    border: `4px solid ${isComplete ? 'var(--secondary)' : 'var(--primary)'}`,
+                  }}
+                >
+                  <div style={{
+                    minWidth: '64px', height: '64px',
+                    backgroundColor: '#E6F3FF',
+                    borderRadius: '16px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '2.2rem'
+                  }}>
+                    {mission.icon}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.3rem', lineHeight: '1.2' }}>{mission.title}</h3>
+                    <p style={{ margin: 0, color: '#888', fontSize: '0.85rem', marginTop: 4 }}>Mission {mission.id} • Active</p>
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ fontFamily: 'Fredoka', fontSize: '0.78rem', color: 'var(--primary)' }}>
+                          {isComplete ? '✅ Complete!' : highestLevel === 0 ? 'Not started' : `Level ${highestLevel} / 20`}
+                        </span>
+                        <span style={{ fontFamily: 'Fredoka', fontSize: '0.78rem', color: '#aaa' }}>
+                          🧩 {puzzlePieces}/20
+                        </span>
+                      </div>
+                      <div style={{ height: 6, background: '#EEE', borderRadius: 99 }}>
+                        <div style={{
+                          height: '100%',
+                          width: `${(highestLevel / 20) * 100}%`,
+                          background: isComplete ? 'var(--secondary)' : 'var(--primary)',
+                          borderRadius: 99,
+                          transition: 'width 0.4s ease',
+                        }} />
+                      </div>
                     </div>
                   </div>
+                  <div style={{ fontSize: '1.6rem' }}>
+                    {isComplete ? '🏆' : '▶️'}
+                  </div>
+                </motion.div>
+
+                {/* Level selector */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+                  background: 'rgba(255,255,255,0.85)', borderRadius: 16,
+                  padding: '8px 16px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                }}>
+                  <button
+                    onClick={() => setStartLevels(prev => ({ ...prev, [mission.id]: Math.max(1, pickedLevel - 1) }))}
+                    style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      border: 'none', background: 'var(--primary)', color: '#fff',
+                      fontFamily: 'Fredoka One', fontSize: '1.2rem',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >−</button>
+                  <span style={{ fontFamily: 'Fredoka One', fontSize: '1rem', color: 'var(--text-primary)', minWidth: 80, textAlign: 'center' }}>
+                    Level {pickedLevel}
+                  </span>
+                  <button
+                    onClick={() => setStartLevels(prev => ({ ...prev, [mission.id]: Math.min(20, pickedLevel + 1) }))}
+                    style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      border: 'none', background: 'var(--primary)', color: '#fff',
+                      fontFamily: 'Fredoka One', fontSize: '1.2rem',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >+</button>
                 </div>
-                <div style={{ fontSize: '1.6rem' }}>
-                  {isComplete ? '🏆' : '▶️'}
-                </div>
-              </motion.div>
+              </div>
             );
           })}
         </div>

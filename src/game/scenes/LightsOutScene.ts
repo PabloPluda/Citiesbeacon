@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
+import { useProgressStore } from '../../store/progressStore';
+
+const MISSION_ID = 3;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const WIN_W      = 52;
@@ -33,7 +36,7 @@ function getLevelCfg(level: number) {
   const floors   = level <= 2 ? 2 : level <= 5 ? 4 : level <= 10 ? 6 : 8;
   const winCols  = level <= 2 ? 2 : level <= 5 ? 3 : 4;
   const minSpeed = 80;
-  const maxSpeed = Math.min(88 + level * 9, 200);
+  const maxSpeed = Math.min(86 + level * 5, 150);
   const litRate  = 0.38 + level * 0.018;
   return { floors, winCols, minSpeed, maxSpeed, litRate };
 }
@@ -88,7 +91,7 @@ export class LightsOutScene extends Phaser.Scene {
   constructor() { super('LightsOutScene'); }
 
   init(data?: { level?: number }) {
-    this.level       = data?.level ?? 1;
+    this.level       = data?.level ?? Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20);
     this.score       = 0;
     this.streak      = 0;
     this.done        = false;
@@ -333,7 +336,7 @@ export class LightsOutScene extends Phaser.Scene {
         if (prefill) {
           const winCX = startX + lx + WIN_W / 2;
           if (winCX > this.W / 2 && winCX < this.W + 50 && Math.random() < 0.30) {
-            state = Math.random() < 0.30 ? 'OCCUPIED' : 'EMPTY';
+            state = Math.random() < 0.50 ? 'OCCUPIED' : 'EMPTY';
           }
         }
 
@@ -497,7 +500,7 @@ export class LightsOutScene extends Phaser.Scene {
         // Light up OFF windows only while in the right half of screen
         if (w.state === 'OFF' && winCX > W / 2 && winCX < W + 100) {
           if (Math.random() < cfg.litRate * dt) {
-            const ns: WinState = Math.random() < 0.30 ? 'OCCUPIED' : 'EMPTY';
+            const ns: WinState = Math.random() < 0.50 ? 'OCCUPIED' : 'EMPTY';
             w.state = ns;
             this.drawWindow(w.lightGfx, w.lx, w.ly, ns);
             w.personTxt.setVisible(ns === 'OCCUPIED');

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Phaser from 'phaser';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
@@ -134,16 +134,17 @@ type Phase = 'playing' | 'levelComplete' | 'timeUp' | 'puzzleReveal';
 export default function GameWindow() {
   const navigate = useNavigate();
   const { missionId } = useParams();
+  const location = useLocation();
   const mId = parseInt(missionId || '1', 10);
 
   const gameRef = useRef<Phaser.Game | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { completeLevel, getHighestLevel } = useProgressStore();
-  
-  // Calculate initial level to jump right in
+
+  const forcedLevel = (location.state as { startLevel?: number } | null)?.startLevel;
   const highest = getHighestLevel(mId);
-  const initial = highest >= 20 ? 20 : highest + 1; // Play next uncompleted level or max
+  const initial = forcedLevel ?? (highest >= 20 ? 20 : highest + 1);
 
   const levelRef = useRef(initial);
   const [level, setLevel] = useState(initial);
@@ -172,11 +173,11 @@ export default function GameWindow() {
       gameRef.current = new Phaser.Game(createGameConfig(containerRef.current, SceneClass));
     }
 
-    // Inject level data into Phaser the very first time it loads
+    // Only override if a specific level was requested from the map selector
     const onSceneReady = () => {
-       if (levelRef.current > 1) {
-         EventBus.emit('restart-scene', { level: levelRef.current });
-       }
+      if (forcedLevel) {
+        EventBus.emit('restart-scene', { level: forcedLevel });
+      }
     };
     EventBus.once('current-scene-ready', onSceneReady);
 

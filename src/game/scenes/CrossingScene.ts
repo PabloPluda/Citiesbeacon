@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
+import { useProgressStore } from '../../store/progressStore';
+const MISSION_ID = 2;
 
 // ─── Level config ──────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
@@ -333,7 +335,13 @@ export class CrossingScene extends Phaser.Scene {
   constructor() { super('CrossingScene'); }
 
   init(data?: { level?: number }) {
-    this.level = data?.level || 1;
+    if (data?.level !== undefined) {
+      this.level = data.level;
+    } else {
+      const reg = this.registry?.get('startLevel') as number | undefined;
+      if (reg != null) { this.registry.remove('startLevel'); this.level = reg; }
+      else { this.level = Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20); }
+    }
     this.scored = 0;
     this.crossCount = getLevelCfg(this.level).crossings;
     this.done = false;

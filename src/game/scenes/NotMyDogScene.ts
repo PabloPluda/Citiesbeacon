@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
+import { useProgressStore } from '../../store/progressStore';
+const MISSION_ID = 5;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Cell { N: boolean; S: boolean; E: boolean; W: boolean }
@@ -242,7 +244,13 @@ export class NotMyDogScene extends Phaser.Scene {
 
   // ── init ──────────────────────────────────────────────────
   init(data?: { level?: number }) {
-    this.level  = data?.level ?? 1;
+    if (data?.level !== undefined) {
+      this.level = data.level;
+    } else {
+      const reg = this.registry?.get('startLevel') as number | undefined;
+      if (reg != null) { this.registry.remove('startLevel'); this.level = reg; }
+      else { this.level = Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20); }
+    }
     this.cfg    = getLevelConfig(this.level);
     this.timeLeft = this.cfg.time;
     this.done   = false;

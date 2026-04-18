@@ -94,7 +94,13 @@ export class LightsOutScene extends Phaser.Scene {
   constructor() { super('LightsOutScene'); }
 
   init(data?: { level?: number }) {
-    this.level       = data?.level ?? Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20);
+    if (data?.level !== undefined) {
+      this.level = data.level;
+    } else {
+      const reg = this.registry?.get('startLevel') as number | undefined;
+      if (reg != null) { this.registry.remove('startLevel'); this.level = reg; }
+      else { this.level = Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20); }
+    }
     this.score       = 0;
     this.streak      = 0;
     this.done        = false;

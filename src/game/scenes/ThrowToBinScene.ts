@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
+import { useProgressStore } from '../../store/progressStore';
+const MISSION_ID = 1;
 
 const LEVELS = [
   { trashGoal:10, spawnRate:2400, time:180 }, // L1
@@ -47,7 +49,13 @@ export class ThrowToBinScene extends Phaser.Scene {
   constructor() { super('ThrowToBinScene'); }
 
   init(data?: { level?: number }) {
-    this.level = data?.level ?? 1;
+    if (data?.level !== undefined) {
+      this.level = data.level;
+    } else {
+      const reg = this.registry?.get('startLevel') as number | undefined;
+      if (reg != null) { this.registry.remove('startLevel'); this.level = reg; }
+      else { this.level = Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20); }
+    }
     this.scored = 0; this.timeLeft = this.cfg.time;
     this.done = false; this.tutorialActive = false;
     this.isDragging = false; this.selectedTrash = null;

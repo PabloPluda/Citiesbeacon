@@ -145,7 +145,6 @@ export default function GameWindow() {
   const forcedLevel = (location.state as { startLevel?: number } | null)?.startLevel;
   const highest = getHighestLevel(mId);
   const initial = forcedLevel ?? (highest >= 20 ? 20 : highest + 1);
-  const forcedLevelApplied = useRef(false);
 
   const levelRef = useRef(initial);
   const [level, setLevel] = useState(initial);
@@ -171,19 +170,11 @@ export default function GameWindow() {
   useEffect(() => {
     if (containerRef.current && !gameRef.current) {
       const SceneClass = SCENE_MAP[mId] || ThrowToBinScene;
-      gameRef.current = new Phaser.Game(createGameConfig(containerRef.current, SceneClass));
+      const game = new Phaser.Game(createGameConfig(containerRef.current, SceneClass));
+      // Pass forced level via game registry so scene init() picks it up on first boot
+      if (forcedLevel) game.registry.set('startLevel', forcedLevel);
+      gameRef.current = game;
     }
-
-    // Only override if a specific level was requested from the map selector.
-    // setTimeout(0) defers the emit so scene's create() finishes registering
-    // its restart-scene listener before we fire it.
-    const onSceneReady = () => {
-      if (forcedLevel && !forcedLevelApplied.current) {
-        forcedLevelApplied.current = true;
-        setTimeout(() => EventBus.emit('restart-scene', { level: forcedLevel }), 0);
-      }
-    };
-    EventBus.once('current-scene-ready', onSceneReady);
 
     const onTimer = (t: number) => {
       setTimeLeft(t);

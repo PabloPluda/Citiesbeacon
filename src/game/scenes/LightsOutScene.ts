@@ -146,6 +146,28 @@ export class LightsOutScene extends Phaser.Scene {
     // ── Lives HUD
     this.refreshLivesHUD();
 
+    // ── Global tap handler — checks window bounds manually (avoids container input issues)
+    const onTap = (pointer: Phaser.Input.Pointer) => {
+      if (this.done) return;
+      const px = pointer.x;
+      const py = pointer.y;
+      for (const bldg of this.buildings) {
+        const bx = bldg.container.x;
+        const by = bldg.container.y;
+        for (let i = 0; i < bldg.windows.length; i++) {
+          const w = bldg.windows[i];
+          if (w.state === 'OFF') continue;
+          if (px >= bx + w.lx && px <= bx + w.lx + WIN_W &&
+              py >= by + w.ly && py <= by + w.ly + WIN_H) {
+            this.handleTap(bldg, i);
+            return;
+          }
+        }
+      }
+    };
+    this.input.on('pointerdown', onTap);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.off('pointerdown', onTap));
+
     // ── Pre-fill visible screen
     while (this.worldRight < W + 200) {
       this.spawnBuilding();
@@ -168,11 +190,6 @@ export class LightsOutScene extends Phaser.Scene {
     const roofColor = ROOF_COLORS[Phaser.Math.Between(0, ROOF_COLORS.length - 1)];
 
     const container = this.add.container(startX, topY).setDepth(10);
-    container.setSize(width, height);
-    container.setInteractive(
-      new Phaser.Geom.Rectangle(0, 0, width, height),
-      Phaser.Geom.Rectangle.Contains,
-    );
 
     // ── Facade
     const facade = this.add.graphics();
@@ -235,20 +252,7 @@ export class LightsOutScene extends Phaser.Scene {
       }
     }
 
-    // Tap handler using container local coords
     const building: Building = { container, width, windows };
-    container.on('pointerdown', (_ptr: unknown, localX: number, localY: number) => {
-      if (this.done) return;
-      for (let i = 0; i < windows.length; i++) {
-        const w = windows[i];
-        if (w.state === 'OFF') continue;
-        if (localX >= w.lx && localX <= w.lx + WIN_W && localY >= w.ly && localY <= w.ly + WIN_H) {
-          this.handleTap(building, i);
-          break;
-        }
-      }
-    });
-
     this.buildings.push(building);
     this.worldRight = startX + width;
   }

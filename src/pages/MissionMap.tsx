@@ -17,7 +17,7 @@ const HOUSE_COLORS = ['#EF4444', '#3B82F6', '#EAB308', '#EC4899', '#8B5CF6', '#F
 
 export default function MissionMap() {
   const navigate = useNavigate();
-  const { getRankInfo, getHighestLevel, getPuzzlePieces } = useProgressStore();
+  const { getRankInfo, getHighestLevel, getPuzzlePieces, setHighestLevel } = useProgressStore();
   const { rank, currentCP, nextCP } = getRankInfo();
   const [startLevels, setStartLevels] = useState<Record<number, number>>({});
 
@@ -163,7 +163,10 @@ export default function MissionMap() {
               }}>
                 <motion.div
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => navigate(`/game/${mission.id}`, { state: { startLevel: pickedLevel } })}
+                  onClick={() => {
+                    setHighestLevel(mission.id, pickedLevel - 1);
+                    navigate(`/game/${mission.id}`, { state: { startLevel: pickedLevel } });
+                  }}
                   style={{
                     backgroundColor: 'white',
                     borderRadius: '24px', padding: '20px',

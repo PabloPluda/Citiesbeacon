@@ -9,6 +9,7 @@ interface GameState {
   addCityPoints: (points: number) => void;
   updateHighScore: (missionId: number, score: number) => void;
   completeLevel: (missionId: number, level: number) => void;
+  setHighestLevel: (missionId: number, level: number) => void;
   getHighestLevel: (missionId: number) => number;
   getPuzzlePieces: (missionId: number) => number;
   getRankInfo: () => { rank: string; nextRank: string; progress: number; currentCP: number; nextCP: number };
@@ -52,6 +53,11 @@ export const useProgressStore = create<GameState>()(
           cityPoints: s.cityPoints + earnedCP,
         };
       }),
+
+      setHighestLevel: (missionId, level) => set((s) => ({
+        highestLevel: { ...s.highestLevel, [missionId]: level },
+        puzzlePieces: { ...s.puzzlePieces, [missionId]: Math.min(20, level) },
+      })),
 
       getHighestLevel: (missionId) => get().highestLevel[missionId] || 0,
       getPuzzlePieces: (missionId) => get().puzzlePieces[missionId] || 0,

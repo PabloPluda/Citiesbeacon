@@ -33,19 +33,22 @@ const ROOF_COLORS = [0x3B4A6B, 0x2D3A5C, 0x3A3054, 0x4A3020, 0x1E3B28];
 
 // ─── Level helpers ────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
-  const floors   = level <= 2 ? 2 : level <= 5 ? 4 : level <= 10 ? 6 : 8;
-  const winCols  = level <= 2 ? 2 : level <= 5 ? 3 : 4;
-  const minSpeed = 58;
-  const maxSpeed = Math.min(66 + level * 4, 110);
-  const litRate  = 0.18 + level * 0.010;
-  return { floors, winCols, minSpeed, maxSpeed, litRate };
+  let minFloors: number, maxFloors: number, winCols: number;
+  if (level <= 3)       { minFloors = 2; maxFloors = 4; winCols = 2; }
+  else if (level <= 8)  { minFloors = 3; maxFloors = 5; winCols = 3; }
+  else if (level <= 15) { minFloors = 4; maxFloors = 8; winCols = 3; }
+  else                  { minFloors = 6; maxFloors = 8; winCols = 4; }
+  const minSpeed = 50;
+  const maxSpeed = Math.min(56 + level * 3, 85);
+  const litRate  = 0.13 + level * 0.008;
+  return { minFloors, maxFloors, winCols, minSpeed, maxSpeed, litRate };
 }
 
 function getThresholds(level: number): { win: number; lose: number } {
   if (level <= 3)  return { win: 20, lose: 20 };
-  if (level <= 7)  return { win: 40, lose: 40 };
-  if (level <= 15) return { win: 60, lose: 60 };
-  return { win: 80, lose: 80 };
+  if (level <= 8)  return { win: 50, lose: 50 };
+  if (level <= 15) return { win: 70, lose: 70 };
+  return { win: 100, lose: 100 };
 }
 
 function bldgDims(floors: number, winCols: number) {
@@ -291,8 +294,9 @@ export class LightsOutScene extends Phaser.Scene {
 
   spawnBuilding(prefill = false) {
     const cfg = getLevelCfg(this.level);
-    const { floors, winCols } = cfg;
-    const { width, height }   = bldgDims(floors, winCols);
+    const floors = Phaser.Math.Between(cfg.minFloors, cfg.maxFloors);
+    const { winCols } = cfg;
+    const { width, height } = bldgDims(floors, winCols);
     const startX = this.worldRight + BLDG_GAP;
     const topY   = this.groundY - height;
 
@@ -362,7 +366,7 @@ export class LightsOutScene extends Phaser.Scene {
     if (state !== 'OFF') {
       g.fillStyle(0xFEF08A, 0.18);
       g.fillRoundedRect(lx - 6, ly - 6, WIN_W + 12, WIN_H + 12, 4);
-      g.fillStyle(state === 'OCCUPIED' ? 0xFED7AA : 0xFEF08A);
+      g.fillStyle(0xFEF08A);
       g.fillRoundedRect(lx, ly, WIN_W, WIN_H, 3);
       g.fillStyle(0xFFFDE7, 0.6);
       g.fillRoundedRect(lx + 4, ly + 4, WIN_W - 8, WIN_H / 2, 2);

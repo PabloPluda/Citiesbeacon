@@ -2,70 +2,70 @@ import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
 
-const MISSION_ID   = 4;
-const HUD_H        = 58;
-const PAD          = 10;
-const BTN_W        = 106;
-const BTN_H        = 58;
-const TANK_PASSIVE = 0.18; // %/sec base drain when all closed
+const MISSION_ID  = 4;
+const RIVER_RATIO = 0.28;   // top 28% = river/nature zone
+const FLOOR_RATIO = 0.84;   // character floor at 84%
+const CHAR_SPEED  = 145;    // px/sec
+const CLOSE_SECS  = 1.0;    // seconds to close a faucet
+
+// ─── Level config ─────────────────────────────────────────────────────────────
+function getLevelCfg(level: number) {
+  const time           = 60;
+  const openInterval   = Math.max(1.2, 5.5 - level * 0.18);
+  const maxDripping    = Math.min(3, 1 + Math.floor(level / 3));
+  const drainPerFaucet = 1.2 + level * 0.12;   // %/sec per open faucet
+  return { time, openInterval, maxDripping, drainPerFaucet };
+}
+
+// Level 1-3: 4 faucets (2 left, 2 right)
+const FAUCET_XR = [0.14, 0.35, 0.65, 0.86];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface FaucetDef {
-  floor: 0 | 1 | 2 | 3; // 0=garden, 1=kitchen, 2=bath, 3=top-bath
-  xr:    number;
-  label: string;
-  icon:  string;
-  drain: number; // extra %/sec when open
-}
-
-const DEFS: FaucetDef[] = [
-  { floor: 3, xr: 0.20, label: 'Bañadera',   icon: '🛁',  drain: 3.0 },
-  { floor: 3, xr: 0.68, label: 'Lavabo',      icon: '🚰',  drain: 0.9 },
-  { floor: 2, xr: 0.20, label: 'Ducha',       icon: '🚿',  drain: 2.2 },
-  { floor: 2, xr: 0.68, label: 'Lavabo',      icon: '🪥',  drain: 0.9 },
-  { floor: 1, xr: 0.20, label: 'Bacha',       icon: '🍳',  drain: 1.5 },
-  { floor: 1, xr: 0.68, label: 'Lavaplatos',  icon: '🍽️', drain: 1.3 },
-  { floor: 0, xr: 0.22, label: 'Aspersor',    icon: '🌿',  drain: 2.5 },
-  { floor: 0, xr: 0.70, label: 'Manguera',    icon: '💦',  drain: 2.0 },
-];
-
-function getLevelCfg(level: number) {
-  const time         = Math.min(40 + level * 4, 100);
-  const openInterval = Math.max(1.0, 4.8 - level * 0.17);
-  const maxOpen      = Math.min(6, 1 + Math.floor(level / 3));
-  const overflowTime = Math.max(3.0, 8.5 - level * 0.25);
-  const drainMult    = 1 + level * 0.06;
-  return { time, openInterval, maxOpen, overflowTime, drainMult };
-}
-
 interface Faucet {
-  def:        FaucetDef;
-  isOpen:     boolean;
-  openTimer:  number;
-  overflowing:boolean;
-  btnGfx:     Phaser.GameObjects.Graphics;
-  waterGfx:   Phaser.GameObjects.Graphics;
-  ofGfx:      Phaser.GameObjects.Graphics;
-  statusTxt:  Phaser.GameObjects.Text;
-  bx: number; by: number;
+  id:         number;
+  x:          number;
+  side:       1 | -1;   // 1 = spout faces right, -1 = left
+  isDripping: boolean;
+  queued:     boolean;
+  bodyGfx:    Phaser.GameObjects.Graphics;
+  dropsGfx:   Phaser.GameObjects.Graphics;
+  badge:      Phaser.GameObjects.Text;
+  dirtyBody:  boolean;  // needs redraw
 }
+
+type CharState = 'idle' | 'moving' | 'closing';
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
 export class WaterSaverScene extends Phaser.Scene {
-  level     = 1;
-  timeLeft  = 45;
-  done      = false;
-  tankPct   = 100;
+  level    = 1;
+  timeLeft = 60;
+  done     = false;
+  waterPct = 100;
+  lastVitPct = 101;
 
-  faucets:  Faucet[] = [];
-  tankGfx!: Phaser.GameObjects.Graphics;
-  pctTxt!:  Phaser.GameObjects.Text;
-  nextOpen  = 3.0;
-  dropPhase = 0;
+  faucets:  Faucet[]   = [];
+  queue:    number[]   = [];
+  charState: CharState = 'idle';
+  charX    = 0;
+  charY    = 0;
+  closingTimer = 0;
+  currentId: number | null = null;
 
+  charGfx!:      Phaser.GameObjects.Graphics;
+  toolTxt!:      Phaser.GameObjects.Text;
+  riverFillGfx!: Phaser.GameObjects.Graphics;
+  waveGfx!:      Phaser.GameObjects.Graphics;
+  pctTxt!:       Phaser.GameObjects.Text;
+  treeGfxList:   Phaser.GameObjects.Graphics[] = [];
+  flowerGfxList: Phaser.GameObjects.Graphics[] = [];
+
+  nextOpen   = 3.0;
+  dropPhase  = 0;
+  walkPhase  = 0;
+  waveOff    = 0;
+  riverH     = 0;
+  floorY     = 0;
   W = 0; H = 0;
-  roofY = 0; roofH = 0; floorH = 0; gardenH = 0;
-  bldX  = 0; bldW  = 0;
 
   constructor() { super('WaterSaverScene'); }
 
@@ -77,11 +77,19 @@ export class WaterSaverScene extends Phaser.Scene {
       if (reg != null) { this.registry.remove('startLevel'); this.level = reg; }
       else { this.level = Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20); }
     }
-    this.tankPct   = 100;
-    this.done      = false;
-    this.faucets   = [];
-    this.nextOpen  = Math.max(1.5, 4.0 - this.level * 0.1);
-    this.dropPhase = 0;
+    this.waterPct    = 100;
+    this.lastVitPct  = 101;
+    this.done        = false;
+    this.faucets     = [];
+    this.queue       = [];
+    this.charState   = 'idle';
+    this.currentId   = null;
+    this.dropPhase   = 0;
+    this.walkPhase   = 0;
+    this.waveOff     = 0;
+    this.treeGfxList = [];
+    this.flowerGfxList = [];
+    this.nextOpen = Math.max(2.0, 5.0 - this.level * 0.12);
   }
 
   create() {
@@ -90,29 +98,23 @@ export class WaterSaverScene extends Phaser.Scene {
     const W = this.W, H = this.H;
     const cfg = getLevelCfg(this.level);
     this.timeLeft = cfg.time;
+    this.riverH   = Math.round(H * RIVER_RATIO);
+    this.floorY   = Math.round(H * FLOOR_RATIO);
+    this.charX    = W / 2;
+    this.charY    = this.floorY;
 
     EventBus.emit('current-scene-ready', this);
     EventBus.emit('game-timer', this.timeLeft);
-    EventBus.emit('game-scored-update', '💧100%');
 
     const onRestart = (d: { level: number }) => setTimeout(() => this.scene.restart(d), 0);
     EventBus.on('restart-scene', onRestart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', onRestart));
 
-    // Layout
-    this.bldX    = PAD;
-    this.bldW    = W - PAD * 2;
-    const bldH   = H - HUD_H;
-    this.roofH   = Math.round(bldH * 0.13);
-    this.gardenH = Math.round(bldH * 0.20);
-    this.floorH  = Math.round((bldH - this.roofH - this.gardenH) / 3);
-    this.roofY   = HUD_H;
-
-    this.drawBuilding();
-    this.createFaucets();
-    this.buildTankHUD();
-
-    if (this.level === 1) this.showHint();
+    this.buildBg();
+    this.buildRiver();
+    this.buildPipes();
+    this.buildFaucets();
+    this.buildCharacter();
 
     this.time.addEvent({
       delay: 1000, loop: true,
@@ -128,336 +130,426 @@ export class WaterSaverScene extends Phaser.Scene {
     });
   }
 
-  // ── Layout helpers ────────────────────────────────────────────────────────────
+  // ── Backgrounds ───────────────────────────────────────────────────────────────
 
-  secTop(floor: 0 | 1 | 2 | 3): number {
-    // floor 3 = top-bath (just below roof), 2 = bath, 1 = kitchen, 0 = garden (bottom)
-    return this.roofY + this.roofH + (3 - floor) * this.floorH;
-  }
-
-  secH(floor: 0 | 1 | 2 | 3): number {
-    return floor === 0 ? this.gardenH : this.floorH;
-  }
-
-  // ── Building visuals ──────────────────────────────────────────────────────────
-
-  drawBuilding() {
+  buildBg() {
     const W = this.W, H = this.H;
-    const bx = this.bldX, bw = this.bldW;
+    const rH = this.riverH;
 
-    // Sky backdrop
-    const bg = this.add.graphics().setDepth(0);
-    bg.fillGradientStyle(0x0B1426, 0x0B1426, 0x1A2744, 0x1A2744, 1);
-    bg.fillRect(0, 0, W, H);
+    // Room walls / floor
+    const room = this.add.graphics().setDepth(0);
+    room.fillStyle(0xFFFBF0);
+    room.fillRect(0, rH, W, H - rH);
+    // Subtle wall lines
+    room.lineStyle(1, 0xE8DCC8, 0.6);
+    for (let y = rH + 32; y < this.floorY; y += 32) {
+      room.lineBetween(0, y, W, y);
+    }
+    // Floor tile strip
+    room.fillStyle(0xD6C9B0);
+    room.fillRect(0, this.floorY + 3, W, H - this.floorY - 3);
+    // Floor line
+    room.lineStyle(3, 0xB0A090, 0.8);
+    room.lineBetween(0, this.floorY + 3, W, this.floorY + 3);
+  }
 
-    // Floor sections
-    type Sec = { y: number; h: number; fill: number; border: number; lbl: string };
-    const secs: Sec[] = [
-      { y: this.roofY,    h: this.roofH,   fill: 0x1B2845, border: 0x60A5FA, lbl: 'Azotea 🏗️' },
-      { y: this.secTop(3), h: this.floorH,  fill: 0x16293F, border: 0x7DD3FC, lbl: 'Piso 3 · Baño' },
-      { y: this.secTop(2), h: this.floorH,  fill: 0x16293F, border: 0x7DD3FC, lbl: 'Piso 2 · Baño' },
-      { y: this.secTop(1), h: this.floorH,  fill: 0x2A1F18, border: 0xFBBF24, lbl: 'Piso 1 · Cocina' },
-      { y: this.secTop(0), h: this.gardenH, fill: 0x142B16, border: 0x4ADE80, lbl: 'Jardín 🌿' },
-    ];
+  // ── River zone ────────────────────────────────────────────────────────────────
 
-    for (const s of secs) {
-      const g = this.add.graphics().setDepth(1);
-      g.fillStyle(s.fill);
-      g.fillRect(bx, s.y, bw, s.h);
-      g.lineStyle(1.5, s.border, 0.3);
-      g.strokeRect(bx, s.y, bw, s.h);
-      this.add.text(bx + 10, s.y + 5, s.lbl, {
-        fontFamily: 'Fredoka One', fontSize: '11px',
-        color: '#' + s.border.toString(16).padStart(6, '0'),
-      }).setAlpha(0.75).setDepth(4);
+  buildRiver() {
+    const W = this.W, H = this.H;
+    const rH = this.riverH;
+
+    // Sky
+    const sky = this.add.graphics().setDepth(1);
+    sky.fillGradientStyle(0x87CEEB, 0x87CEEB, 0xB8E4F7, 0xB8E4F7, 1);
+    sky.fillRect(0, 0, W, rH * 0.5);
+
+    // Static river bank (grass)
+    const bank = this.add.graphics().setDepth(1);
+    bank.fillStyle(0x4ADE80);
+    bank.fillRect(0, rH * 0.45, W, rH * 0.55);
+
+    // Lower bright grass strip at river bottom
+    bank.fillStyle(0x16A34A);
+    bank.fillRect(0, rH - 14, W, 14);
+
+    // River channel bed (always visible)
+    bank.fillStyle(0x0EA5E9);
+    bank.fillRoundedRect(8, rH * 0.38, W - 16, rH * 0.42, 8);
+
+    // Animated water fill (redrawn each frame)
+    this.riverFillGfx = this.add.graphics().setDepth(3);
+    this.waveGfx      = this.add.graphics().setDepth(4);
+
+    // Trees
+    const treeXs = [W * 0.07, W * 0.22, W * 0.50, W * 0.78, W * 0.93];
+    for (const tx of treeXs) {
+      const g = this.add.graphics().setDepth(5);
+      this.drawTree(g, tx, rH * 0.55, 1);
+      this.treeGfxList.push(g);
     }
 
-    // Building frame
-    const frame = this.add.graphics().setDepth(5);
-    frame.lineStyle(3, 0x4A5568, 0.7);
-    frame.strokeRect(bx, this.roofY, bw, H - this.roofY);
+    // Flowers
+    const flowerData = [
+      { x: W * 0.13, c: 0xFF6B6B }, { x: W * 0.30, c: 0xFFD93D },
+      { x: W * 0.44, c: 0xFF8E53 }, { x: W * 0.56, c: 0x86EFAC },
+      { x: W * 0.70, c: 0xFFD93D }, { x: W * 0.87, c: 0xFF6B6B },
+    ];
+    for (const fd of flowerData) {
+      const g = this.add.graphics().setDepth(5);
+      this.drawFlower(g, fd.x, rH * 0.42, 1, fd.c);
+      this.flowerGfxList.push(g);
+    }
 
-    this.drawTankVisual();
-    this.drawRoomDecor();
+    // Percentage text
+    this.pctTxt = this.add.text(W / 2, rH * 0.62, '💧 100%', {
+      fontFamily: 'Fredoka One', fontSize: '20px',
+      color: '#0C4A6E', stroke: '#FFFFFF', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(8);
   }
 
-  drawTankVisual() {
-    const bx = this.bldX, bw = this.bldW;
-    const rY = this.roofY, rH = this.roofH;
-    const cx = bx + bw / 2;
-    const cy = rY + rH * 0.55;
-    const tw = 66, th = rH * 0.50;
-
-    const g = this.add.graphics().setDepth(3);
-    g.lineStyle(3, 0x60A5FA, 0.85);
-    g.strokeRect(cx - tw / 2, cy - th / 2, tw, th);
-    g.lineStyle(2, 0x60A5FA, 0.55);
-    g.lineBetween(cx - tw / 2 - 5, cy - th / 2, cx + tw / 2 + 5, cy - th / 2);
-    g.lineStyle(3, 0x60A5FA, 0.45);
-    g.lineBetween(cx, cy + th / 2, cx, rY + rH + 2);
-    g.lineStyle(2, 0x60A5FA, 0.25);
-    g.lineBetween(bx + 18, rY + rH, cx, rY + rH);
-    g.lineBetween(cx, rY + rH, bx + bw - 18, rY + rH);
-    this.add.text(cx, cy + 2, '🏗️', { fontSize: '20px' }).setOrigin(0.5).setDepth(4);
+  drawTree(g: Phaser.GameObjects.Graphics, x: number, baseY: number, vit: number) {
+    g.clear();
+    const crownColor = vit > 0.6 ? 0x16A34A : vit > 0.3 ? 0xCA8A04 : 0x92400E;
+    const darkCrown  = vit > 0.6 ? 0x15803D : vit > 0.3 ? 0xA16207 : 0x78350F;
+    g.fillStyle(0x78350F);
+    g.fillRect(x - 4, baseY - 22, 8, 22);
+    g.fillStyle(crownColor);
+    g.fillCircle(x, baseY - 26, 17);
+    if (vit > 0.35) {
+      g.fillStyle(darkCrown);
+      g.fillCircle(x - 8, baseY - 22, 11);
+      g.fillCircle(x + 8, baseY - 20, 10);
+    }
   }
 
-  drawRoomDecor() {
-    const bx = this.bldX, bw = this.bldW;
-    const fh  = this.floorH;
-    const gh  = this.gardenH;
+  drawFlower(g: Phaser.GameObjects.Graphics, x: number, y: number, vit: number, color: number) {
+    g.clear();
+    const stemColor = vit > 0.5 ? 0x16A34A : 0xCA8A04;
+    g.lineStyle(2, stemColor);
+    g.lineBetween(x, y, x, y + 14);
+    if (vit < 0.25) return;
+    g.fillStyle(color);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      g.fillCircle(x + Math.cos(a) * 5, y + Math.sin(a) * 5, 4);
+    }
+    g.fillStyle(0xFEF08A);
+    g.fillCircle(x, y, 3);
+  }
 
-    // Piso 3 — bathtub outline left, sink circle right
-    const y3 = this.secTop(3);
-    const d3 = this.add.graphics().setDepth(2);
-    d3.lineStyle(1.5, 0x7DD3FC, 0.2);
-    d3.strokeRoundedRect(bx + bw * 0.06, y3 + fh * 0.38, bw * 0.32, fh * 0.48, 6);
-    d3.fillStyle(0x7DD3FC, 0.05);
-    d3.fillRoundedRect(bx + bw * 0.06, y3 + fh * 0.38, bw * 0.32, fh * 0.48, 6);
-    d3.strokeCircle(bx + bw * 0.75, y3 + fh * 0.60, 14);
+  updateVitality() {
+    const vit = this.waterPct / 100;
+    const W = this.W, rH = this.riverH;
+    const treeXs = [W * 0.07, W * 0.22, W * 0.50, W * 0.78, W * 0.93];
+    for (let i = 0; i < this.treeGfxList.length; i++) {
+      this.drawTree(this.treeGfxList[i], treeXs[i], rH * 0.55, vit);
+    }
+    const flowerData = [
+      { x: W * 0.13, c: 0xFF6B6B }, { x: W * 0.30, c: 0xFFD93D },
+      { x: W * 0.44, c: 0xFF8E53 }, { x: W * 0.56, c: 0x86EFAC },
+      { x: W * 0.70, c: 0xFFD93D }, { x: W * 0.87, c: 0xFF6B6B },
+    ];
+    for (let i = 0; i < this.flowerGfxList.length; i++) {
+      this.drawFlower(this.flowerGfxList[i], flowerData[i].x, rH * 0.42, vit, flowerData[i].c);
+    }
+  }
 
-    // Piso 2 — shower tray left, sink right
-    const y2 = this.secTop(2);
-    const d2 = this.add.graphics().setDepth(2);
-    d2.lineStyle(1.5, 0x7DD3FC, 0.2);
-    d2.strokeRect(bx + bw * 0.08, y2 + fh * 0.30, bw * 0.28, fh * 0.56);
-    d2.strokeCircle(bx + bw * 0.75, y2 + fh * 0.57, 14);
+  drawRiverFill() {
+    const W = this.W, rH = this.riverH;
+    const chanY = rH * 0.38, chanH = rH * 0.42;
+    const fillH = Math.max(3, (this.waterPct / 100) * chanH);
+    const fillY = chanY + chanH - fillH;
+    const wCol  = this.waterPct > 55 ? 0x0EA5E9 : this.waterPct > 25 ? 0x38BDF8 : 0xBAE6FD;
 
-    // Piso 1 — counter + double sink circles
-    const y1 = this.secTop(1);
-    const d1 = this.add.graphics().setDepth(2);
-    d1.lineStyle(1.5, 0xFBBF24, 0.18);
-    d1.strokeRect(bx + bw * 0.04, y1 + fh * 0.52, bw * 0.92, fh * 0.10);
-    d1.strokeCircle(bx + bw * 0.26, y1 + fh * 0.68, 12);
-    d1.strokeCircle(bx + bw * 0.75, y1 + fh * 0.68, 12);
+    this.riverFillGfx.clear();
+    this.riverFillGfx.fillStyle(wCol, 0.88);
+    this.riverFillGfx.fillRoundedRect(8, fillY, W - 16, fillH, 6);
+    if (fillH > 8) {
+      this.riverFillGfx.fillStyle(0xFFFFFF, 0.18);
+      this.riverFillGfx.fillRoundedRect(8, fillY, W - 16, 5, 3);
+    }
 
-    // Jardín — ground strip + plant silhouettes
-    const y0 = this.secTop(0);
-    const d0 = this.add.graphics().setDepth(2);
-    d0.fillStyle(0x166534, 0.30);
-    d0.fillRect(bx, y0 + gh - 18, bw, 18);
-    d0.lineStyle(1.5, 0x4ADE80, 0.25);
-    for (let i = 0; i < 6; i++) {
-      const px = bx + bw * (0.08 + i * 0.16);
-      d0.lineBetween(px, y0 + gh - 18, px - 5, y0 + gh - 30);
-      d0.lineBetween(px, y0 + gh - 18, px,      y0 + gh - 32);
-      d0.lineBetween(px, y0 + gh - 18, px + 5,  y0 + gh - 30);
+    // Wave lines
+    this.waveGfx.clear();
+    if (fillH > 6) {
+      this.waveGfx.lineStyle(2, 0xFFFFFF, 0.28);
+      for (let wx = 16; wx < W - 16; wx += 28) {
+        const s = Math.sin((this.waveOff + wx * 0.05) % (Math.PI * 2));
+        this.waveGfx.lineBetween(wx, fillY + 5 + s * 2, wx + 16, fillY + 5 + s * 2);
+      }
+    }
+
+    const pct = Math.ceil(this.waterPct);
+    this.pctTxt.setText(`💧 ${pct}%`);
+    this.pctTxt.setColor(pct > 50 ? '#0C4A6E' : pct > 25 ? '#92400E' : '#EF4444');
+  }
+
+  // ── Pipes ─────────────────────────────────────────────────────────────────────
+
+  buildPipes() {
+    const W = this.W;
+    const g = this.add.graphics().setDepth(2);
+    for (const xr of FAUCET_XR) {
+      const fx = W * xr;
+      g.lineStyle(6, 0x94A3B8, 0.65);
+      g.lineBetween(fx, this.riverH, fx, this.floorY - 55);
+      g.fillStyle(0x64748B);
+      g.fillCircle(fx, this.riverH, 6);
+      // Pipe connector dot at faucet elbow
+      g.fillStyle(0x94A3B8);
+      g.fillCircle(fx, this.floorY - 55, 5);
     }
   }
 
   // ── Faucets ───────────────────────────────────────────────────────────────────
 
-  createFaucets() {
-    const bx = this.bldX, bw = this.bldW;
+  buildFaucets() {
+    const W = this.W;
+    for (let i = 0; i < FAUCET_XR.length; i++) {
+      const fx    = W * FAUCET_XR[i];
+      const side  = (fx < W / 2 ? 1 : -1) as 1 | -1;
 
-    for (const def of DEFS) {
-      const fy   = this.secTop(def.floor);
-      const fh   = this.secH(def.floor);
-      const fx   = bx + PAD + (bw - PAD * 2) * def.xr - BTN_W / 2;
-      const fy2  = fy + fh * 0.5 - BTN_H / 2 + 6;
+      const bodyGfx  = this.add.graphics().setDepth(8);
+      const dropsGfx = this.add.graphics().setDepth(9);
+      const badge    = this.add.text(fx, this.floorY - 70, '', {
+        fontFamily: 'Fredoka One', fontSize: '13px', color: '#FFFFFF',
+        backgroundColor: '#3B82F6', padding: { x: 5, y: 3 },
+      }).setOrigin(0.5, 1).setDepth(11).setVisible(false);
 
-      const btnGfx  = this.add.graphics().setDepth(10);
-      const waterGfx = this.add.graphics().setDepth(11);
-      const ofGfx   = this.add.graphics().setDepth(8);
-
-      this.add.text(fx + BTN_W * 0.25, fy2 + BTN_H * 0.50, def.icon, {
-        fontSize: '26px',
-      }).setOrigin(0.5).setDepth(12);
-
-      this.add.text(fx + BTN_W * 0.65, fy2 + BTN_H * 0.22, def.label, {
-        fontFamily: 'Fredoka One', fontSize: '11px', color: '#CBD5E1',
-        wordWrap: { width: BTN_W * 0.6 },
-      }).setOrigin(0.5, 0).setDepth(12);
-
-      const statusTxt = this.add.text(fx + BTN_W * 0.65, fy2 + BTN_H * 0.60, '✅', {
-        fontFamily: 'Fredoka One', fontSize: '14px', color: '#4ADE80',
-      }).setOrigin(0.5, 0).setDepth(12);
-
-      const faucet: Faucet = {
-        def, isOpen: false, openTimer: 0, overflowing: false,
-        btnGfx, waterGfx, ofGfx, statusTxt,
-        bx: fx, by: fy2,
+      const f: Faucet = {
+        id: i, x: fx, side,
+        isDripping: false, queued: false,
+        bodyGfx, dropsGfx, badge, dirtyBody: true,
       };
-      this.drawBtn(faucet);
-      this.faucets.push(faucet);
+      this.drawFaucetBody(f, false);
+      this.faucets.push(f);
 
-      const zone = this.add.zone(fx + BTN_W / 2, fy2 + BTN_H / 2, BTN_W + 8, BTN_H + 8)
-        .setInteractive().setDepth(15);
+      const zone = this.add.zone(fx, this.floorY - 30, 66, 72)
+        .setInteractive().setDepth(12);
       zone.on('pointerdown', () => {
-        if (!this.done && faucet.isOpen) this.closeFaucet(faucet);
+        if (this.done || !f.isDripping || f.queued) return;
+        f.queued = true;
+        this.queue.push(i);
+        f.badge.setText(`#${this.queue.length}`).setVisible(true);
       });
     }
   }
 
-  drawBtn(f: Faucet) {
-    const g = f.btnGfx;
+  drawFaucetBody(f: Faucet, highlighted: boolean) {
+    const g  = f.bodyGfx;
+    const fx = f.x, fy = this.floorY;
+    const s  = f.side;
     g.clear();
-    if (f.isOpen) {
-      g.fillStyle(0x7F1D1D, 0.92);
-      g.fillRoundedRect(f.bx, f.by, BTN_W, BTN_H, 10);
-      g.lineStyle(2.5, 0xEF4444, 1.0);
-      g.strokeRoundedRect(f.bx, f.by, BTN_W, BTN_H, 10);
+
+    const pipeCol   = f.isDripping ? 0x7DD3FC : 0x94A3B8;
+    const handleCol = f.isDripping ? 0xEF4444 : 0x22C55E;
+
+    // Vertical pipe (floor up 55px)
+    g.fillStyle(pipeCol);
+    g.fillRect(fx - 4, fy - 55, 8, 55);
+
+    // Horizontal elbow (pointing outward based on side)
+    g.fillRect(fx - 4 + (s < 0 ? -20 : 0), fy - 55, 24, 8);
+
+    // Drip tip cap
+    g.fillStyle(pipeCol);
+    g.fillCircle(fx + s * 20, fy - 51, 5);
+
+    // Handle bar (lever)
+    g.fillStyle(handleCol);
+    g.fillRoundedRect(fx - 11, fy - 63, 22, 7, 3);
+
+    // Knob
+    g.fillStyle(0x475569);
+    g.fillCircle(fx, fy - 63, 5);
+
+    // Highlight ring when targeted
+    if (highlighted) {
+      g.lineStyle(3, 0xFBBF24, 1);
+      g.strokeCircle(fx, fy - 34, 28);
+    }
+  }
+
+  // ── Character ─────────────────────────────────────────────────────────────────
+
+  buildCharacter() {
+    this.charGfx = this.add.graphics().setDepth(15);
+    this.toolTxt = this.add.text(0, 0, '🔧', {
+      fontSize: '22px',
+    }).setOrigin(0.5, 1).setDepth(16).setVisible(false);
+    this.redrawChar();
+  }
+
+  redrawChar() {
+    const g  = this.charGfx;
+    const cx = this.charX, cy = this.charY;
+    const isMoving = this.charState === 'moving';
+    const dir = (this.currentId !== null && this.faucets[this.currentId])
+      ? (this.faucets[this.currentId].x > cx ? 1 : -1) : 1;
+    const leg = isMoving ? Math.sin(this.walkPhase * 9) * 9 : 0;
+    const arm = isMoving ? Math.sin(this.walkPhase * 9) * 7 : 0;
+
+    g.clear();
+    // Shadow
+    g.fillStyle(0x000000, 0.12);
+    g.fillEllipse(cx, cy + 2, 32, 7);
+    // Legs
+    g.fillStyle(0x1E3A5F);
+    g.fillRect(cx - 7, cy - 18, 6, 20 + leg);
+    g.fillRect(cx + 1, cy - 18, 6, 20 - leg);
+    // Shoes
+    g.fillStyle(0x1C1917);
+    g.fillEllipse(cx - 4,  cy + 2 + leg, 14, 7);
+    g.fillEllipse(cx + 4,  cy + 2 - leg, 14, 7);
+    // Body
+    g.fillStyle(0x3B82F6);
+    g.fillRoundedRect(cx - 10, cy - 38, 20, 22, 5);
+    // Arms
+    g.lineStyle(5, 0xFED7AA);
+    if (this.charState === 'closing') {
+      g.lineBetween(cx - 10, cy - 30, cx - 20, cy - 50);
+      g.lineBetween(cx + 10, cy - 30, cx + 20, cy - 50);
     } else {
-      g.fillStyle(0x14532D, 0.75);
-      g.fillRoundedRect(f.bx, f.by, BTN_W, BTN_H, 10);
-      g.lineStyle(2, 0x22C55E, 0.55);
-      g.strokeRoundedRect(f.bx, f.by, BTN_W, BTN_H, 10);
+      g.lineBetween(cx - 10, cy - 30, cx - dir * 3 - 16, cy - 22 - arm);
+      g.lineBetween(cx + 10, cy - 30, cx + dir * 3 + 16, cy - 22 + arm);
     }
+    // Head
+    g.fillStyle(0xFED7AA);
+    g.fillCircle(cx, cy - 50, 12);
+    // Hair
+    g.fillStyle(0x78350F);
+    g.fillRoundedRect(cx - 11, cy - 62, 22, 9, 4);
+    // Eye (facing direction)
+    g.fillStyle(0x1C1917);
+    g.fillCircle(cx + dir * 4, cy - 52, 2);
   }
 
-  openFaucet(f: Faucet) {
-    f.isOpen    = true;
-    f.openTimer = 0;
-    f.overflowing = false;
-    this.drawBtn(f);
-    f.statusTxt.setText('💧 CERRAR!').setStyle({ color: '#FCA5A5' });
-
-    // Ripple rings to attract attention
-    const cx = f.bx + BTN_W / 2, cy = f.by + BTN_H / 2;
-    for (let i = 0; i < 3; i++) {
-      this.time.delayedCall(i * 110, () => {
-        const r = this.add.circle(cx, cy, 18 + i * 12, 0xFBBF24, 0).setDepth(20);
-        r.setStrokeStyle(2, 0xFBBF24, 1);
-        this.tweens.add({ targets: r, scale: 1.8, alpha: 0, duration: 420, onComplete: () => r.destroy() });
-      });
-    }
-  }
-
-  closeFaucet(f: Faucet) {
-    f.isOpen      = false;
-    f.openTimer   = 0;
-    f.overflowing = false;
-    f.waterGfx.clear();
-    f.ofGfx.clear();
-    this.drawBtn(f);
-    f.statusTxt.setText('✅').setStyle({ color: '#4ADE80' });
-
-    const burst = this.add.circle(f.bx + BTN_W / 2, f.by + BTN_H / 2, 10, 0x4ADE80, 0.9).setDepth(20);
-    this.tweens.add({ targets: burst, scale: 3.2, alpha: 0, duration: 280, onComplete: () => burst.destroy() });
-  }
-
-  // ── Tank bar (in-canvas HUD strip) ────────────────────────────────────────────
-
-  buildTankHUD() {
-    this.tankGfx = this.add.graphics().setDepth(30).setScrollFactor(0);
-    this.pctTxt  = this.add.text(0, 0, '', {
-      fontFamily: 'Fredoka One', fontSize: '13px', color: '#FFFFFF',
-    }).setOrigin(0.5).setDepth(31).setScrollFactor(0);
-    this.redrawTank();
-  }
-
-  redrawTank() {
-    const g  = this.tankGfx;
-    g.clear();
-    const W  = this.W;
-    const bx = 56, by = 14, bw = W - 56 - 14, bh = 18;
-
-    g.fillStyle(0x0F172A, 0.6);
-    g.fillRoundedRect(bx - 2, by - 2, bw + 4, bh + 4, 6);
-    g.fillStyle(0x7F1D1D);
-    g.fillRoundedRect(bx, by, bw, bh, 5);
-
-    const fw  = Math.max(0, (this.tankPct / 100) * bw);
-    const col = this.tankPct > 55 ? 0x3B82F6 : this.tankPct > 25 ? 0xF59E0B : 0xEF4444;
-    if (fw > 2) {
-      g.fillStyle(col);
-      g.fillRoundedRect(bx, by, fw, bh, 5);
-      g.fillStyle(0xFFFFFF, 0.12);
-      g.fillRoundedRect(bx, by, fw, bh / 2, 5);
-    }
-    g.lineStyle(1.5, 0x60A5FA, 0.5);
-    g.strokeRoundedRect(bx, by, bw, bh, 5);
-
-    const pct = Math.ceil(this.tankPct);
-    this.pctTxt.setText(`💧 ${pct}%`).setPosition(bx + Math.max(fw / 2, 30), by + bh / 2);
-    EventBus.emit('game-scored-update', `${pct}%`);
-  }
-
-  // ── Tutorial hint ─────────────────────────────────────────────────────────────
-
-  showHint() {
-    const W = this.W, H = this.H;
-    const cx = W / 2, cy = H * 0.44;
-    const objs: Phaser.GameObjects.GameObject[] = [];
-
-    objs.push(this.add.rectangle(cx, cy, W * 0.80, 110, 0x000000, 0.75).setDepth(80));
-    objs.push(this.add.text(cx, cy - 30, '💧 ¡Cerrá las canillas!', {
-      fontFamily: 'Fredoka One', fontSize: '20px', color: '#60A5FA',
-    }).setOrigin(0.5).setDepth(81));
-    objs.push(this.add.text(cx, cy + 2, 'Cuando una canilla se pone roja → tocala\npara cerrarla antes de que el tanque se vacíe.', {
-      fontFamily: 'Fredoka One', fontSize: '13px', color: '#CBD5E1', align: 'center',
-    }).setOrigin(0.5).setDepth(81));
-
-    this.time.delayedCall(2800, () => {
-      this.tweens.add({ targets: objs, alpha: 0, duration: 400, onComplete: () => objs.forEach(o => o.destroy()) });
-    });
-  }
-
-  // ── Update loop ───────────────────────────────────────────────────────────────
+  // ── Update ────────────────────────────────────────────────────────────────────
 
   update(_t: number, delta: number) {
     if (this.done) return;
     const dt  = delta / 1000;
     const cfg = getLevelCfg(this.level);
     this.dropPhase += dt;
+    this.waveOff   += dt * 1.8;
 
-    // Auto-open faucets
+    // Auto-open
     this.nextOpen -= dt;
     if (this.nextOpen <= 0) {
-      this.tryAutoOpen(cfg.maxOpen);
+      this.tryAutoOpen(cfg.maxDripping);
       this.nextOpen = cfg.openInterval * (0.75 + Math.random() * 0.5);
     }
 
-    // Drain tank
-    let drain = TANK_PASSIVE;
+    // Drain
+    const dripping = this.faucets.filter(f => f.isDripping).length;
+    this.waterPct  = Math.max(0, this.waterPct - dripping * cfg.drainPerFaucet * dt);
+
+    // River visuals
+    this.drawRiverFill();
+    if (Math.abs(this.waterPct - this.lastVitPct) >= 2) {
+      this.updateVitality();
+      this.lastVitPct = this.waterPct;
+    }
+
+    // Faucet drop animations
     for (const f of this.faucets) {
-      if (!f.isOpen) continue;
-      f.openTimer += dt;
-      drain += f.def.drain * cfg.drainMult;
-      if (!f.overflowing && f.openTimer >= cfg.overflowTime) f.overflowing = true;
-      this.animWater(f);
-      if (f.overflowing) this.animOverflow(f, cfg.overflowTime);
+      if (f.isDripping) this.animDrops(f);
+      if (f.dirtyBody) { this.drawFaucetBody(f, f.id === this.currentId); f.dirtyBody = false; }
     }
 
-    this.tankPct = Math.max(0, this.tankPct - drain * dt);
-    this.redrawTank();
+    // Character
+    this.tickCharacter(dt);
 
-    if (this.tankPct <= 0) {
+    // Lose
+    if (this.waterPct <= 0) {
       this.done = true;
-      this.time.delayedCall(350, () => EventBus.emit('game-time-up', '0'));
+      this.time.delayedCall(400, () => EventBus.emit('game-time-up', '0'));
     }
   }
 
-  tryAutoOpen(maxOpen: number) {
-    if (this.faucets.filter(f => f.isOpen).length >= maxOpen) return;
-    const closed = this.faucets.filter(f => !f.isOpen);
-    if (!closed.length) return;
-    this.openFaucet(closed[Phaser.Math.Between(0, closed.length - 1)]);
+  tryAutoOpen(maxDripping: number) {
+    if (this.faucets.filter(f => f.isDripping).length >= maxDripping) return;
+    const pool = this.faucets.filter(f => !f.isDripping);
+    if (!pool.length) return;
+    const f = pool[Phaser.Math.Between(0, pool.length - 1)];
+    f.isDripping = true;
+    f.dirtyBody  = true;
+
+    // Alert rings
+    const cx = f.x, cy = this.floorY - 34;
+    for (let i = 0; i < 3; i++) {
+      this.time.delayedCall(i * 110, () => {
+        const r = this.add.circle(cx, cy, 16 + i * 10, 0xEF4444, 0).setDepth(20);
+        r.setStrokeStyle(2.5, 0xEF4444, 1);
+        this.tweens.add({ targets: r, scale: 1.9, alpha: 0, duration: 420, onComplete: () => r.destroy() });
+      });
+    }
   }
 
-  animWater(f: Faucet) {
-    const g  = f.waterGfx;
+  animDrops(f: Faucet) {
+    const g  = f.dropsGfx;
     g.clear();
-    const cx = f.bx + BTN_W * 0.66;
-    const by = f.by + BTN_H - 2;
+    const sx = f.x + f.side * 20;
+    const sy = this.floorY - 46;
     for (let i = 0; i < 4; i++) {
-      const t = (this.dropPhase * 2.5 + i * 0.7) % 1;
-      const alpha = 1 - t;
-      g.fillStyle(0x60A5FA, alpha * 0.9);
-      g.fillCircle(cx + Math.sin(t * 5) * 2, by + t * 38, 3.5 - t * 1.5);
+      const t = (this.dropPhase * 2.6 + i * 0.75) % 1;
+      g.fillStyle(0x38BDF8, (1 - t) * 0.9);
+      g.fillCircle(sx + Math.sin(t * 5) * 2, sy + t * 52, 3.5 - t * 1.8);
     }
   }
 
-  animOverflow(f: Faucet, overflowTime: number) {
-    const g  = f.ofGfx;
-    g.clear();
-    const fy  = this.secTop(f.def.floor);
-    const fh  = this.secH(f.def.floor);
-    const pw  = Math.min((f.openTimer - overflowTime) * 14 + 22, this.bldW * 0.44);
-    const pcx = f.bx + BTN_W / 2;
-    const py  = fy + fh - 8;
-    g.fillStyle(0x3B82F6, 0.38);
-    g.fillEllipse(pcx, py, pw, 13);
-    g.fillStyle(0x93C5FD, 0.20);
-    g.fillEllipse(pcx, py - 3, pw * 0.55, 7);
+  tickCharacter(dt: number) {
+    switch (this.charState) {
+      case 'idle':
+        if (this.queue.length > 0) {
+          this.currentId = this.queue[0];
+          this.charState = 'moving';
+        }
+        break;
+
+      case 'moving': {
+        const target = this.faucets[this.currentId!];
+        if (!target) { this.charState = 'idle'; break; }
+        const dx   = target.x - this.charX;
+        const dist = Math.abs(dx);
+        if (dist < 4) {
+          this.charX     = target.x;
+          this.charState = 'closing';
+          this.closingTimer = CLOSE_SECS;
+          this.toolTxt.setPosition(this.charX, this.charY - 68).setVisible(true);
+          // highlight targeted faucet
+          target.dirtyBody = true;
+        } else {
+          this.charX   += Math.sign(dx) * Math.min(CHAR_SPEED * dt, dist);
+          this.walkPhase += dt;
+        }
+        break;
+      }
+
+      case 'closing':
+        this.closingTimer -= dt;
+        if (this.closingTimer <= 0) {
+          this.toolTxt.setVisible(false);
+          const f = this.faucets[this.currentId!];
+          if (f) {
+            f.isDripping = false;
+            f.queued     = false;
+            f.dropsGfx.clear();
+            f.badge.setVisible(false);
+            f.dirtyBody = true;
+          }
+          this.queue.shift();
+          // Renumber badges
+          for (let i = 0; i < this.queue.length; i++) {
+            this.faucets[this.queue[i]].badge.setText(`#${i + 1}`);
+          }
+          this.currentId = null;
+          this.charState = 'idle';
+        }
+        break;
+    }
+
+    this.redrawChar();
   }
 }

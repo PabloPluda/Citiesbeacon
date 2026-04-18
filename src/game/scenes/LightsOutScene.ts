@@ -35,9 +35,9 @@ const ROOF_COLORS = [0x3B4A6B, 0x2D3A5C, 0x3A3054, 0x4A3020, 0x1E3B28];
 function getLevelCfg(level: number) {
   const floors   = level <= 2 ? 2 : level <= 5 ? 4 : level <= 10 ? 6 : 8;
   const winCols  = level <= 2 ? 2 : level <= 5 ? 3 : 4;
-  const minSpeed = 80;
-  const maxSpeed = Math.min(86 + level * 5, 150);
-  const litRate  = 0.38 + level * 0.018;
+  const minSpeed = 58;
+  const maxSpeed = Math.min(66 + level * 4, 110);
+  const litRate  = 0.18 + level * 0.010;
   return { floors, winCols, minSpeed, maxSpeed, litRate };
 }
 
@@ -335,7 +335,7 @@ export class LightsOutScene extends Phaser.Scene {
         let state: WinState = 'OFF';
         if (prefill) {
           const winCX = startX + lx + WIN_W / 2;
-          if (winCX > this.W / 2 && winCX < this.W + 50 && Math.random() < 0.30) {
+          if (winCX > this.W / 2 && winCX < this.W + 50 && Math.random() < 0.18) {
             state = Math.random() < 0.50 ? 'OCCUPIED' : 'EMPTY';
           }
         }

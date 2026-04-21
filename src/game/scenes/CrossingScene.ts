@@ -9,7 +9,7 @@ const BOOK_COLORS  = [0xE53E3E, 0x3182CE, 0xD69E2E, 0x805AD5, 0x2F855A];
 // ─── Level config ──────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
   const crossings    = level === 1 ? 4 : Math.min(4 + Math.floor(level * 0.8), 18);
-  const speed        = 95 + level * 8;          // px/s Tommy forward speed
+  const speed        = 100 + level * 11;         // px/s Tommy forward speed
   const obstInterval = Math.max(155, 380 - level * 12); // px between obstacle spawns
   return { crossings, speed, obstInterval };
 }
@@ -292,8 +292,8 @@ export class CrossingScene extends Phaser.Scene {
   swipeUsed       = false;
   tommyWalkPhase  = 0;
 
-  tommy!:       Phaser.Physics.Arcade.Image;
-  tommySprite!: Phaser.GameObjects.Image;
+  tommy!:     Phaser.Physics.Arcade.Image;
+  tommyText!: Phaser.GameObjects.Text;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
@@ -447,7 +447,9 @@ export class CrossingScene extends Phaser.Scene {
     }
 
     this.tommy = this.physics.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0').setDepth(5).setAlpha(0);
-    this.tommySprite = this.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0').setDepth(5);
+    this.tommyText = this.add.text(220, H/2 + LANE_OFFSETS[1], '🏃', {
+      fontSize: '34px',
+    }).setOrigin(0.5).setDepth(5).setScale(-1, 1);
 
     this.buildLifeIndicators();
     this.setupSwipeControls();
@@ -516,17 +518,18 @@ export class CrossingScene extends Phaser.Scene {
       return false;
     };
     const tryBook = (ideal: number, spread = 50) => {
-      for (let t = 0; t < 10; t++) {
+      for (let t = 0; t < 12; t++) {
         const wx = ideal + Phaser.Math.Between(-spread, spread);
         if (placedBook.some(p => Math.abs(p - wx) < BOOK_GAP)) continue;
+        if (placedObs.some(p => Math.abs(p - wx) < 55)) continue;  // no overlap with obstacles
         this.spawnBook(wx);
         placedBook.push(wx);
         return;
       }
     };
 
-    // How many extra obstacles beyond the mandatory 3
-    const extraPerSeg = Math.min(Math.floor(this.level / 4), 2);   // 0, 1 or 2
+    // Extra obstacles beyond the mandatory 3 (0 at level 1, up to 3 at level 9+)
+    const extraPerSeg = Math.min(Math.floor(this.level / 3), 3);
 
     for (let i = 0; i <= crossings; i++) {
       const segStart = i === 0 ? 420 : firstCrossX + (i - 1) * SPACING + 160;
@@ -762,14 +765,8 @@ export class CrossingScene extends Phaser.Scene {
   private drawTommy(dt: number) {
     const moving = !this.done && !this.tutorialActive;
     if (moving) this.tommyWalkPhase += dt;
-
-    // Alternate SVG walk frames every 250 ms
-    const frameKey = Math.floor(this.tommyWalkPhase / 250) % 2 === 0 ? 'tommy_f0' : 'tommy_f1';
-    if (this.tommySprite.texture.key !== frameKey) this.tommySprite.setTexture(frameKey);
-
-    // Gentle bob (visual only — physics body y is untouched)
     const bob = moving ? Math.sin(this.tommyWalkPhase * 0.013) * 2.5 : 0;
-    this.tommySprite.setPosition(this.tommy.x, this.tommy.y + bob);
+    this.tommyText.setPosition(this.tommy.x, this.tommy.y + bob);
   }
 
   // ── Update ────────────────────────────────────────────────────────────────────

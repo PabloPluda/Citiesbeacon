@@ -310,47 +310,6 @@ export class CrossingScene extends Phaser.Scene {
 
   constructor() { super('CrossingScene'); }
 
-  preload() {
-    if (this.textures.exists('tommy_f0')) return;
-    const mkSvg = (a0y: number, a1y: number, l0y: number, l1y: number) =>
-      `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56">` +
-      `<ellipse cx="28" cy="51" rx="20" ry="5" fill="black" fill-opacity="0.15"/>` +
-      // legs (drawn before body so body overlaps their tops)
-      `<ellipse cx="13" cy="${l0y}" rx="6" ry="9" fill="#1E40AF"/>` +
-      `<ellipse cx="13" cy="${l0y + 9}" rx="6" ry="5" fill="#111827"/>` +
-      `<ellipse cx="22" cy="${l1y}" rx="6" ry="9" fill="#1E40AF"/>` +
-      `<ellipse cx="22" cy="${l1y + 9}" rx="6" ry="5" fill="#111827"/>` +
-      // backpack
-      `<rect x="2" y="18" width="13" height="18" rx="4" fill="#F97316"/>` +
-      `<rect x="4" y="22" width="9" height="10" rx="2" fill="#C05621"/>` +
-      // body (blue shirt)
-      `<ellipse cx="27" cy="27" rx="15" ry="13" fill="#3B82F6"/>` +
-      `<ellipse cx="29" cy="22" rx="9" ry="7" fill="#60A5FA" fill-opacity="0.55"/>` +
-      // arms (drawn after body so they appear at sides)
-      `<ellipse cx="19" cy="${a0y}" rx="6" ry="10" fill="#FDBA74"/>` +
-      `<ellipse cx="19" cy="${a1y}" rx="6" ry="10" fill="#FDBA74"/>` +
-      // head
-      `<circle cx="42" cy="27" r="13" fill="#FDBA74"/>` +
-      // hair covers top of head
-      `<circle cx="42" cy="20" r="12" fill="#7C3F10"/>` +
-      `<circle cx="34" cy="22" r="7" fill="#7C3F10"/>` +
-      // ear + face patch facing right
-      `<circle cx="33" cy="31" r="5" fill="#FDBA74"/>` +
-      `<ellipse cx="48" cy="31" rx="9" ry="7" fill="#FDBA74"/>` +
-      // eyes
-      `<circle cx="51" cy="27" r="2.5" fill="#1C1917"/>` +
-      `<circle cx="46" cy="27" r="2.5" fill="#1C1917"/>` +
-      // smile
-      `<path d="M44 33 Q48 37 52 33" stroke="#7C2D12" stroke-width="1.5" fill="none" stroke-linecap="round"/>` +
-      `</svg>`;
-
-    const toUri = (svg: string) => 'data:image/svg+xml,' + encodeURIComponent(svg);
-    // Frame 0: left arm up / right arm down, left leg slightly up
-    this.load.svg('tommy_f0', toUri(mkSvg(13, 43, 38, 43)), { width: 56, height: 56 });
-    // Frame 1: opposite arm/leg phase
-    this.load.svg('tommy_f1', toUri(mkSvg(43, 13, 43, 38)), { width: 56, height: 56 });
-  }
-
   init(data?: { level?: number }) {
     if (data?.level !== undefined) {
       this.level = data.level;
@@ -438,9 +397,43 @@ export class CrossingScene extends Phaser.Scene {
       });
     }
 
-    // Portrait textures for HUD
-    if (!this.textures.exists('portrait_smile')) {
-      const tg = this.make.graphics({ x: 0, y: 0 });
+    // Bake Tommy walk frames + portrait textures
+    if (!this.textures.exists('tommy_f0')) {
+      const tg = this.add.graphics();
+      for (let frame = 0; frame < 2; frame++) {
+        tg.clear();
+        const a0y = frame === 0 ? 13 : 43;
+        const a1y = frame === 0 ? 43 : 13;
+        const l0y = frame === 0 ? 38 : 43;
+        const l1y = frame === 0 ? 43 : 38;
+        // shadow
+        tg.fillStyle(0x000000, 0.15); tg.fillEllipse(28, 51, 42, 10);
+        // legs (behind body)
+        tg.fillStyle(0x1E40AF);  tg.fillEllipse(13, l0y, 13, 18); tg.fillEllipse(22, l1y, 13, 18);
+        tg.fillStyle(0x111827);  tg.fillEllipse(13, l0y+9, 14, 10); tg.fillEllipse(22, l1y+9, 14, 10);
+        // backpack
+        tg.fillStyle(0xF97316);  tg.fillRoundedRect(2, 18, 13, 18, 4);
+        tg.fillStyle(0xC05621);  tg.fillRoundedRect(4, 22, 9, 10, 2);
+        // body
+        tg.fillStyle(0x3B82F6);  tg.fillEllipse(27, 27, 30, 26);
+        tg.fillStyle(0x60A5FA, 0.55); tg.fillEllipse(29, 22, 18, 14);
+        // arms (on top of body)
+        tg.fillStyle(0xFDBA74);  tg.fillEllipse(19, a0y, 13, 20); tg.fillEllipse(19, a1y, 13, 20);
+        // head skin
+        tg.fillStyle(0xFDBA74);  tg.fillCircle(42, 27, 13);
+        // hair
+        tg.fillStyle(0x7C3F10);  tg.fillCircle(42, 20, 12); tg.fillCircle(34, 22, 7);
+        // ear + face patch
+        tg.fillStyle(0xFDBA74);  tg.fillCircle(33, 31, 5); tg.fillEllipse(48, 31, 18, 14);
+        // eyes
+        tg.fillStyle(0x1C1917);  tg.fillCircle(51, 27, 2.5); tg.fillCircle(46, 27, 2.5);
+        // smile
+        tg.lineStyle(1.5, 0x7C2D12, 1);
+        tg.beginPath(); tg.arc(47, 31, 4, Math.PI * 1.1, Math.PI * 1.9, false); tg.strokePath();
+        tg.generateTexture(`tommy_f${frame}`, 56, 56);
+      }
+      // portraits
+      tg.clear();
       tg.fillStyle(0x3B82F6); tg.fillCircle(30, 30, 30);
       tg.fillStyle(0xFCD34D); tg.fillCircle(30, 20, 20);
       tg.lineStyle(3, 0x000000); tg.beginPath(); tg.arc(30, 25, 8, 0, Math.PI, false); tg.strokePath();
@@ -454,7 +447,7 @@ export class CrossingScene extends Phaser.Scene {
     }
 
     this.tommy = this.physics.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0').setDepth(5).setAlpha(0);
-    this.tommySprite = this.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0').setDepth(5).setDisplaySize(56, 56);
+    this.tommySprite = this.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0').setDepth(5);
 
     this.buildLifeIndicators();
     this.setupSwipeControls();

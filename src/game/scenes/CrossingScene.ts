@@ -292,8 +292,8 @@ export class CrossingScene extends Phaser.Scene {
   swipeUsed       = false;
   tommyWalkPhase  = 0;
 
-  tommy!:    Phaser.Physics.Arcade.Image;
-  tommyGfx!: Phaser.GameObjects.Graphics;
+  tommy!:       Phaser.Physics.Arcade.Image;
+  tommySprite!: Phaser.GameObjects.Image;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
@@ -309,6 +309,47 @@ export class CrossingScene extends Phaser.Scene {
   sceneH     = 0;
 
   constructor() { super('CrossingScene'); }
+
+  preload() {
+    if (this.textures.exists('tommy_f0')) return;
+    const mkSvg = (a0y: number, a1y: number, l0y: number, l1y: number) =>
+      `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56">` +
+      `<ellipse cx="28" cy="51" rx="20" ry="5" fill="black" fill-opacity="0.15"/>` +
+      // legs (drawn before body so body overlaps their tops)
+      `<ellipse cx="13" cy="${l0y}" rx="6" ry="9" fill="#1E40AF"/>` +
+      `<ellipse cx="13" cy="${l0y + 9}" rx="6" ry="5" fill="#111827"/>` +
+      `<ellipse cx="22" cy="${l1y}" rx="6" ry="9" fill="#1E40AF"/>` +
+      `<ellipse cx="22" cy="${l1y + 9}" rx="6" ry="5" fill="#111827"/>` +
+      // backpack
+      `<rect x="2" y="18" width="13" height="18" rx="4" fill="#F97316"/>` +
+      `<rect x="4" y="22" width="9" height="10" rx="2" fill="#C05621"/>` +
+      // body (blue shirt)
+      `<ellipse cx="27" cy="27" rx="15" ry="13" fill="#3B82F6"/>` +
+      `<ellipse cx="29" cy="22" rx="9" ry="7" fill="#60A5FA" fill-opacity="0.55"/>` +
+      // arms (drawn after body so they appear at sides)
+      `<ellipse cx="19" cy="${a0y}" rx="6" ry="10" fill="#FDBA74"/>` +
+      `<ellipse cx="19" cy="${a1y}" rx="6" ry="10" fill="#FDBA74"/>` +
+      // head
+      `<circle cx="42" cy="27" r="13" fill="#FDBA74"/>` +
+      // hair covers top of head
+      `<circle cx="42" cy="20" r="12" fill="#7C3F10"/>` +
+      `<circle cx="34" cy="22" r="7" fill="#7C3F10"/>` +
+      // ear + face patch facing right
+      `<circle cx="33" cy="31" r="5" fill="#FDBA74"/>` +
+      `<ellipse cx="48" cy="31" rx="9" ry="7" fill="#FDBA74"/>` +
+      // eyes
+      `<circle cx="51" cy="27" r="2.5" fill="#1C1917"/>` +
+      `<circle cx="46" cy="27" r="2.5" fill="#1C1917"/>` +
+      // smile
+      `<path d="M44 33 Q48 37 52 33" stroke="#7C2D12" stroke-width="1.5" fill="none" stroke-linecap="round"/>` +
+      `</svg>`;
+
+    const toUri = (svg: string) => 'data:image/svg+xml,' + encodeURIComponent(svg);
+    // Frame 0: left arm up / right arm down, left leg slightly up
+    this.load.svg('tommy_f0', toUri(mkSvg(13, 43, 38, 43)), { width: 56, height: 56 });
+    // Frame 1: opposite arm/leg phase
+    this.load.svg('tommy_f1', toUri(mkSvg(43, 13, 43, 38)), { width: 56, height: 56 });
+  }
 
   init(data?: { level?: number }) {
     if (data?.level !== undefined) {
@@ -397,13 +438,9 @@ export class CrossingScene extends Phaser.Scene {
       });
     }
 
-    // Tommy texture
-    if (!this.textures.exists('tommy_top')) {
+    // Portrait textures for HUD
+    if (!this.textures.exists('portrait_smile')) {
       const tg = this.make.graphics({ x: 0, y: 0 });
-      tg.fillStyle(0x3B82F6); tg.fillCircle(20, 20, 20);
-      tg.fillStyle(0xFCD34D); tg.fillCircle(20, 10, 12);
-      tg.generateTexture('tommy_top', 40, 40);
-      tg.clear();
       tg.fillStyle(0x3B82F6); tg.fillCircle(30, 30, 30);
       tg.fillStyle(0xFCD34D); tg.fillCircle(30, 20, 20);
       tg.lineStyle(3, 0x000000); tg.beginPath(); tg.arc(30, 25, 8, 0, Math.PI, false); tg.strokePath();
@@ -416,8 +453,8 @@ export class CrossingScene extends Phaser.Scene {
       tg.destroy();
     }
 
-    this.tommy = this.physics.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_top').setDepth(5).setAlpha(0);
-    this.tommyGfx = this.add.graphics().setDepth(5);
+    this.tommy = this.physics.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0').setDepth(5).setAlpha(0);
+    this.tommySprite = this.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0').setDepth(5).setDisplaySize(56, 56);
 
     this.buildLifeIndicators();
     this.setupSwipeControls();
@@ -469,35 +506,34 @@ export class CrossingScene extends Phaser.Scene {
   // ── Pre-seed objects for entire level ─────────────────────────────────────────
 
   setupObjects(crossings: number, firstCrossX: number, SPACING: number) {
-    const MIN_GAP     = 130;   // minimum px between any two objects
-    const extraPerSeg = Math.floor(this.level / 5);
-    const placed: number[] = [];
+    const OBS_GAP  = 120;   // min px between obstacles
+    const BOOK_GAP =  80;   // min px between books
 
-    const trySpawn = (wx: number, fn: (x: number) => void): boolean => {
-      if (placed.some(p => Math.abs(p - wx) < MIN_GAP)) return false;
-      fn(wx);
-      placed.push(wx);
-      return true;
-    };
+    const placedObs:  number[] = [];
+    const placedBook: number[] = [];
 
     const tryObstacleInLane = (ideal: number, lane: number, spread = 35) => {
-      for (let t = 0; t < 8; t++) {
+      for (let t = 0; t < 10; t++) {
         const wx = ideal + Phaser.Math.Between(-spread, spread);
-        if (trySpawn(wx, x => this.spawnObstacle(x, lane))) return;
+        if (placedObs.some(p => Math.abs(p - wx) < OBS_GAP)) continue;
+        this.spawnObstacle(wx, lane);
+        placedObs.push(wx);
+        return true;
+      }
+      return false;
+    };
+    const tryBook = (ideal: number, spread = 50) => {
+      for (let t = 0; t < 10; t++) {
+        const wx = ideal + Phaser.Math.Between(-spread, spread);
+        if (placedBook.some(p => Math.abs(p - wx) < BOOK_GAP)) continue;
+        this.spawnBook(wx);
+        placedBook.push(wx);
+        return;
       }
     };
-    const tryObstacle = (ideal: number, spread = 40) => {
-      for (let t = 0; t < 8; t++) {
-        const wx = ideal + Phaser.Math.Between(-spread, spread);
-        if (trySpawn(wx, x => this.spawnObstacle(x))) return;
-      }
-    };
-    const tryBook = (ideal: number, spread = 40) => {
-      for (let t = 0; t < 8; t++) {
-        const wx = ideal + Phaser.Math.Between(-spread, spread);
-        if (trySpawn(wx, x => this.spawnBook(x))) return;
-      }
-    };
+
+    // How many extra obstacles beyond the mandatory 3
+    const extraPerSeg = Math.min(Math.floor(this.level / 4), 2);   // 0, 1 or 2
 
     for (let i = 0; i <= crossings; i++) {
       const segStart = i === 0 ? 420 : firstCrossX + (i - 1) * SPACING + 160;
@@ -505,22 +541,28 @@ export class CrossingScene extends Phaser.Scene {
       const segLen   = segEnd - segStart;
       if (segLen < 300) continue;
 
-      // Guaranteed 1 obstacle per lane (staggered through the segment)
-      tryObstacleInLane(segStart + segLen * 0.25, 0);
-      tryObstacleInLane(segStart + segLen * 0.50, 1);
-      tryObstacleInLane(segStart + segLen * 0.75, 2);
+      // Shuffle lane order so obstacles aren't always top→mid→bot
+      const lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
+      // Spread the 3 guaranteed obstacles evenly across the segment
+      const positions = [0.22, 0.50, 0.78];
+      lanes.forEach((lane, idx) => tryObstacleInLane(segStart + segLen * positions[idx], lane));
 
-      // Extra obstacles based on level
+      // Extra obstacles (random lane, random position)
       for (let e = 0; e < extraPerSeg; e++) {
-        tryObstacle(segStart + segLen * (0.15 + Math.random() * 0.70));
+        const lane = Phaser.Math.Between(0, 2);
+        tryObstacleInLane(segStart + segLen * (0.10 + Math.random() * 0.80), lane, 25);
       }
 
-      // Guaranteed 1 book somewhere in the middle third
-      tryBook(segStart + segLen * (0.38 + Math.random() * 0.24));
+      // Guaranteed 1 book — placed in a zone that deliberately avoids the mid-obstacle
+      // Use first or last quarter to stay clear of the obstacle cluster
+      const bookZone = Math.random() < 0.5
+        ? segStart + segLen * (0.05 + Math.random() * 0.15)   // early zone
+        : segStart + segLen * (0.65 + Math.random() * 0.20);  // late zone
+      tryBook(bookZone, 30);
 
       // Second book at higher levels
-      if (this.level >= 7 && Math.random() < 0.55) {
-        tryBook(segStart + segLen * (0.60 + Math.random() * 0.25));
+      if (this.level >= 7 && Math.random() < 0.6) {
+        tryBook(segStart + segLen * (0.35 + Math.random() * 0.20), 35);
       }
     }
   }
@@ -725,70 +767,16 @@ export class CrossingScene extends Phaser.Scene {
   // ── Tommy animated character ──────────────────────────────────────────────────
 
   private drawTommy(dt: number) {
-    if (!this.done && !this.tutorialActive) this.tommyWalkPhase += dt * 0.009;
-    const g = this.tommyGfx;
-    g.clear();
-    g.setPosition(this.tommy.x, this.tommy.y);
+    const moving = !this.done && !this.tutorialActive;
+    if (moving) this.tommyWalkPhase += dt;
 
-    const p  = this.tommyWalkPhase;
-    const ls = Math.sin(p) * 9;   // leg swing amplitude
-    const as = -ls * 0.55;        // arm swing (opposite phase)
+    // Alternate SVG walk frames every 250 ms
+    const frameKey = Math.floor(this.tommyWalkPhase / 250) % 2 === 0 ? 'tommy_f0' : 'tommy_f1';
+    if (this.tommySprite.texture.key !== frameKey) this.tommySprite.setTexture(frameKey);
 
-    // Shadow
-    g.fillStyle(0x000000, 0.18);
-    g.fillEllipse(0, 8, 34, 12);
-
-    // Backpack (back = left side, character faces right)
-    g.fillStyle(0xF97316);
-    g.fillRoundedRect(-22, -9, 13, 18, 4);
-    g.fillStyle(0xC05621, 0.85);
-    g.fillRoundedRect(-20, -5, 9, 10, 3);
-
-    // Left arm (swings forward/back in Y)
-    g.fillStyle(0xFDBA74);
-    g.fillEllipse(0, as - 13, 9, 13);
-
-    // Body — blue shirt
-    g.fillStyle(0x3B82F6);
-    g.fillEllipse(1, 0, 28, 22);
-    g.fillStyle(0x2563EB, 0.45);
-    g.fillEllipse(4, -2, 14, 10);
-
-    // Right arm (opposite swing)
-    g.fillStyle(0xFDBA74);
-    g.fillEllipse(0, -as + 13, 9, 13);
-
-    // Left leg + shoe
-    g.fillStyle(0x1E3A8A);
-    g.fillEllipse(-9, ls + 9, 10, 8);
-    g.fillStyle(0x111827);
-    g.fillEllipse(-9, ls + 15, 10, 6);
-
-    // Right leg + shoe
-    g.fillStyle(0x1E3A8A);
-    g.fillEllipse(-9, -ls + 9, 10, 8);
-    g.fillStyle(0x111827);
-    g.fillEllipse(-9, -ls + 15, 10, 6);
-
-    // Head (front = right side)
-    g.fillStyle(0xFDBA74);
-    g.fillCircle(13, 0, 13);
-    // Hair
-    g.fillStyle(0x78350F);
-    g.fillCircle(13, -6, 11);
-    g.fillCircle(6,  -3, 5);
-    // Eyes
-    g.fillStyle(0x1C1917);
-    g.fillCircle(18, 1, 2.5);
-    g.fillCircle(13, 1, 2.5);
-    // Smile
-    g.lineStyle(1.5, 0x7C2D12, 1);
-    g.beginPath();
-    g.arc(15, 5, 4, 0.1, Math.PI * 0.85, false);
-    g.strokePath();
-    // Ear
-    g.fillStyle(0xFDBA74);
-    g.fillCircle(8, 3, 4);
+    // Gentle bob (visual only — physics body y is untouched)
+    const bob = moving ? Math.sin(this.tommyWalkPhase * 0.013) * 2.5 : 0;
+    this.tommySprite.setPosition(this.tommy.x, this.tommy.y + bob);
   }
 
   // ── Update ────────────────────────────────────────────────────────────────────

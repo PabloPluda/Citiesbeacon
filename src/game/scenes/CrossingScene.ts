@@ -9,7 +9,7 @@ const BOOK_COLORS  = [0xE53E3E, 0x3182CE, 0xD69E2E, 0x805AD5, 0x2F855A];
 // ─── Level config ──────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
   const crossings    = level === 1 ? 4 : Math.min(4 + Math.floor(level * 0.8), 18);
-  const speed        = 100 + level * 11;         // px/s Tommy forward speed
+  const speed        = 95 + level * 8;           // px/s Tommy forward speed
   const obstInterval = Math.max(155, 380 - level * 12); // px between obstacle spawns
   return { crossings, speed, obstInterval };
 }
@@ -271,7 +271,7 @@ function buildWorldChunks(
 interface WorldObj {
   worldX: number;
   lane:   number;
-  gfx:    Phaser.GameObjects.Graphics;
+  gfx:    Phaser.GameObjects.Image;
   type:   string;
   alive:  boolean;
 }
@@ -446,10 +446,13 @@ export class CrossingScene extends Phaser.Scene {
       tg.destroy();
     }
 
+    this.bakeObjectTextures();
+
     this.tommy = this.physics.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0').setDepth(5).setAlpha(0);
+    // Render emoji at 2× then scale 0.5 → crisp on HiDPI screens
     this.tommyText = this.add.text(220, H/2 + LANE_OFFSETS[1], '🏃', {
-      fontSize: '34px',
-    }).setOrigin(0.5).setDepth(5).setScale(-1, 1);
+      fontSize: '68px',
+    }).setOrigin(0.5).setDepth(5).setScale(-0.5, 0.5);
 
     this.buildLifeIndicators();
     this.setupSwipeControls();
@@ -648,6 +651,43 @@ export class CrossingScene extends Phaser.Scene {
     }
   }
 
+  // ── Texture baking (2× render → 0.5 scale = crisp on HiDPI) ─────────────────
+
+  private bakeObjectTextures() {
+    if (this.textures.exists('obs_tree')) return;
+
+    const bake = (key: string, fn: (g: Phaser.GameObjects.Graphics) => void, w = 128, h = 128) => {
+      const g = this.make.graphics({ x: 0, y: 0 });
+      fn(g);
+      g.setScale(2, 2);
+      const rt = this.add.renderTexture(0, 0, w, h);
+      rt.draw(g, w / 2, h / 2);
+      rt.saveTexture(key);
+      rt.destroy();
+      g.destroy();
+    };
+
+    bake('obs_tree', g => this.drawObstacleGfx(g, 'tree'));
+    bake('obs_bike', g => this.drawObstacleGfx(g, 'bike'));
+    bake('obs_sign', g => this.drawObstacleGfx(g, 'sign'));
+
+    const pSkins  = [0xFDBA74, 0xF97316, 0xFCD34D, 0xD97706];
+    const pShirts = [0xE53E3E, 0x3182CE, 0x805AD5, 0x38A169];
+    for (let i = 0; i < 4; i++) {
+      const sk = pSkins[i], sh = pShirts[i];
+      bake(`obs_person_${i}`, g => {
+        g.lineStyle(2.5, 0xEF4444, 0.85); g.strokeCircle(0, 0, 26);
+        g.fillStyle(0x000000, 0.12); g.fillEllipse(0, 12, 20, 8);
+        g.fillStyle(sh); g.fillEllipse(0, 4, 16, 20);
+        g.fillStyle(sk); g.fillCircle(0, -9, 9);
+        g.fillStyle(0x78350F); g.fillCircle(0, -13, 7);
+      });
+    }
+    for (let i = 0; i < BOOK_COLORS.length; i++) {
+      bake(`book_tex_${i}`, g => this.drawBookGfx(g, BOOK_COLORS[i]), 100, 100);
+    }
+  }
+
   // ── Obstacle spawning ─────────────────────────────────────────────────────────
 
   spawnObstacle(worldX: number, forceLane?: number) {
@@ -661,9 +701,9 @@ export class CrossingScene extends Phaser.Scene {
     const type      = types[Phaser.Math.Between(0, types.length - 1)] as string;
     const y         = H / 2 + LANE_OFFSETS[lane];
 
-    const gfx = this.add.graphics().setDepth(4).setPosition(worldX, y);
-    this.drawObstacleGfx(gfx, type);
-    this.worldObstacles.push({ worldX, lane, gfx, type, alive: true });
+    const texKey = type === 'person' ? `obs_person_${Phaser.Math.Between(0, 3)}` : `obs_${type}`;
+    const img = this.add.image(worldX, y, texKey).setOrigin(0.5).setScale(0.5).setDepth(4);
+    this.worldObstacles.push({ worldX, lane, gfx: img, type, alive: true });
   }
 
   spawnBook(worldX: number) {
@@ -671,13 +711,12 @@ export class CrossingScene extends Phaser.Scene {
     if (worldX < 370) return;
     if (this.crossroads.some(cr => Math.abs(cr.x - worldX) < 135)) return;
 
-    const lane  = Phaser.Math.Between(0, 2);
-    const color = BOOK_COLORS[Phaser.Math.Between(0, BOOK_COLORS.length - 1)];
-    const y     = H / 2 + LANE_OFFSETS[lane];
+    const lane     = Phaser.Math.Between(0, 2);
+    const colorIdx = Phaser.Math.Between(0, BOOK_COLORS.length - 1);
+    const y        = H / 2 + LANE_OFFSETS[lane];
 
-    const gfx = this.add.graphics().setDepth(4).setPosition(worldX, y);
-    this.drawBookGfx(gfx, color);
-    this.worldBooks.push({ worldX, lane, gfx, type: 'book', alive: true });
+    const img = this.add.image(worldX, y, `book_tex_${colorIdx}`).setOrigin(0.5).setScale(0.5).setDepth(4);
+    this.worldBooks.push({ worldX, lane, gfx: img, type: 'book', alive: true });
   }
 
   drawObstacleGfx(g: Phaser.GameObjects.Graphics, type: string) {
@@ -864,19 +903,27 @@ export class CrossingScene extends Phaser.Scene {
         }
       }
 
-      // Spawn cars
+      // Spawn cars — skip if another car on same crossing+direction is too close
       if (Math.abs(cr.x - tommyX) < 1200 && Math.random() < 0.012) {
-        const isDown = Math.random() > 0.5;
-        const model    = CAR_MODELS[Phaser.Math.Between(0, CAR_MODELS.length - 1)];
-        const colorIdx = Phaser.Math.Between(0, 4);
-        const texKey   = this.carTextureKeys[`${model}_${colorIdx}`] || 'car2_sedan_0';
-        const car = this.carGroup.create(
-          cr.x + (isDown ? -25 : 25), isDown ? -110 : H + 110, texKey,
-        ) as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
-        car.cr = cr; car.dir = isDown ? 'down' : 'up';
-        car.setDepth(6).setVelocityY(isDown ? 170 : -170);
-        if (isDown) car.setAngle(180);
-        this.time.delayedCall(10000, () => { if (car.active) car.destroy(); });
+        const isDown  = Math.random() > 0.5;
+        const dir     = isDown ? 'down' : 'up';
+        const spawnY  = isDown ? -110 : H + 110;
+        const tooClose = this.carGroup.getChildren().some(child => {
+          const c = child as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
+          return c.active && c.cr === cr && c.dir === dir && Math.abs(c.y - spawnY) < 130;
+        });
+        if (!tooClose) {
+          const model    = CAR_MODELS[Phaser.Math.Between(0, CAR_MODELS.length - 1)];
+          const colorIdx = Phaser.Math.Between(0, 4);
+          const texKey   = this.carTextureKeys[`${model}_${colorIdx}`] || 'car2_sedan_0';
+          const car = this.carGroup.create(
+            cr.x + (isDown ? -25 : 25), spawnY, texKey,
+          ) as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
+          car.cr = cr; car.dir = dir;
+          car.setDepth(6).setVelocityY(isDown ? 170 : -170);
+          if (isDown) car.setAngle(180);
+          this.time.delayedCall(10000, () => { if (car.active) car.destroy(); });
+        }
       }
 
       // Red-light penalty (only if Tommy isn't holding stop near crossing)

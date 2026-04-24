@@ -334,8 +334,8 @@ export class CrossingScene extends Phaser.Scene {
   }
 
   preload() {
-    if (!this.textures.exists('tommy_char')) {
-      this.load.spritesheet('tommy_char', '/crossing_char1.png', { frameWidth: 128, frameHeight: 144 });
+    if (!this.textures.exists('tommy_char') && !this.textures.exists('tommy_char_raw')) {
+      this.load.image('tommy_char_raw', '/crossing_char1.png');
     }
   }
 
@@ -450,6 +450,29 @@ export class CrossingScene extends Phaser.Scene {
     }
 
     this.bakeObjectTextures();
+
+    // Build transparent spritesheet from raw PNG (white background → alpha 0)
+    if (!this.textures.exists('tommy_char')) {
+      const rawTex = this.textures.get('tommy_char_raw');
+      const imgEl  = rawTex.source[0].image as HTMLImageElement;
+      const iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
+      const cv  = document.createElement('canvas');
+      cv.width = iw; cv.height = ih;
+      const ctx = cv.getContext('2d', { willReadFrequently: true })!;
+      ctx.drawImage(imgEl, 0, 0);
+      const id = ctx.getImageData(0, 0, iw, ih);
+      const px = id.data;
+      // Top-left pixel is background colour
+      const bgR = px[0], bgG = px[1], bgB = px[2];
+      const tol = 28;
+      for (let i = 0; i < px.length; i += 4) {
+        if (Math.abs(px[i]-bgR) < tol && Math.abs(px[i+1]-bgG) < tol && Math.abs(px[i+2]-bgB) < tol) {
+          px[i+3] = 0;
+        }
+      }
+      ctx.putImageData(id, 0, 0);
+      this.textures.addSpriteSheet('tommy_char', cv as unknown as HTMLImageElement, { frameWidth: 128, frameHeight: 144 });
+    }
 
     if (!this.anims.exists('tommy_walk')) {
       this.anims.create({

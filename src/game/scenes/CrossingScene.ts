@@ -477,12 +477,8 @@ export class CrossingScene extends Phaser.Scene {
     });
 
     // Lottie creates a <canvas> inside the div synchronously with animationData
-    const lottieCanvas = lottieDiv.querySelector('canvas') as HTMLCanvasElement | null;
-    if (lottieCanvas) {
-      lottieCanvas.width  = 200;
-      lottieCanvas.height = 200;
-    }
-    this.catCanvas = lottieCanvas ?? undefined;
+    // Do NOT touch canvas.width/height — that clears it and breaks Lottie's context
+    this.catCanvas = lottieDiv.querySelector('canvas') as HTMLCanvasElement ?? undefined;
 
     if (this.textures.exists('cat_lottie')) this.textures.remove('cat_lottie');
     this.textures.createCanvas('cat_lottie', 200, 200);
@@ -864,7 +860,7 @@ export class CrossingScene extends Phaser.Scene {
       const ct  = this.textures.get('cat_lottie') as Phaser.Textures.CanvasTexture;
       const ctx = ct.getContext();
       ctx.clearRect(0, 0, 200, 200);
-      ctx.drawImage(this.catCanvas, 0, 0);
+      ctx.drawImage(this.catCanvas, 0, 0, 200, 200);
       ct.refresh();
     }
   }

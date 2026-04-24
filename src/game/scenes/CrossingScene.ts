@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import lottie from 'lottie-web';
+import type { AnimationItem } from 'lottie-web';
 import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
 
@@ -295,7 +297,7 @@ export class CrossingScene extends Phaser.Scene {
   tommyFrame  = 0;
   tommyTick   = 0;
   catEl?:     HTMLDivElement;
-  catAnim?:   any;
+  catAnim?:   AnimationItem;
   catPlaying  = false;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
@@ -462,16 +464,13 @@ export class CrossingScene extends Phaser.Scene {
     document.body.appendChild(cat);
     this.catEl = cat;
 
-    const lottie = (window as any).lottie;
-    if (lottie) {
-      this.catAnim = lottie.loadAnimation({
-        container: cat,
-        renderer:  'svg',
-        loop:      true,
-        autoplay:  false,
-        path:      '/catwalk.json',
-      });
-    }
+    this.catAnim = lottie.loadAnimation({
+      container: cat,
+      renderer:  'svg',
+      loop:      true,
+      autoplay:  false,
+      path:      '/catwalk.json',
+    });
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.catAnim?.destroy();
@@ -842,14 +841,12 @@ export class CrossingScene extends Phaser.Scene {
     }
 
     const moving = !this.done && !this.tutorialActive;
-    if (this.catAnim) {
-      if (moving && !this.catPlaying) {
-        this.catAnim.play();
-        this.catPlaying = true;
-      } else if (!moving && this.catPlaying) {
-        this.catAnim.pause();
-        this.catPlaying = false;
-      }
+    if (moving && !this.catPlaying) {
+      this.catAnim?.play();
+      this.catPlaying = true;
+    } else if (!moving && this.catPlaying) {
+      this.catAnim?.pause();
+      this.catPlaying = false;
     }
   }
 

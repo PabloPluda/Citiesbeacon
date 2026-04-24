@@ -302,6 +302,7 @@ export class CrossingScene extends Phaser.Scene {
   catCanvas?:   HTMLCanvasElement;
   catImage?:    Phaser.GameObjects.Image;
   catPlaying    = false;
+  catFrame      = 0;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
@@ -336,6 +337,7 @@ export class CrossingScene extends Phaser.Scene {
     this.tommyFrame      = 0;
     this.tommyTick       = 0;
     this.catPlaying      = false;
+    this.catFrame        = 0;
     this.tommyLane       = 1;
     this.lifeIndicators  = [];
     this.crossroads      = [];
@@ -847,12 +849,9 @@ export class CrossingScene extends Phaser.Scene {
     this.catImage?.setPosition(this.tommy.x, this.tommy.y - 40);
 
     const moving = !this.done && !this.tutorialActive;
-    if (moving && !this.catPlaying) {
-      this.catAnim?.play();
-      this.catPlaying = true;
-    } else if (!moving && this.catPlaying) {
-      this.catAnim?.pause();
-      this.catPlaying = false;
+    if (moving) {
+      this.catFrame = (this.catFrame + 0.5) % 158;
+      this.catAnim?.goToAndStop(Math.floor(this.catFrame), true);
     }
 
     // Copy current Lottie frame into the Phaser canvas texture

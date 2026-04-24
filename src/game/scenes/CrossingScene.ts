@@ -9,7 +9,7 @@ const BOOK_COLORS  = [0xE53E3E, 0x3182CE, 0xD69E2E, 0x805AD5, 0x2F855A];
 // ─── Level config ──────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
   const crossings    = level === 1 ? 4 : Math.min(4 + Math.floor(level * 0.8), 18);
-  const speed        = 95 + level * 8;           // px/s Tommy forward speed
+  const speed        = Math.round(127 + (level - 1) * 128 / 19); // px/s: 127 at lvl1 → 255 at lvl20
   const obstInterval = Math.max(155, 380 - level * 12); // px between obstacle spawns
   return { crossings, speed, obstInterval };
 }

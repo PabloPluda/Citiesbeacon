@@ -291,9 +291,12 @@ export class CrossingScene extends Phaser.Scene {
   swipeStartX     = 0;
   swipeUsed = false;
 
-  tommy!:    Phaser.Physics.Arcade.Image;
-  tommyFrame = 0;
-  tommyTick  = 0;
+  tommy!:     Phaser.Physics.Arcade.Image;
+  tommyFrame  = 0;
+  tommyTick   = 0;
+  catEl?:     HTMLDivElement;
+  catAnim?:   any;
+  catPlaying  = false;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
@@ -327,6 +330,7 @@ export class CrossingScene extends Phaser.Scene {
     this.booksInCycle    = 0;
     this.tommyFrame      = 0;
     this.tommyTick       = 0;
+    this.catPlaying      = false;
     this.tommyLane       = 1;
     this.lifeIndicators  = [];
     this.crossroads      = [];
@@ -450,7 +454,33 @@ export class CrossingScene extends Phaser.Scene {
     this.bakeObjectTextures();
 
     this.tommy = this.physics.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0')
-      .setDepth(5).setScale(0.85);
+      .setDepth(5).setAlpha(0);
+
+    // ── Lottie cat overlay ───────────────────────────────────────────────────
+    const gameParent = this.game.canvas.parentElement as HTMLElement;
+    const cat = document.createElement('div');
+    cat.style.cssText = 'position:absolute;width:90px;height:90px;pointer-events:none;z-index:4;transform:translateZ(0);';
+    gameParent.appendChild(cat);
+    this.catEl = cat;
+
+    const lottie = (window as any).lottie;
+    if (lottie) {
+      this.catAnim = lottie.loadAnimation({
+        container: cat,
+        renderer:  'svg',
+        loop:      true,
+        autoplay:  false,
+        path:      '/catwalk.json',
+      });
+    }
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.catAnim?.destroy();
+      this.catEl?.remove();
+      this.catAnim = undefined;
+      this.catEl   = undefined;
+    });
+    // ────────────────────────────────────────────────────────────────────────
 
     this.buildLifeIndicators();
     this.setupSwipeControls();
@@ -800,12 +830,22 @@ export class CrossingScene extends Phaser.Scene {
   // ── Tommy animated character ──────────────────────────────────────────────────
 
   private drawTommy() {
+    // Position Lottie div over Tommy's current screen coordinates
+    if (this.catEl) {
+      const sx = this.tommy.x - this.cameras.main.scrollX;
+      const sy = this.tommy.y - this.cameras.main.scrollY;
+      this.catEl.style.left = `${sx - 45}px`;
+      this.catEl.style.top  = `${sy - 45}px`;
+    }
+
     const moving = !this.done && !this.tutorialActive;
-    if (moving) {
-      this.tommyTick++;
-      if (this.tommyTick % 10 === 0) {
-        this.tommyFrame = this.tommyFrame === 0 ? 1 : 0;
-        this.tommy.setTexture(`tommy_f${this.tommyFrame}`);
+    if (this.catAnim) {
+      if (moving && !this.catPlaying) {
+        this.catAnim.play();
+        this.catPlaying = true;
+      } else if (!moving && this.catPlaying) {
+        this.catAnim.pause();
+        this.catPlaying = false;
       }
     }
   }

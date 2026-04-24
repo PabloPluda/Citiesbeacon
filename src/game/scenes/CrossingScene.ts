@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import lottie from 'lottie-web';
 import type { AnimationItem } from 'lottie-web';
+import catwalkData from '../../assets/catwalk.json';
 import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
 
@@ -465,11 +466,11 @@ export class CrossingScene extends Phaser.Scene {
     this.catEl = cat;
 
     this.catAnim = lottie.loadAnimation({
-      container: cat,
-      renderer:  'svg',
-      loop:      true,
-      autoplay:  false,
-      path:      '/catwalk.json',
+      container:     cat,
+      renderer:      'svg',
+      loop:          true,
+      autoplay:      false,
+      animationData: catwalkData,
     });
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {

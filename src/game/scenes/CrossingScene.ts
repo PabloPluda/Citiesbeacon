@@ -470,12 +470,18 @@ export class CrossingScene extends Phaser.Scene {
     document.body.appendChild(lottieDiv);
     this.catDiv = lottieDiv;
 
+    // Pin precomp position to center so the cat doesn't slide across the canvas
+    const rawData    = catwalkData as any;
+    const baseLayer  = rawData.layers[rawData.layers.length - 1];
+    const staticLayer = { ...baseLayer, ks: { ...baseLayer.ks, p: { a: 0, k: [540, 828, 0] } } };
+    const animData   = { ...rawData, op: 158, layers: [staticLayer] };
+
     this.catAnim = lottie.loadAnimation({
       container:     lottieDiv,
       renderer:      'canvas',
       loop:          true,
       autoplay:      false,
-      animationData: { ...catwalkData, op: 158 } as typeof catwalkData,
+      animationData: animData,
     });
 
     // Lottie creates a <canvas> inside the div synchronously with animationData
@@ -848,8 +854,8 @@ export class CrossingScene extends Phaser.Scene {
     // Keep catImage aligned with Tommy in world space
     this.catImage?.setPosition(this.tommy.x, this.tommy.y - 40);
 
-    const moving = !this.done && !this.tutorialActive;
-    if (moving) {
+    const vel = (this.tommy.body as Phaser.Physics.Arcade.Body)?.velocity.x ?? 0;
+    if (vel > 0) {
       this.catFrame = (this.catFrame + 0.5) % 158;
       this.catAnim?.goToAndStop(Math.floor(this.catFrame), true);
     }

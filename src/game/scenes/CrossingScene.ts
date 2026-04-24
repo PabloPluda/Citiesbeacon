@@ -291,8 +291,7 @@ export class CrossingScene extends Phaser.Scene {
   swipeStartX     = 0;
   swipeUsed = false;
 
-  tommy!:    Phaser.Physics.Arcade.Image;
-  tommyDom!: Phaser.GameObjects.DOMElement;
+  tommy!: Phaser.Physics.Arcade.Sprite;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
@@ -332,6 +331,12 @@ export class CrossingScene extends Phaser.Scene {
     this.worldBooks      = [];
     this.swipeUsed = false;
     this.schoolX   = 0;
+  }
+
+  preload() {
+    if (!this.textures.exists('tommy_char')) {
+      this.load.spritesheet('tommy_char', '/crossing_char1.png', { frameWidth: 140, frameHeight: 180 });
+    }
   }
 
   create() {
@@ -446,18 +451,16 @@ export class CrossingScene extends Phaser.Scene {
 
     this.bakeObjectTextures();
 
-    this.tommy = this.physics.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0').setDepth(5).setAlpha(0);
-
-    // Sprite-sheet character via CSS animation overlaid on canvas
-    const charDiv = document.createElement('div');
-    charDiv.style.cssText = [
-      'width:140px', 'height:180px', 'overflow:hidden',
-      "background-image:url('/crossing_char1.png')",
-      'background-size:1680px 180px',
-    ].join(';');
-    charDiv.classList.add('tommy-walk');
-    this.tommyDom = this.add.dom(220, H/2 + LANE_OFFSETS[1], charDiv)
-      .setOrigin(0.5, 0.5).setDepth(5);
+    if (!this.anims.exists('tommy_walk')) {
+      this.anims.create({
+        key: 'tommy_walk',
+        frames: this.anims.generateFrameNumbers('tommy_char', { start: 0, end: 11 }),
+        frameRate: 15,
+        repeat: -1,
+      });
+    }
+    this.tommy = this.physics.add.sprite(220, H/2 + LANE_OFFSETS[1], 'tommy_char')
+      .setScale(0.45).setDepth(5);
 
     this.buildLifeIndicators();
     this.setupSwipeControls();
@@ -808,8 +811,11 @@ export class CrossingScene extends Phaser.Scene {
 
   private drawTommy() {
     const moving = !this.done && !this.tutorialActive;
-    (this.tommyDom.node as HTMLElement).style.animationPlayState = moving ? 'running' : 'paused';
-    this.tommyDom.setPosition(this.tommy.x, this.tommy.y);
+    if (moving) {
+      if (!this.tommy.anims.isPlaying) this.tommy.play('tommy_walk');
+    } else {
+      this.tommy.anims.pause();
+    }
   }
 
   // ── Update ────────────────────────────────────────────────────────────────────

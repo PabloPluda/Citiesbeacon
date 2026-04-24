@@ -11,9 +11,6 @@ export function createGameConfig(parent: string | HTMLElement, InitialSceneClass
       width: '100%',
       height: '100%'
     },
-    dom: {
-      createContainer: true,
-    },
     physics: {
       default: 'arcade',
       arcade: {

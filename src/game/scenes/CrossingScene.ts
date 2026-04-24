@@ -298,6 +298,7 @@ export class CrossingScene extends Phaser.Scene {
   tommyFrame    = 0;
   tommyTick     = 0;
   catAnim?:     AnimationItem;
+  catDiv?:      HTMLDivElement;
   catCanvas?:   HTMLCanvasElement;
   catImage?:    Phaser.GameObjects.Image;
   catPlaying    = false;
@@ -461,27 +462,38 @@ export class CrossingScene extends Phaser.Scene {
       .setDepth(5).setAlpha(0);
 
     // ── Lottie cat rendered into Phaser texture ──────────────────────────────
-    const offscreen = document.createElement('canvas');
-    offscreen.width  = 200;
-    offscreen.height = 200;
-    this.catCanvas = offscreen;
+    // Canvas renderer needs a <div> container — a bare canvas doesn't work
+    const lottieDiv = document.createElement('div');
+    lottieDiv.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:200px;height:200px;';
+    document.body.appendChild(lottieDiv);
+    this.catDiv = lottieDiv;
 
     this.catAnim = lottie.loadAnimation({
-      container:     offscreen,
+      container:     lottieDiv,
       renderer:      'canvas',
       loop:          true,
       autoplay:      false,
       animationData: catwalkData,
     });
 
+    // Lottie creates a <canvas> inside the div synchronously with animationData
+    const lottieCanvas = lottieDiv.querySelector('canvas') as HTMLCanvasElement | null;
+    if (lottieCanvas) {
+      lottieCanvas.width  = 200;
+      lottieCanvas.height = 200;
+    }
+    this.catCanvas = lottieCanvas ?? undefined;
+
     if (this.textures.exists('cat_lottie')) this.textures.remove('cat_lottie');
     this.textures.createCanvas('cat_lottie', 200, 200);
-    this.catImage = this.add.image(220, H/2 + LANE_OFFSETS[1], 'cat_lottie')
-      .setScale(0.45).setDepth(5);
+    this.catImage = this.add.image(220, H/2 + LANE_OFFSETS[1] - 10, 'cat_lottie')
+      .setScale(0.675).setDepth(5);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.catAnim?.destroy();
+      this.catDiv?.remove();
       this.catAnim   = undefined;
+      this.catDiv    = undefined;
       this.catCanvas = undefined;
       this.catImage  = undefined;
     });

@@ -335,7 +335,7 @@ export class CrossingScene extends Phaser.Scene {
 
   preload() {
     if (!this.textures.exists('tommy_char')) {
-      this.load.spritesheet('tommy_char', '/crossing_char1.png', { frameWidth: 140, frameHeight: 180 });
+      this.load.spritesheet('tommy_char', '/crossing_char1.png', { frameWidth: 128, frameHeight: 144 });
     }
   }
 
@@ -454,13 +454,14 @@ export class CrossingScene extends Phaser.Scene {
     if (!this.anims.exists('tommy_walk')) {
       this.anims.create({
         key: 'tommy_walk',
-        frames: this.anims.generateFrameNumbers('tommy_char', { start: 0, end: 11 }),
-        frameRate: 15,
+        frames: this.anims.generateFrameNumbers('tommy_char', { start: 0, end: 7 }),
+        frameRate: 12,
         repeat: -1,
       });
     }
-    this.tommy = this.physics.add.sprite(220, H/2 + LANE_OFFSETS[1], 'tommy_char')
-      .setScale(0.45).setDepth(5);
+    this.tommy = this.physics.add.sprite(220, H/2 + LANE_OFFSETS[1], 'tommy_char', 0)
+      .setScale(0.5).setDepth(5);
+    this.tommy.play('tommy_walk');
 
     this.buildLifeIndicators();
     this.setupSwipeControls();
@@ -812,9 +813,9 @@ export class CrossingScene extends Phaser.Scene {
   private drawTommy() {
     const moving = !this.done && !this.tutorialActive;
     if (moving) {
-      if (!this.tommy.anims.isPlaying) this.tommy.play('tommy_walk');
+      if (this.tommy.anims.isPaused) this.tommy.anims.resume();
     } else {
-      this.tommy.anims.pause();
+      if (this.tommy.anims.isPlaying) this.tommy.anims.pause();
     }
   }
 

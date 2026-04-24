@@ -473,7 +473,7 @@ export class CrossingScene extends Phaser.Scene {
       renderer:      'canvas',
       loop:          true,
       autoplay:      false,
-      animationData: catwalkData,
+      animationData: { ...catwalkData, op: 158 } as typeof catwalkData,
     });
 
     // Lottie creates a <canvas> inside the div synchronously with animationData
@@ -844,7 +844,7 @@ export class CrossingScene extends Phaser.Scene {
 
   private drawTommy() {
     // Keep catImage aligned with Tommy in world space
-    this.catImage?.setPosition(this.tommy.x, this.tommy.y);
+    this.catImage?.setPosition(this.tommy.x, this.tommy.y - 40);
 
     const moving = !this.done && !this.tutorialActive;
     if (moving && !this.catPlaying) {

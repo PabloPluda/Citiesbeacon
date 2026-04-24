@@ -483,7 +483,7 @@ export class CrossingScene extends Phaser.Scene {
     if (this.textures.exists('cat_lottie')) this.textures.remove('cat_lottie');
     this.textures.createCanvas('cat_lottie', 200, 200);
     this.catImage = this.add.image(220, H/2 + LANE_OFFSETS[1] - 10, 'cat_lottie')
-      .setScale(0.675).setDepth(5);
+      .setScale(0.675).setFlipX(true).setDepth(5);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.catAnim?.destroy();

@@ -291,7 +291,9 @@ export class CrossingScene extends Phaser.Scene {
   swipeStartX     = 0;
   swipeUsed = false;
 
-  tommy!: Phaser.Physics.Arcade.Sprite;
+  tommy!:    Phaser.Physics.Arcade.Image;
+  tommyFrame = 0;
+  tommyTick  = 0;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
@@ -323,6 +325,8 @@ export class CrossingScene extends Phaser.Scene {
     this.penaltyCooldown = false;
     this.livesLost       = 0;
     this.booksInCycle    = 0;
+    this.tommyFrame      = 0;
+    this.tommyTick       = 0;
     this.tommyLane       = 1;
     this.lifeIndicators  = [];
     this.crossroads      = [];
@@ -331,12 +335,6 @@ export class CrossingScene extends Phaser.Scene {
     this.worldBooks      = [];
     this.swipeUsed = false;
     this.schoolX   = 0;
-  }
-
-  preload() {
-    if (!this.textures.exists('tommy_char') && !this.textures.exists('tommy_char_raw')) {
-      this.load.image('tommy_char_raw', '/crossing_char1.png');
-    }
   }
 
   create() {
@@ -451,40 +449,8 @@ export class CrossingScene extends Phaser.Scene {
 
     this.bakeObjectTextures();
 
-    // Build transparent spritesheet from raw PNG (white background → alpha 0)
-    if (!this.textures.exists('tommy_char')) {
-      const rawTex = this.textures.get('tommy_char_raw');
-      const imgEl  = rawTex.source[0].image as HTMLImageElement;
-      const iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
-      const cv  = document.createElement('canvas');
-      cv.width = iw; cv.height = ih;
-      const ctx = cv.getContext('2d', { willReadFrequently: true })!;
-      ctx.drawImage(imgEl, 0, 0);
-      const id = ctx.getImageData(0, 0, iw, ih);
-      const px = id.data;
-      // Top-left pixel is background colour
-      const bgR = px[0], bgG = px[1], bgB = px[2];
-      const tol = 28;
-      for (let i = 0; i < px.length; i += 4) {
-        if (Math.abs(px[i]-bgR) < tol && Math.abs(px[i+1]-bgG) < tol && Math.abs(px[i+2]-bgB) < tol) {
-          px[i+3] = 0;
-        }
-      }
-      ctx.putImageData(id, 0, 0);
-      this.textures.addSpriteSheet('tommy_char', cv as unknown as HTMLImageElement, { frameWidth: 128, frameHeight: 144 });
-    }
-
-    if (!this.anims.exists('tommy_walk')) {
-      this.anims.create({
-        key: 'tommy_walk',
-        frames: this.anims.generateFrameNumbers('tommy_char', { start: 0, end: 7 }),
-        frameRate: 12,
-        repeat: -1,
-      });
-    }
-    this.tommy = this.physics.add.sprite(220, H/2 + LANE_OFFSETS[1], 'tommy_char', 0)
-      .setScale(0.5).setDepth(5);
-    this.tommy.play('tommy_walk');
+    this.tommy = this.physics.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0')
+      .setDepth(5).setScale(0.85);
 
     this.buildLifeIndicators();
     this.setupSwipeControls();
@@ -836,9 +802,11 @@ export class CrossingScene extends Phaser.Scene {
   private drawTommy() {
     const moving = !this.done && !this.tutorialActive;
     if (moving) {
-      if (this.tommy.anims.isPaused) this.tommy.anims.resume();
-    } else {
-      if (this.tommy.anims.isPlaying) this.tommy.anims.pause();
+      this.tommyTick++;
+      if (this.tommyTick % 10 === 0) {
+        this.tommyFrame = this.tommyFrame === 0 ? 1 : 0;
+        this.tommy.setTexture(`tommy_f${this.tommyFrame}`);
+      }
     }
   }
 

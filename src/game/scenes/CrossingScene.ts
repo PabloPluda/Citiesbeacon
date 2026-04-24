@@ -457,10 +457,9 @@ export class CrossingScene extends Phaser.Scene {
       .setDepth(5).setAlpha(0);
 
     // ── Lottie cat overlay ───────────────────────────────────────────────────
-    const gameParent = this.game.canvas.parentElement as HTMLElement;
     const cat = document.createElement('div');
-    cat.style.cssText = 'position:absolute;width:90px;height:90px;pointer-events:none;z-index:4;transform:translateZ(0);';
-    gameParent.appendChild(cat);
+    cat.style.cssText = 'position:fixed;width:90px;height:90px;pointer-events:none;z-index:9999;transform:translateZ(0);';
+    document.body.appendChild(cat);
     this.catEl = cat;
 
     const lottie = (window as any).lottie;
@@ -830,10 +829,14 @@ export class CrossingScene extends Phaser.Scene {
   // ── Tommy animated character ──────────────────────────────────────────────────
 
   private drawTommy() {
-    // Position Lottie div over Tommy's current screen coordinates
+    // Convert Tommy's world position → CSS screen position via canvas rect
     if (this.catEl) {
-      const sx = this.tommy.x - this.cameras.main.scrollX;
-      const sy = this.tommy.y - this.cameras.main.scrollY;
+      const rect   = this.game.canvas.getBoundingClientRect();
+      const cam    = this.cameras.main;
+      const scaleX = rect.width  / cam.width;
+      const scaleY = rect.height / cam.height;
+      const sx = rect.left + (this.tommy.x - cam.scrollX) * scaleX;
+      const sy = rect.top  + (this.tommy.y - cam.scrollY) * scaleY;
       this.catEl.style.left = `${sx - 45}px`;
       this.catEl.style.top  = `${sy - 45}px`;
     }

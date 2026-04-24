@@ -289,11 +289,10 @@ export class CrossingScene extends Phaser.Scene {
   tommyLane       = 1;
   swipeStartY     = 0;
   swipeStartX     = 0;
-  swipeUsed       = false;
-  tommyWalkPhase  = 0;
+  swipeUsed = false;
 
-  tommy!:     Phaser.Physics.Arcade.Image;
-  tommyText!: Phaser.GameObjects.Text;
+  tommy!:    Phaser.Physics.Arcade.Image;
+  tommyDom!: Phaser.GameObjects.DOMElement;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
@@ -331,9 +330,8 @@ export class CrossingScene extends Phaser.Scene {
     this.carTextureKeys  = {};
     this.worldObstacles  = [];
     this.worldBooks      = [];
-    this.swipeUsed       = false;
-    this.tommyWalkPhase  = 0;
-    this.schoolX         = 0;
+    this.swipeUsed = false;
+    this.schoolX   = 0;
   }
 
   create() {
@@ -449,10 +447,17 @@ export class CrossingScene extends Phaser.Scene {
     this.bakeObjectTextures();
 
     this.tommy = this.physics.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0').setDepth(5).setAlpha(0);
-    // Render emoji at 2× then scale 0.5 → crisp on HiDPI screens
-    this.tommyText = this.add.text(220, H/2 + LANE_OFFSETS[1], '🏃', {
-      fontSize: '68px',
-    }).setOrigin(0.5).setDepth(5).setScale(-0.5, 0.5);
+
+    // Sprite-sheet character via CSS animation overlaid on canvas
+    const charDiv = document.createElement('div');
+    charDiv.style.cssText = [
+      'width:140px', 'height:180px', 'overflow:hidden',
+      "background-image:url('/crossing_char1.png')",
+      'background-size:1680px 180px',
+    ].join(';');
+    charDiv.classList.add('tommy-walk');
+    this.tommyDom = this.add.dom(220, H/2 + LANE_OFFSETS[1], charDiv)
+      .setOrigin(0.5, 0.5).setDepth(5);
 
     this.buildLifeIndicators();
     this.setupSwipeControls();
@@ -801,17 +806,16 @@ export class CrossingScene extends Phaser.Scene {
 
   // ── Tommy animated character ──────────────────────────────────────────────────
 
-  private drawTommy(dt: number) {
+  private drawTommy() {
     const moving = !this.done && !this.tutorialActive;
-    if (moving) this.tommyWalkPhase += dt;
-    const bob = moving ? Math.sin(this.tommyWalkPhase * 0.013) * 2.5 : 0;
-    this.tommyText.setPosition(this.tommy.x, this.tommy.y + bob);
+    (this.tommyDom.node as HTMLElement).style.animationPlayState = moving ? 'running' : 'paused';
+    this.tommyDom.setPosition(this.tommy.x, this.tommy.y);
   }
 
   // ── Update ────────────────────────────────────────────────────────────────────
 
   update(_time: number, delta: number) {
-    this.drawTommy(delta);
+    this.drawTommy();
 
     if (this.done || this.tutorialActive) {
       this.tommy.setVelocityX(0);

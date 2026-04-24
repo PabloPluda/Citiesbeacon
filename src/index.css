@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes walk {
+  from { background-position: 0px; }
+  to   { background-position: -1680px; }
+}
+.tommy-walk {
+  animation: walk 0.8s steps(12) infinite;
+  animation-play-state: paused;
+}
+
 /* Allow text input in forms (body disables user-select for game feel) */
 input, textarea, select {
   -webkit-user-select: text;

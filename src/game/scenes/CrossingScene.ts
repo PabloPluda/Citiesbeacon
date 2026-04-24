@@ -294,12 +294,13 @@ export class CrossingScene extends Phaser.Scene {
   swipeStartX     = 0;
   swipeUsed = false;
 
-  tommy!:     Phaser.Physics.Arcade.Image;
-  tommyFrame  = 0;
-  tommyTick   = 0;
-  catEl?:     HTMLDivElement;
-  catAnim?:   AnimationItem;
-  catPlaying  = false;
+  tommy!:       Phaser.Physics.Arcade.Image;
+  tommyFrame    = 0;
+  tommyTick     = 0;
+  catAnim?:     AnimationItem;
+  catCanvas?:   HTMLCanvasElement;
+  catImage?:    Phaser.GameObjects.Image;
+  catPlaying    = false;
   crossroads: any[] = [];
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
@@ -459,25 +460,30 @@ export class CrossingScene extends Phaser.Scene {
     this.tommy = this.physics.add.image(220, H/2 + LANE_OFFSETS[1], 'tommy_f0')
       .setDepth(5).setAlpha(0);
 
-    // ── Lottie cat overlay ───────────────────────────────────────────────────
-    const cat = document.createElement('div');
-    cat.style.cssText = 'position:fixed;width:90px;height:90px;pointer-events:none;z-index:9999;transform:translateZ(0);';
-    document.body.appendChild(cat);
-    this.catEl = cat;
+    // ── Lottie cat rendered into Phaser texture ──────────────────────────────
+    const offscreen = document.createElement('canvas');
+    offscreen.width  = 200;
+    offscreen.height = 200;
+    this.catCanvas = offscreen;
 
     this.catAnim = lottie.loadAnimation({
-      container:     cat,
-      renderer:      'svg',
+      container:     offscreen,
+      renderer:      'canvas',
       loop:          true,
       autoplay:      false,
       animationData: catwalkData,
     });
 
+    if (this.textures.exists('cat_lottie')) this.textures.remove('cat_lottie');
+    this.textures.createCanvas('cat_lottie', 200, 200);
+    this.catImage = this.add.image(220, H/2 + LANE_OFFSETS[1], 'cat_lottie')
+      .setScale(0.45).setDepth(5);
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.catAnim?.destroy();
-      this.catEl?.remove();
-      this.catAnim = undefined;
-      this.catEl   = undefined;
+      this.catAnim   = undefined;
+      this.catCanvas = undefined;
+      this.catImage  = undefined;
     });
     // ────────────────────────────────────────────────────────────────────────
 
@@ -829,17 +835,8 @@ export class CrossingScene extends Phaser.Scene {
   // ── Tommy animated character ──────────────────────────────────────────────────
 
   private drawTommy() {
-    // Convert Tommy's world position → CSS screen position via canvas rect
-    if (this.catEl) {
-      const rect   = this.game.canvas.getBoundingClientRect();
-      const cam    = this.cameras.main;
-      const scaleX = rect.width  / cam.width;
-      const scaleY = rect.height / cam.height;
-      const sx = rect.left + (this.tommy.x - cam.scrollX) * scaleX;
-      const sy = rect.top  + (this.tommy.y - cam.scrollY) * scaleY;
-      this.catEl.style.left = `${sx - 45}px`;
-      this.catEl.style.top  = `${sy - 45}px`;
-    }
+    // Keep catImage aligned with Tommy in world space
+    this.catImage?.setPosition(this.tommy.x, this.tommy.y);
 
     const moving = !this.done && !this.tutorialActive;
     if (moving && !this.catPlaying) {
@@ -848,6 +845,15 @@ export class CrossingScene extends Phaser.Scene {
     } else if (!moving && this.catPlaying) {
       this.catAnim?.pause();
       this.catPlaying = false;
+    }
+
+    // Copy current Lottie frame into the Phaser canvas texture
+    if (this.catCanvas && this.textures.exists('cat_lottie')) {
+      const ct  = this.textures.get('cat_lottie') as Phaser.Textures.CanvasTexture;
+      const ctx = ct.getContext();
+      ctx.clearRect(0, 0, 200, 200);
+      ctx.drawImage(this.catCanvas, 0, 0);
+      ct.refresh();
     }
   }
 

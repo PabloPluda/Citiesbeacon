@@ -111,26 +111,6 @@ function buildWorldChunks(
     const key = `_world_chunk_${ci}`;
     const g = scene.add.graphics();
 
-    // Grass — only below the bottom sidewalk
-    g.fillStyle(0x48BB78); g.fillRect(0, H/2+300, chunkW, Math.max(0, H/2-300));
-
-    // Bottom sidewalk (below horizontal road, same width 120px)
-    g.fillStyle(0xCBD5E1); g.fillRect(0, H/2+180, chunkW, 120);
-    g.fillStyle(0xA0AEC0); g.fillRect(0, H/2+182, chunkW, 3); g.fillRect(0, H/2+295, chunkW, 3);
-
-    // Horizontal road (below main sidewalk, same width 120px, purely aesthetic)
-    g.fillStyle(0x2D3748); g.fillRect(0, H/2+60, chunkW, 120);
-    g.fillStyle(0xFFFFFF, 0.08); g.fillRect(0, H/2+60, chunkW, 2);
-    g.fillStyle(0xFFFFFF, 0.08); g.fillRect(0, H/2+178, chunkW, 2);
-    // Center dash on horizontal road
-    g.lineStyle(2, 0xEAB308, 0.4);
-    for (let lx2 = 0; lx2 < chunkW; lx2 += 22) {
-      const absX = cx0 + lx2;
-      if (!crossX.some(crX => Math.abs(absX - crX) < 100)) {
-        g.lineBetween(lx2, H/2+120, lx2+12, H/2+120);
-      }
-    }
-
     // Sidewalk strips
     g.fillStyle(0xE9EDF0); g.fillRect(0, H/2-60, chunkW, 120);
     g.fillStyle(0xA0AEC0); g.fillRect(0, H/2-58, chunkW, 3); g.fillRect(0, H/2+55, chunkW, 3);
@@ -178,12 +158,6 @@ function buildWorldChunks(
       if (x + 90 < cx0 || x - 90 > cx0 + chunkW) continue;
       const lx = x - cx0;
       g.fillStyle(0x2D3748); g.fillRect(lx-90, 0, 180, H);
-      // Horizontal pedestrian crossings on the road — one on each side of the vertical crossing
-      g.fillStyle(0xFFFFFF, 0.72);
-      for (let s = 0; s < 6; s++) {
-        g.fillRect(lx - 140, H/2 + 62 + s * 20, 50, 12); // left side
-        g.fillRect(lx +  90, H/2 + 62 + s * 20, 50, 12); // right side
-      }
       g.fillStyle(0xEAB308);
       for (let k2 = 0; k2 < Math.ceil(H / 80) + 4; k2++) {
         const dashY = -160 + k2 * 80, mid = dashY + 20;
@@ -195,8 +169,6 @@ function buildWorldChunks(
       }
       g.fillStyle(0xFFFFFF, 0.85);
       g.fillRect(lx-80, H/2-61, 160, 5); g.fillRect(lx-80, H/2+56, 160, 5);
-      // Stop line below bottom sidewalk for cars coming from below
-      g.fillRect(lx-80, H/2+296, 160, 5);
       const poleX = lx-100, poleY = H/2-80;
       g.fillStyle(0x2D3748); g.fillRect(poleX-4, H/2-80, 8, 120);
       g.fillStyle(0x111827); g.fillRect(poleX-23, poleY-50, 46, 100);
@@ -263,6 +235,8 @@ export class CrossingScene extends Phaser.Scene {
   preload() {
     this.load.image('backnew_1', '/Crossing/backnew_1.png');
     this.load.image('backnew_2', '/Crossing/backnew_2.png');
+    this.load.image('backdown_1', '/Crossing/backdown_1.png');
+    this.load.image('backdown_2', '/Crossing/backdown_2.png');
     ['obst_1a','obst_1b','obst_2a','obst_2b','obst_2c','obst_2d','obst3_a','obst3_b']
       .forEach(k => this.load.image(k, `/Crossing/${k}.png`));
   }
@@ -309,9 +283,9 @@ export class CrossingScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', handleRestart));
 
     const SPACING     = 1671; // 1491px image width + 180px road width
-    const firstCrossX = 500;
+    const firstCrossX = 1581; // 1491 + 90, so first segment = 1491px like all others
     const lastCrossX  = firstCrossX + (cfg.crossings - 1) * SPACING;
-    this.schoolX      = lastCrossX + 700;
+    this.schoolX      = lastCrossX + 1121; // 90 + 1491 - 460, so last segment = 1491px
     const worldW      = this.schoolX + 460;
     this.crossCount   = cfg.crossings;
 
@@ -335,20 +309,23 @@ export class CrossingScene extends Phaser.Scene {
 
     buildWorldChunks(this, worldW, H, cfg, firstCrossX, SPACING, this.schoolX);
 
-    // Background images in upper zone — one per segment between crossing roads
-    const bgH = H / 2 - 60;
-    let bgIdx = 0;
-    const addBg = (x1: number, x2: number) => {
+    // Background images — top zone (0 to H/2-60) and bottom zone (H/2+60 to H)
+    const bgH      = H / 2 - 60;
+    const botZoneY = H / 2 + 60 + bgH / 2;
+    let bgIdx = 0, bdIdx = 0;
+    const segs: [number, number][] = [
+      [0, firstCrossX - 90],
+      ...Array.from({ length: cfg.crossings - 1 }, (_, i) =>
+        [firstCrossX + i * SPACING + 90, firstCrossX + (i + 1) * SPACING - 90] as [number, number]),
+      [firstCrossX + (cfg.crossings - 1) * SPACING + 90, worldW],
+    ];
+    segs.forEach(([x1, x2]) => {
       const w = x2 - x1;
       if (w <= 0) return;
-      this.add.image(x1 + w / 2, bgH / 2, `backnew_${(bgIdx++ % 2) + 1}`)
-        .setDisplaySize(w, bgH).setDepth(0);
-    };
-    addBg(0, firstCrossX - 90);
-    for (let i = 0; i < cfg.crossings - 1; i++) {
-      addBg(firstCrossX + i * SPACING + 90, firstCrossX + (i + 1) * SPACING - 90);
-    }
-    addBg(firstCrossX + (cfg.crossings - 1) * SPACING + 90, worldW);
+      const cx = x1 + w / 2;
+      this.add.image(cx, bgH / 2,  `backnew_${(bgIdx++ % 2) + 1}`).setDisplaySize(w, bgH).setDepth(0);
+      this.add.image(cx, botZoneY, `backdown_${(bdIdx++ % 2) + 1}`).setDisplaySize(w, bgH).setDepth(0);
+    });
 
     this.carGroup = this.physics.add.group();
 
@@ -922,7 +899,7 @@ export class CrossingScene extends Phaser.Scene {
     this.carGroup.getChildren().forEach(child => {
       const c = child as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
       if (!c.active || !c.body) return;
-      const stopTop = H/2-60, stopBot = H/2+300, FRONT = 44;
+      const stopTop = H/2-60, stopBot = H/2+60,  FRONT = 44;
       if (c.cr.state === 'green') {
         if (c.dir === 'down') {
           if (c.y >= stopTop - FRONT) return;

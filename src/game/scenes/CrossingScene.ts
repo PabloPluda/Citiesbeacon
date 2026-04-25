@@ -198,10 +198,6 @@ function buildWorldChunks(
       g.fillRect(lx-80, H/2-61, 160, 5); g.fillRect(lx-80, H/2+56, 160, 5);
       // Stop line below bottom sidewalk for cars coming from below
       g.fillRect(lx-80, H/2+296, 160, 5);
-      // Grey sidewalk strips on crossing sides in upper zone (drawn before pole so pole renders on top)
-      g.fillStyle(0xCBD5E1);
-      g.fillRect(lx - 140, 0, 50, H/2 - 60);
-      g.fillRect(lx +  90, 0, 50, H/2 - 60);
       const poleX = lx-100, poleY = H/2-80;
       g.fillStyle(0x2D3748); g.fillRect(poleX-4, H/2-80, 8, 120);
       g.fillStyle(0x111827); g.fillRect(poleX-23, poleY-50, 46, 100);
@@ -266,7 +262,8 @@ export class CrossingScene extends Phaser.Scene {
   constructor() { super('CrossingScene'); }
 
   preload() {
-    for (let i = 1; i <= 4; i++) this.load.image(`crossing_bg_${i}`, `/Crossing/back_${i}.png`);
+    this.load.image('backnew_1', '/Crossing/backnew_1.png');
+    this.load.image('backnew_2', '/Crossing/backnew_2.png');
     ['obst_1a','obst_1b','obst_2a','obst_2b','obst_2c','obst_2d','obst3_a','obst3_b']
       .forEach(k => this.load.image(k, `/Crossing/${k}.png`));
   }
@@ -312,7 +309,7 @@ export class CrossingScene extends Phaser.Scene {
     EventBus.on('restart-scene', handleRestart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', handleRestart));
 
-    const SPACING     = 1490; // matches ~1310px image width + 180px road width
+    const SPACING     = 1671; // 1491px image width + 180px road width
     const firstCrossX = 500;
     const lastCrossX  = firstCrossX + (cfg.crossings - 1) * SPACING;
     this.schoolX      = lastCrossX + 700;
@@ -345,7 +342,7 @@ export class CrossingScene extends Phaser.Scene {
     const addBg = (x1: number, x2: number) => {
       const w = x2 - x1;
       if (w <= 0) return;
-      this.add.image(x1 + w / 2, bgH / 2, `crossing_bg_${(bgIdx++ % 4) + 1}`)
+      this.add.image(x1 + w / 2, bgH / 2, `backnew_${(bgIdx++ % 2) + 1}`)
         .setDisplaySize(w, bgH).setDepth(0);
     };
     addBg(0, firstCrossX - 90);

@@ -198,14 +198,14 @@ function buildWorldChunks(
       g.fillRect(lx-80, H/2-61, 160, 5); g.fillRect(lx-80, H/2+56, 160, 5);
       // Stop line below bottom sidewalk for cars coming from below
       g.fillRect(lx-80, H/2+296, 160, 5);
+      // Grey sidewalk strips on crossing sides in upper zone (drawn before pole so pole renders on top)
+      g.fillStyle(0xCBD5E1);
+      g.fillRect(lx - 140, 0, 50, H/2 - 60);
+      g.fillRect(lx +  90, 0, 50, H/2 - 60);
       const poleX = lx-100, poleY = H/2-80;
       g.fillStyle(0x2D3748); g.fillRect(poleX-4, H/2-80, 8, 120);
       g.fillStyle(0x111827); g.fillRect(poleX-23, poleY-50, 46, 100);
       g.fillStyle(0x1F2937); g.fillRect(poleX-21, poleY-48, 42, 96);
-      // Grey sidewalk strips on both sides of the crossing in the upper zone
-      g.fillStyle(0xCBD5E1);
-      g.fillRect(lx - 140, 0, 50, H/2 - 60);
-      g.fillRect(lx +  90, 0, 50, H/2 - 60);
     }
 
     g.generateTexture(key, chunkW, H);
@@ -266,9 +266,9 @@ export class CrossingScene extends Phaser.Scene {
   constructor() { super('CrossingScene'); }
 
   preload() {
-    for (let i = 1; i <= 4; i++) {
-      this.load.image(`crossing_bg_${i}`, `/Crossing/back_${i}.png`);
-    }
+    for (let i = 1; i <= 4; i++) this.load.image(`crossing_bg_${i}`, `/Crossing/back_${i}.png`);
+    ['obst_1a','obst_1b','obst_2a','obst_2b','obst_2c','obst_2d','obst3_a','obst3_b']
+      .forEach(k => this.load.image(k, `/Crossing/${k}.png`));
   }
 
   init(data?: { level?: number }) {
@@ -669,9 +669,8 @@ export class CrossingScene extends Phaser.Scene {
   // ── Texture baking (2× render → 0.5 scale = crisp on HiDPI) ─────────────────
 
   private bakeObjectTextures() {
-    if (this.textures.exists('obs_tree')) return;
-
-    const bake = (key: string, fn: (g: Phaser.GameObjects.Graphics) => void, w = 128, h = 128) => {
+    if (this.textures.exists('book_tex_0')) return;
+    const bake = (key: string, fn: (g: Phaser.GameObjects.Graphics) => void, w = 100, h = 100) => {
       const g = this.make.graphics({ x: 0, y: 0 });
       fn(g);
       g.setScale(2, 2);
@@ -681,25 +680,8 @@ export class CrossingScene extends Phaser.Scene {
       rt.destroy();
       g.destroy();
     };
-
-    bake('obs_tree', g => this.drawObstacleGfx(g, 'tree'));
-    bake('obs_bike', g => this.drawObstacleGfx(g, 'bike'));
-    bake('obs_sign', g => this.drawObstacleGfx(g, 'sign'));
-
-    const pSkins  = [0xFDBA74, 0xF97316, 0xFCD34D, 0xD97706];
-    const pShirts = [0xE53E3E, 0x3182CE, 0x805AD5, 0x38A169];
-    for (let i = 0; i < 4; i++) {
-      const sk = pSkins[i], sh = pShirts[i];
-      bake(`obs_person_${i}`, g => {
-        g.lineStyle(2.5, 0xEF4444, 0.85); g.strokeCircle(0, 0, 26);
-        g.fillStyle(0x000000, 0.12); g.fillEllipse(0, 12, 20, 8);
-        g.fillStyle(sh); g.fillEllipse(0, 4, 16, 20);
-        g.fillStyle(sk); g.fillCircle(0, -9, 9);
-        g.fillStyle(0x78350F); g.fillCircle(0, -13, 7);
-      });
-    }
     for (let i = 0; i < BOOK_COLORS.length; i++) {
-      bake(`book_tex_${i}`, g => this.drawBookGfx(g, BOOK_COLORS[i]), 100, 100);
+      bake(`book_tex_${i}`, g => this.drawBookGfx(g, BOOK_COLORS[i]));
     }
   }
 
@@ -710,15 +692,23 @@ export class CrossingScene extends Phaser.Scene {
     if (worldX < 420) return;
     if (this.crossroads.some(cr => Math.abs(cr.x - worldX) < 155)) return;
 
-    const lane      = forceLane !== undefined ? forceLane : Phaser.Math.Between(0, 2);
-    const laneTypes = [['bike', 'person'], ['person', 'sign'], ['tree']] as const;
-    const types     = laneTypes[lane];
-    const type      = types[Phaser.Math.Between(0, types.length - 1)] as string;
-    const y         = H / 2 + LANE_OFFSETS[lane];
+    const lane = forceLane !== undefined ? forceLane : Phaser.Math.Between(0, 2);
+    const y    = H / 2 + LANE_OFFSETS[lane];
 
-    const texKey = type === 'person' ? `obs_person_${Phaser.Math.Between(0, 3)}` : `obs_${type}`;
-    const img = this.add.image(worldX, y, texKey).setOrigin(0.5).setScale(0.5).setDepth(4);
-    this.worldObstacles.push({ worldX, lane, gfx: img, type, alive: true });
+    const LANE12_KEYS = ['obst_1a','obst_1b','obst_2a','obst_2b','obst_2c','obst_2d'];
+    const LANE3_KEYS  = ['obst3_a','obst3_b'];
+    // Natural heights (px) for uniform scaling
+    const HEIGHTS: Record<string, number> = {
+      'obst_1a':90,'obst_1b':132,'obst_2a':164,'obst_2b':164,'obst_2c':164,'obst_2d':164,
+      'obst3_a':177,'obst3_b':143,
+    };
+    const keys   = lane === 2 ? LANE3_KEYS : LANE12_KEYS;
+    const texKey = keys[Phaser.Math.Between(0, keys.length - 1)];
+    const targetH = lane === 2 ? 120 : 60;
+    const scale   = targetH / HEIGHTS[texKey];
+
+    const img = this.add.image(worldX, y, texKey).setOrigin(0.5).setScale(scale).setDepth(4);
+    this.worldObstacles.push({ worldX, lane, gfx: img, type: texKey, alive: true });
   }
 
   spawnBook(worldX: number) {
@@ -732,44 +722,6 @@ export class CrossingScene extends Phaser.Scene {
 
     const img = this.add.image(worldX, y, `book_tex_${colorIdx}`).setOrigin(0.5).setScale(0.5).setDepth(4);
     this.worldBooks.push({ worldX, lane, gfx: img, type: 'book', alive: true });
-  }
-
-  drawObstacleGfx(g: Phaser.GameObjects.Graphics, type: string) {
-    g.clear();
-    // Red warning ring (drawn first, behind the object)
-    g.lineStyle(2.5, 0xEF4444, 0.85);
-    g.strokeCircle(0, 0, 26);
-    if (type === 'tree') {
-      g.fillStyle(0x8B6543); g.fillRect(-3, -3, 6, 12);
-      g.fillStyle(0x276749); g.fillCircle(0, -14, 17);
-      g.fillStyle(0x38A169); g.fillCircle(0, -18, 12);
-      g.fillStyle(0x68D391, 0.55); g.fillCircle(-4, -23, 7);
-    } else if (type === 'bike') {
-      g.fillStyle(0xE53E3E);
-      g.fillRoundedRect(-16, -3, 32, 6, 2);   // frame bar
-      g.fillRoundedRect(-20, -8, 10, 5, 2);   // handlebar
-      g.fillRoundedRect(10, -8, 10, 5, 2);    // seat
-      g.fillStyle(0x1A1A1A);
-      g.fillEllipse(-13, 5, 10, 16); g.fillEllipse(13, 5, 10, 16);
-      g.fillStyle(0x555555);
-      g.fillEllipse(-13, 5, 6, 10);  g.fillEllipse(13, 5, 6, 10);
-    } else if (type === 'person') {
-      const skins   = [0xFDBA74, 0xFCD34D, 0xF97316, 0xD97706];
-      const shirts  = [0xE53E3E, 0x3182CE, 0x805AD5, 0x0987A0, 0x38A169];
-      const skin  = skins [Phaser.Math.Between(0, skins.length  - 1)];
-      const shirt = shirts[Phaser.Math.Between(0, shirts.length - 1)];
-      g.fillStyle(0x000000, 0.12); g.fillEllipse(0, 12, 20, 8);
-      g.fillStyle(shirt); g.fillEllipse(0, 4, 16, 20);
-      g.fillStyle(skin);  g.fillCircle(0, -9, 9);
-      g.fillStyle(0x78350F); g.fillCircle(0, -13, 7);
-    } else if (type === 'sign') {
-      g.fillStyle(0xFBBF24); g.fillRoundedRect(-18, -18, 36, 36, 5);
-      g.lineStyle(2, 0xD97706, 1); g.strokeRoundedRect(-18, -18, 36, 36, 5);
-      g.fillStyle(0x1C1917);
-      for (let i = 0; i < 3; i++) g.fillRect(-12, -11 + i*11, 24, 5);
-      g.fillStyle(0xFFFFFF, 0.9);
-      g.fillRect(-2.5, -8, 5, 14); g.fillCircle(0, 9, 3);
-    }
   }
 
   drawBookGfx(g: Phaser.GameObjects.Graphics, color: number) {

@@ -157,7 +157,7 @@ function buildWorldChunks(
       const x = firstCrossX + i * SPACING;
       if (x + 90 < cx0 || x - 90 > cx0 + chunkW) continue;
       const lx = x - cx0;
-      g.fillStyle(0x2D3748); g.fillRect(lx-90, 0, 180, H);
+      g.fillStyle(0x4B4C5E); g.fillRect(lx-90, 0, 180, H);
       g.fillStyle(0xEAB308);
       for (let k2 = 0; k2 < Math.ceil(H / 80) + 4; k2++) {
         const dashY = -160 + k2 * 80, mid = dashY + 20;

@@ -664,8 +664,8 @@ export class CrossingScene extends Phaser.Scene {
     if (this.crossroads.some(cr => Math.abs(cr.x - worldX) < 155)) return;
 
     const lane = forceLane !== undefined ? forceLane : Phaser.Math.Between(0, 2);
-    // Anchor bottom of obstacle to bottom of lane (+20 from lane center)
-    const y    = H / 2 + LANE_OFFSETS[lane] + 20;
+    // Anchor bottom of obstacle to bottom of lane; lane 2 shifted 15px up
+    const y    = H / 2 + LANE_OFFSETS[lane] + (lane === 2 ? 5 : 20);
 
     const LANE12_KEYS = ['obst_1a','obst_1b','obst_2a','obst_2b','obst_2c','obst_2d'];
     const LANE3_KEYS  = ['obst3_a','obst3_b'];

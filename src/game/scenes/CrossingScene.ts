@@ -161,7 +161,7 @@ function buildWorldChunks(
       g.fillStyle(0xEAB308);
       for (let k2 = 0; k2 < Math.ceil(H / 80) + 4; k2++) {
         const dashY = -160 + k2 * 80, mid = dashY + 20;
-        if (mid > H/2-75 && mid < H/2+75) continue;
+        if (mid > H/2-75 && mid < H/2+266) continue;
         g.fillRect(lx-4, dashY-20, 8, 40);
       }
       for (let j = 0; j < 4; j++) {

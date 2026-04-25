@@ -337,7 +337,7 @@ export class CrossingScene extends Phaser.Scene {
     EventBus.on('restart-scene', handleRestart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', handleRestart));
 
-    const SPACING     = 980;
+    const SPACING     = 1490; // matches ~1310px image width + 180px road width
     const firstCrossX = 500;
     const lastCrossX  = firstCrossX + (cfg.crossings - 1) * SPACING;
     this.schoolX      = lastCrossX + 700;
@@ -364,14 +364,20 @@ export class CrossingScene extends Phaser.Scene {
 
     buildWorldChunks(this, worldW, H, cfg, firstCrossX, SPACING, this.schoolX);
 
-    // Background images tiled across the upper zone (above sidewalk)
+    // Background images in upper zone — one per segment between crossing roads
     const bgH = H / 2 - 60;
-    for (let x = 0, idx = 0; x < worldW; x += SPACING, idx++) {
-      const w = Math.min(SPACING, worldW - x);
-      this.add.image(x + w / 2, bgH / 2, `crossing_bg_${(idx % 4) + 1}`)
-        .setDisplaySize(w, bgH)
-        .setDepth(0);
+    let bgIdx = 0;
+    const addBg = (x1: number, x2: number) => {
+      const w = x2 - x1;
+      if (w <= 0) return;
+      this.add.image(x1 + w / 2, bgH / 2, `crossing_bg_${(bgIdx++ % 4) + 1}`)
+        .setDisplaySize(w, bgH).setDepth(0);
+    };
+    addBg(0, firstCrossX - 90);
+    for (let i = 0; i < cfg.crossings - 1; i++) {
+      addBg(firstCrossX + i * SPACING + 90, firstCrossX + (i + 1) * SPACING - 90);
     }
+    addBg(firstCrossX + (cfg.crossings - 1) * SPACING + 90, worldW);
 
     this.carGroup = this.physics.add.group();
 

@@ -125,8 +125,7 @@ function buildWorldChunks(
   const CHUNK = 2048;
   const numChunks = Math.ceil(worldW / CHUNK);
   const GAP = 190;
-  const topHouseY = H / 2 - 120, botHouseY = H / 2 + 120;
-  const topTreeY  = Math.max(H / 2 - 210, 30);
+  const botHouseY = H / 2 + 120;
   const botTreeY  = Math.min(H / 2 + 210, H - 30);
   const crossX = Array.from({ length: cfg.crossings }, (_, i) => firstCrossX + i * SPACING);
 
@@ -145,8 +144,8 @@ function buildWorldChunks(
     const key = `_world_chunk_${ci}`;
     const g = scene.add.graphics();
 
-    // Grass
-    g.fillStyle(0x48BB78); g.fillRect(0, 0, chunkW, H);
+    // Grass (lower zone only — upper zone uses background images)
+    g.fillStyle(0x48BB78); g.fillRect(0, H/2-60, chunkW, H/2+60);
 
     // Sidewalk strips
     g.fillStyle(0xCBD5E1); g.fillRect(0, H/2-60, chunkW, 120);
@@ -169,8 +168,6 @@ function buildWorldChunks(
       if (Math.abs(x - schoolX) < 200) continue;
       if (x + 80 < cx0 || x - 80 > cx0 + chunkW) continue;
       const lx = x - cx0;
-      drawTree(g, lx-36, topTreeY); drawTree(g, lx+28, topTreeY-18);
-      if (topTreeY > 50) drawTree(g, lx+70, topTreeY);
       drawTree(g, lx-32, botTreeY); drawTree(g, lx+30, botTreeY+18);
       if (botTreeY < H-50) drawTree(g, lx+65, botTreeY);
     }
@@ -184,30 +181,7 @@ function buildWorldChunks(
       const lx = x - cx0;
       const pal = Math.floor(x / GAP) % HOUSE_PALETTE.length;
       const { wall, roof } = HOUSE_PALETTE[pal];
-      drawSmallHouse(g, lx, topHouseY, wall, roof, true);
       drawSmallHouse(g, lx, botHouseY, wall, roof, false);
-    }
-
-    // Start house
-    {
-      const sx = 160;
-      if (sx + 100 >= cx0 && sx - 100 <= cx0 + chunkW) {
-        const lx = sx - cx0;
-        const hw = 90, hh = 110, cy = H/2-100;
-        g.fillStyle(0x52D482, 0.5); g.fillRect(lx-hw/2-20, H/2-240, hw+40, 240);
-        g.fillStyle(0x000000, 0.12); g.fillEllipse(lx+5, cy+hh/2+8, hw+10, 18);
-        g.fillStyle(0xFFF8E7); g.fillRoundedRect(lx-hw/2, cy-hh/2, hw, hh, 4);
-        g.fillStyle(0xC05621); g.fillRoundedRect(lx-hw/2, cy-hh/2, hw, hh*0.55, 4);
-        g.fillStyle(0x9C4221); g.fillRect(lx-5, cy-hh/2+4, 10, hh*0.5);
-        g.fillStyle(0x8D5524); g.fillRect(lx+18, cy-hh/2+8, 14, 16);
-        g.fillStyle(0x6B3A1F); g.fillRect(lx+17, cy-hh/2+6, 16, 4);
-        g.fillStyle(0xADD8E6, 0.85);
-        g.fillRoundedRect(lx-hw/2+8, cy+6, 20, 18, 2);
-        g.fillRoundedRect(lx+hw/2-28, cy+6, 20, 18, 2);
-        g.fillStyle(0x8B4513); g.fillRoundedRect(lx-10, cy+hh/2-22, 20, 22, 3);
-        g.fillStyle(0xFFD700, 0.9); g.fillCircle(lx+6, cy+hh/2-11, 2.5);
-        g.fillStyle(0xCBD5E1, 0.9); g.fillRect(lx-7, cy+hh/2, 14, H/2-(cy+hh/2)+5);
-      }
     }
 
     // School
@@ -216,7 +190,6 @@ function buildWorldChunks(
       if (sx + 150 >= cx0 && sx - 150 <= cx0 + chunkW) {
         const lx = sx - cx0;
         const sw = 130, sh = 130, cy = H/2-100;
-        g.fillStyle(0x90CDF4, 0.25); g.fillRoundedRect(lx-sw/2-30, H/2-240, sw+60, 240, 6);
         g.lineStyle(2, 0xFFFFFF, 0.35); g.strokeCircle(lx, cy-30, 22);
         g.fillStyle(0x000000, 0.15); g.fillEllipse(lx+6, cy+sh/2+10, sw+20, 22);
         g.fillStyle(0xBEE3F8); g.fillRoundedRect(lx-sw/2, cy-sh/2, sw, sh, 5);
@@ -265,8 +238,6 @@ function buildWorldChunks(
     scene.add.image(cx0 + chunkW/2, H/2, key).setDepth(1);
   }
 
-  const startCy = H/2-100;
-  scene.add.text(160, startCy-55-16, '🏠', { fontSize: '22px' }).setOrigin(0.5).setDepth(3);
   scene.add.text(schoolX, H/2-100-65-50, '🏫', { fontSize: '26px' }).setOrigin(0.5).setDepth(3);
 }
 
@@ -318,6 +289,12 @@ export class CrossingScene extends Phaser.Scene {
   sceneH     = 0;
 
   constructor() { super('CrossingScene'); }
+
+  preload() {
+    for (let i = 1; i <= 4; i++) {
+      this.load.image(`crossing_bg_${i}`, `/Crossing/back_${i}.png`);
+    }
+  }
 
   init(data?: { level?: number }) {
     if (data?.level !== undefined) {
@@ -386,6 +363,15 @@ export class CrossingScene extends Phaser.Scene {
     carG.destroy();
 
     buildWorldChunks(this, worldW, H, cfg, firstCrossX, SPACING, this.schoolX);
+
+    // Background images tiled across the upper zone (above sidewalk)
+    const bgH = H / 2 - 60;
+    for (let x = 0, idx = 0; x < worldW; x += SPACING, idx++) {
+      const w = Math.min(SPACING, worldW - x);
+      this.add.image(x + w / 2, bgH / 2, `crossing_bg_${(idx % 4) + 1}`)
+        .setDisplaySize(w, bgH)
+        .setDepth(0);
+    }
 
     this.carGroup = this.physics.add.group();
 

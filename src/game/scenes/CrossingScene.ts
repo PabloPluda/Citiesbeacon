@@ -87,35 +87,6 @@ function drawTopDownCar(g: Phaser.GameObjects.Graphics, model: CarModel, color: 
   }
 }
 
-// ─── Neighbourhood helpers ────────────────────────────────────────────────────
-const HOUSE_PALETTE = [
-  { wall: 0xFFF9E6, roof: 0x9B3B1F }, { wall: 0xE8F5E9, roof: 0x1B5E20 },
-  { wall: 0xE3F2FD, roof: 0x0D47A1 }, { wall: 0xFCE4EC, roof: 0x880E4F },
-  { wall: 0xF3E5F5, roof: 0x4A148C }, { wall: 0xFFF3E0, roof: 0x4E342E },
-];
-
-function drawSmallHouse(g: Phaser.GameObjects.Graphics, x: number, cy: number,
-  wallC: number, roofC: number, doorFacesDown: boolean) {
-  const hw = 27, hh = 33;
-  g.fillStyle(0x000000, 0.07); g.fillEllipse(x+2, cy+hh+4, hw*2+4, 8);
-  g.fillStyle(wallC); g.fillRoundedRect(x-hw, cy-hh, hw*2, hh*2, 3);
-  if (doorFacesDown) { g.fillStyle(roofC); g.fillRoundedRect(x-hw, cy-hh, hw*2, hh*1.1, 3); }
-  else               { g.fillStyle(roofC); g.fillRoundedRect(x-hw, cy-hh*0.08, hw*2, hh*1.1, 3); }
-  g.fillStyle(0xADD8E6, 0.8);
-  g.fillRoundedRect(x-hw+5, cy-5, 11, 11, 2);
-  g.fillRoundedRect(x+hw-16, cy-5, 11, 11, 2);
-  g.fillStyle(0x6B3A1F, 0.85);
-  if (doorFacesDown) g.fillRoundedRect(x-5, cy+hh-13, 10, 13, 1);
-  else               g.fillRoundedRect(x-5, cy-hh, 10, 13, 1);
-}
-
-function drawTree(g: Phaser.GameObjects.Graphics, x: number, cy: number) {
-  g.fillStyle(0x8B6543); g.fillRect(x-3, cy-3, 6, 12);
-  g.fillStyle(0x276749); g.fillCircle(x, cy-14, 17);
-  g.fillStyle(0x38A169); g.fillCircle(x, cy-18, 12);
-  g.fillStyle(0x68D391, 0.55); g.fillCircle(x-4, cy-23, 7);
-}
-
 // ─── World chunks ─────────────────────────────────────────────────────────────
 function buildWorldChunks(
   scene: Phaser.Scene, worldW: number, H: number,
@@ -124,9 +95,6 @@ function buildWorldChunks(
 ) {
   const CHUNK = 2048;
   const numChunks = Math.ceil(worldW / CHUNK);
-  const GAP = 190;
-  const botHouseY = H / 2 + 120;
-  const botTreeY  = Math.min(H / 2 + 210, H - 30);
   const crossX = Array.from({ length: cfg.crossings }, (_, i) => firstCrossX + i * SPACING);
 
   for (let i = 0; i < 20; i++) {
@@ -144,10 +112,14 @@ function buildWorldChunks(
     const key = `_world_chunk_${ci}`;
     const g = scene.add.graphics();
 
-    // Grass — only below the horizontal road
-    g.fillStyle(0x48BB78); g.fillRect(0, H/2+180, chunkW, Math.max(0, H/2-180));
+    // Grass — only below the bottom sidewalk
+    g.fillStyle(0x48BB78); g.fillRect(0, H/2+300, chunkW, Math.max(0, H/2-300));
 
-    // Horizontal road (below sidewalk, same width 120px, purely aesthetic)
+    // Bottom sidewalk (below horizontal road, same width 120px)
+    g.fillStyle(0xCBD5E1); g.fillRect(0, H/2+180, chunkW, 120);
+    g.fillStyle(0xA0AEC0); g.fillRect(0, H/2+182, chunkW, 3); g.fillRect(0, H/2+295, chunkW, 3);
+
+    // Horizontal road (below main sidewalk, same width 120px, purely aesthetic)
     g.fillStyle(0x2D3748); g.fillRect(0, H/2+60, chunkW, 120);
     g.fillStyle(0xFFFFFF, 0.08); g.fillRect(0, H/2+60, chunkW, 2);
     g.fillStyle(0xFFFFFF, 0.08); g.fillRect(0, H/2+178, chunkW, 2);
@@ -174,28 +146,6 @@ function buildWorldChunks(
       }
     }
 
-    // Trees (neighbourhood)
-    for (let x = 90; x < worldW - 60; x += GAP) {
-      if (crossX.some(crX => Math.abs(x - crX) < 130)) continue;
-      if (Math.abs(x - 160) < 130) continue;
-      if (Math.abs(x - schoolX) < 200) continue;
-      if (x + 80 < cx0 || x - 80 > cx0 + chunkW) continue;
-      const lx = x - cx0;
-      drawTree(g, lx-32, botTreeY); drawTree(g, lx+30, botTreeY+18);
-      if (botTreeY < H-50) drawTree(g, lx+65, botTreeY);
-    }
-
-    // Houses
-    for (let x = 90; x < worldW - 60; x += GAP) {
-      if (crossX.some(crX => Math.abs(x - crX) < 130)) continue;
-      if (Math.abs(x - 160) < 130) continue;
-      if (Math.abs(x - schoolX) < 200) continue;
-      if (x + 80 < cx0 || x - 80 > cx0 + chunkW) continue;
-      const lx = x - cx0;
-      const pal = Math.floor(x / GAP) % HOUSE_PALETTE.length;
-      const { wall, roof } = HOUSE_PALETTE[pal];
-      drawSmallHouse(g, lx, botHouseY, wall, roof, false);
-    }
 
     // School
     {
@@ -228,10 +178,13 @@ function buildWorldChunks(
       const x = firstCrossX + i * SPACING;
       if (x + 90 < cx0 || x - 90 > cx0 + chunkW) continue;
       const lx = x - cx0;
-      // Pedestrian crossing on horizontal road (drawn before vertical road so road covers middle)
-      g.fillStyle(0xFFFFFF, 0.62);
-      for (let j = 0; j < 8; j++) g.fillRect(lx - 160 + j * 40, H/2 + 63, 22, 114);
       g.fillStyle(0x2D3748); g.fillRect(lx-90, 0, 180, H);
+      // Horizontal pedestrian crossings on the road — one on each side of the vertical crossing
+      g.fillStyle(0xFFFFFF, 0.72);
+      for (let s = 0; s < 6; s++) {
+        g.fillRect(lx - 140, H/2 + 62 + s * 20, 50, 12); // left side
+        g.fillRect(lx +  90, H/2 + 62 + s * 20, 50, 12); // right side
+      }
       g.fillStyle(0xEAB308);
       for (let k2 = 0; k2 < Math.ceil(H / 80) + 4; k2++) {
         const dashY = -160 + k2 * 80, mid = dashY + 20;

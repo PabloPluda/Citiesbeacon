@@ -132,7 +132,7 @@ function buildWorldChunks(
     }
 
     // Sidewalk strips
-    g.fillStyle(0xCBD5E1); g.fillRect(0, H/2-60, chunkW, 120);
+    g.fillStyle(0xE9EDF0); g.fillRect(0, H/2-60, chunkW, 120);
     g.fillStyle(0xA0AEC0); g.fillRect(0, H/2-58, chunkW, 3); g.fillRect(0, H/2+55, chunkW, 3);
 
     // Lane dividers (dashed, subtle)

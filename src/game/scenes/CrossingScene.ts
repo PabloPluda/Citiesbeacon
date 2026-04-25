@@ -196,10 +196,16 @@ function buildWorldChunks(
       }
       g.fillStyle(0xFFFFFF, 0.85);
       g.fillRect(lx-80, H/2-61, 160, 5); g.fillRect(lx-80, H/2+56, 160, 5);
+      // Stop line below bottom sidewalk for cars coming from below
+      g.fillRect(lx-80, H/2+296, 160, 5);
       const poleX = lx-100, poleY = H/2-80;
       g.fillStyle(0x2D3748); g.fillRect(poleX-4, H/2-80, 8, 120);
       g.fillStyle(0x111827); g.fillRect(poleX-23, poleY-50, 46, 100);
       g.fillStyle(0x1F2937); g.fillRect(poleX-21, poleY-48, 42, 96);
+      // Grey sidewalk strips on both sides of the crossing in the upper zone
+      g.fillStyle(0xCBD5E1);
+      g.fillRect(lx - 140, 0, 50, H/2 - 60);
+      g.fillRect(lx +  90, 0, 50, H/2 - 60);
     }
 
     g.generateTexture(key, chunkW, H);
@@ -964,7 +970,7 @@ export class CrossingScene extends Phaser.Scene {
     this.carGroup.getChildren().forEach(child => {
       const c = child as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
       if (!c.active || !c.body) return;
-      const stopTop = H/2-60, stopBot = H/2+60, FRONT = 44;
+      const stopTop = H/2-60, stopBot = H/2+300, FRONT = 44;
       if (c.cr.state === 'green') {
         if (c.dir === 'down') {
           if (c.y >= stopTop - FRONT) return;
@@ -987,7 +993,7 @@ export class CrossingScene extends Phaser.Scene {
             if (ob && Math.abs(ob.velocity.y) < 5 && oc.y < c.y) na = Math.max(na, oc.y);
           });
           const st = na > -Infinity ? na + 100 : stopBot + FRONT;
-          if (st < H && c.y < st + 30) c.setVelocityY(0);
+          if (c.y < st + 30) c.setVelocityY(0);
         }
       } else {
         if (c.dir === 'down' && c.body?.velocity.y === 0) c.setVelocityY(170);

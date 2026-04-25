@@ -168,7 +168,9 @@ function buildWorldChunks(
         g.fillStyle(0xFFFFFF, 0.88); g.fillRect(lx-70+j*40, H/2-50, 20, 100);
       }
       g.fillStyle(0xFFFFFF, 0.85);
-      g.fillRect(lx-80, H/2-61, 160, 5); g.fillRect(lx-80, H/2+56, 160, 5);
+      g.fillRect(lx-80, H/2-61, 160, 5);
+      g.fillRect(lx-80, H/2+56,  160, 5); // bottom edge of ped crossing
+      g.fillRect(lx-80, H/2+116, 160, 5); // stop line for cars from below
       const poleX = lx-100, poleY = H/2-80;
       g.fillStyle(0x2D3748); g.fillRect(poleX-4, H/2-80, 8, 120);
       g.fillStyle(0x111827); g.fillRect(poleX-23, poleY-50, 46, 100);
@@ -899,7 +901,7 @@ export class CrossingScene extends Phaser.Scene {
     this.carGroup.getChildren().forEach(child => {
       const c = child as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
       if (!c.active || !c.body) return;
-      const stopTop = H/2-60, stopBot = H/2+60,  FRONT = 44;
+      const stopTop = H/2-60, stopBot = H/2+116, FRONT = 44;
       if (c.cr.state === 'green') {
         if (c.dir === 'down') {
           if (c.y >= stopTop - FRONT) return;

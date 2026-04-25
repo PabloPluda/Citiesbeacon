@@ -7,7 +7,6 @@ import { useProgressStore } from '../../store/progressStore';
 
 const MISSION_ID   = 2;
 const LANE_OFFSETS = [-40, 0, 40];   // Y from H/2 for lanes 0 (top), 1 (mid), 2 (bot)
-const BOOK_COLORS  = [0xE53E3E, 0x3182CE, 0xD69E2E, 0x805AD5, 0x2F855A];
 
 // ─── Level config ──────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
@@ -580,7 +579,7 @@ export class CrossingScene extends Phaser.Scene {
 
   buildBookDisplay() {
     const W = this.cameras.main.width;
-    this.bookTxt = this.add.text(W / 2, 18, '📚 0 / 4', {
+    this.bookTxt = this.add.text(W / 2, 18, '🪙 0 / 4', {
       fontFamily: 'Fredoka One', fontSize: '18px',
       color: '#FFFFFF', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(25);
@@ -638,10 +637,10 @@ export class CrossingScene extends Phaser.Scene {
 
     this.booksInCycle++;
     const inCycle = this.booksInCycle % 4;
-    this.bookTxt.setText(`📚 ${inCycle === 0 ? 4 : inCycle} / 4`);
+    this.bookTxt.setText(`🪙 ${inCycle === 0 ? 4 : inCycle} / 4`);
 
     // Float text
-    const plusTxt = this.add.text(this.tommy.x, this.tommy.y - 30, '📚 +1', {
+    const plusTxt = this.add.text(this.tommy.x, this.tommy.y - 30, '🪙 +1', {
       fontFamily: 'Fredoka One', fontSize: '16px',
       color: '#FCD34D', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(22);
@@ -666,7 +665,7 @@ export class CrossingScene extends Phaser.Scene {
   // ── Texture baking (2× render → 0.5 scale = crisp on HiDPI) ─────────────────
 
   private bakeObjectTextures() {
-    if (this.textures.exists('book_tex_0')) return;
+    if (this.textures.exists('coin_tex')) return;
     const bake = (key: string, fn: (g: Phaser.GameObjects.Graphics) => void, w = 100, h = 100) => {
       const g = this.make.graphics({ x: 0, y: 0 });
       fn(g);
@@ -677,9 +676,7 @@ export class CrossingScene extends Phaser.Scene {
       rt.destroy();
       g.destroy();
     };
-    for (let i = 0; i < BOOK_COLORS.length; i++) {
-      bake(`book_tex_${i}`, g => this.drawBookGfx(g, BOOK_COLORS[i]));
-    }
+    bake('coin_tex', g => this.drawCoinGfx(g));
   }
 
   // ── Obstacle spawning ─────────────────────────────────────────────────────────
@@ -690,11 +687,11 @@ export class CrossingScene extends Phaser.Scene {
     if (this.crossroads.some(cr => Math.abs(cr.x - worldX) < 155)) return;
 
     const lane = forceLane !== undefined ? forceLane : Phaser.Math.Between(0, 2);
-    const y    = H / 2 + LANE_OFFSETS[lane];
+    // Anchor bottom of obstacle to bottom of lane (+20 from lane center)
+    const y    = H / 2 + LANE_OFFSETS[lane] + 20;
 
     const LANE12_KEYS = ['obst_1a','obst_1b','obst_2a','obst_2b','obst_2c','obst_2d'];
     const LANE3_KEYS  = ['obst3_a','obst3_b'];
-    // Natural heights (px) for uniform scaling
     const HEIGHTS: Record<string, number> = {
       'obst_1a':90,'obst_1b':132,'obst_2a':164,'obst_2b':164,'obst_2c':164,'obst_2d':164,
       'obst3_a':177,'obst3_b':143,
@@ -702,9 +699,9 @@ export class CrossingScene extends Phaser.Scene {
     const keys   = lane === 2 ? LANE3_KEYS : LANE12_KEYS;
     const texKey = keys[Phaser.Math.Between(0, keys.length - 1)];
     const targetH = lane === 2 ? 120 : 60;
-    const scale   = targetH / HEIGHTS[texKey];
+    const scale   = (targetH / HEIGHTS[texKey]) * 0.85;
 
-    const img = this.add.image(worldX, y, texKey).setOrigin(0.5).setScale(scale).setDepth(4);
+    const img = this.add.image(worldX, y, texKey).setOrigin(0.5, 1).setScale(scale).setDepth(4);
     this.worldObstacles.push({ worldX, lane, gfx: img, type: texKey, alive: true });
   }
 
@@ -713,28 +710,34 @@ export class CrossingScene extends Phaser.Scene {
     if (worldX < 370) return;
     if (this.crossroads.some(cr => Math.abs(cr.x - worldX) < 135)) return;
 
-    const lane     = Phaser.Math.Between(0, 2);
-    const colorIdx = Phaser.Math.Between(0, BOOK_COLORS.length - 1);
-    const y        = H / 2 + LANE_OFFSETS[lane];
+    const lane = Phaser.Math.Between(0, 2);
+    const y    = H / 2 + LANE_OFFSETS[lane];
 
-    const img = this.add.image(worldX, y, `book_tex_${colorIdx}`).setOrigin(0.5).setScale(0.5).setDepth(4);
-    this.worldBooks.push({ worldX, lane, gfx: img, type: 'book', alive: true });
+    const img = this.add.image(worldX, y, 'coin_tex').setOrigin(0.5).setScale(0.5).setDepth(4);
+    // Slow coin spin: scaleX oscillates 0.5 → -0.5
+    this.tweens.add({
+      targets: img, scaleX: -0.5,
+      duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+    this.worldBooks.push({ worldX, lane, gfx: img, type: 'coin', alive: true });
   }
 
-  drawBookGfx(g: Phaser.GameObjects.Graphics, color: number) {
+  drawCoinGfx(g: Phaser.GameObjects.Graphics) {
     g.clear();
-    // Green reward ring
-    g.lineStyle(2.5, 0x22C55E, 0.85);
-    g.strokeCircle(0, 0, 22);
-    g.fillStyle(0xFCD34D, 0.28); g.fillCircle(0, 0, 22);
-    g.fillStyle(color); g.fillRoundedRect(-12, -16, 24, 32, 3);
-    g.fillStyle(Phaser.Display.Color.ValueToColor(color).darken(20).color);
-    g.fillRoundedRect(-12, -16, 5, 32, 3);
-    g.fillStyle(0xFFF8DC); g.fillRect(-6, -13, 16, 26);
-    g.lineStyle(1, 0xD4C9A0, 0.7);
-    for (let i = 0; i < 4; i++) g.lineBetween(-3, -8 + i*8, 8, -8 + i*8);
-    g.fillStyle(0xFCD34D, 0.9);
-    g.fillCircle(12, -14, 4); g.fillCircle(16, -8, 2.5); g.fillCircle(10, -20, 2);
+    // Shadow
+    g.fillStyle(0x000000, 0.18); g.fillEllipse(1, 6, 30, 8);
+    // Outer rim
+    g.fillStyle(0xB8860B); g.fillCircle(0, 0, 16);
+    // Main face
+    g.fillStyle(0xFFD700); g.fillCircle(0, -1, 14);
+    // Inner disc highlight
+    g.fillStyle(0xFFE44D); g.fillCircle(-1, -3, 9);
+    // Top-left glint
+    g.fillStyle(0xFFFDE7, 0.75); g.fillEllipse(-5, -7, 9, 6);
+    // Center dot
+    g.fillStyle(0xB8860B, 0.55); g.fillCircle(0, 0, 3);
+    // Rim detail line
+    g.lineStyle(1.2, 0xDAA520, 0.6); g.strokeCircle(0, -1, 12);
   }
 
   // ── Life indicators ───────────────────────────────────────────────────────────

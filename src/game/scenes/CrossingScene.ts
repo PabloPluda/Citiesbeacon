@@ -324,7 +324,7 @@ export class CrossingScene extends Phaser.Scene {
       if (w <= 0) return;
       const cx = x1 + w / 2;
       this.add.image(cx, bgH / 2,  `backnew_${(bgIdx++ % 2) + 1}`).setDisplaySize(w, bgH).setDepth(0);
-      this.add.image(cx, botZoneY, `backdown_${(bdIdx++ % 2) + 1}`).setDisplaySize(w, bgH).setDepth(0);
+      this.add.image(cx, botZoneY, `backdown_${(bdIdx++ % 2) + 1}`).setDisplaySize(w, bgH).setDepth(2);
     });
 
     this.carGroup = this.physics.add.group();

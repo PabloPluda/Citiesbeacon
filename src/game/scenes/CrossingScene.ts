@@ -144,8 +144,21 @@ function buildWorldChunks(
     const key = `_world_chunk_${ci}`;
     const g = scene.add.graphics();
 
-    // Grass (lower zone only — upper zone uses background images)
-    g.fillStyle(0x48BB78); g.fillRect(0, H/2-60, chunkW, H/2+60);
+    // Grass — only below the horizontal road
+    g.fillStyle(0x48BB78); g.fillRect(0, H/2+180, chunkW, Math.max(0, H/2-180));
+
+    // Horizontal road (below sidewalk, same width 120px, purely aesthetic)
+    g.fillStyle(0x2D3748); g.fillRect(0, H/2+60, chunkW, 120);
+    g.fillStyle(0xFFFFFF, 0.08); g.fillRect(0, H/2+60, chunkW, 2);
+    g.fillStyle(0xFFFFFF, 0.08); g.fillRect(0, H/2+178, chunkW, 2);
+    // Center dash on horizontal road
+    g.lineStyle(2, 0xEAB308, 0.4);
+    for (let lx2 = 0; lx2 < chunkW; lx2 += 22) {
+      const absX = cx0 + lx2;
+      if (!crossX.some(crX => Math.abs(absX - crX) < 100)) {
+        g.lineBetween(lx2, H/2+120, lx2+12, H/2+120);
+      }
+    }
 
     // Sidewalk strips
     g.fillStyle(0xCBD5E1); g.fillRect(0, H/2-60, chunkW, 120);
@@ -215,6 +228,9 @@ function buildWorldChunks(
       const x = firstCrossX + i * SPACING;
       if (x + 90 < cx0 || x - 90 > cx0 + chunkW) continue;
       const lx = x - cx0;
+      // Pedestrian crossing on horizontal road (drawn before vertical road so road covers middle)
+      g.fillStyle(0xFFFFFF, 0.62);
+      for (let j = 0; j < 8; j++) g.fillRect(lx - 160 + j * 40, H/2 + 63, 22, 114);
       g.fillStyle(0x2D3748); g.fillRect(lx-90, 0, 180, H);
       g.fillStyle(0xEAB308);
       for (let k2 = 0; k2 < Math.ceil(H / 80) + 4; k2++) {
@@ -581,11 +597,10 @@ export class CrossingScene extends Phaser.Scene {
       const segLen   = segEnd - segStart;
       if (segLen < 300) continue;
 
-      // Shuffle lane order so obstacles aren't always top→mid→bot
-      const lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
-      // Spread the 3 guaranteed obstacles evenly across the segment
-      const positions = [0.22, 0.50, 0.78];
-      lanes.forEach((lane, idx) => tryObstacleInLane(segStart + segLen * positions[idx], lane));
+      // Spread 5 guaranteed obstacles evenly, rotating through all 3 lanes
+      const positions = [0.12, 0.30, 0.50, 0.70, 0.88];
+      const baseLanes = [0, 1, 2, 0, 1].sort(() => Math.random() - 0.5);
+      positions.forEach((pos, idx) => tryObstacleInLane(segStart + segLen * pos, baseLanes[idx]));
 
       // Extra obstacles (random lane, random position)
       for (let e = 0; e < extraPerSeg; e++) {

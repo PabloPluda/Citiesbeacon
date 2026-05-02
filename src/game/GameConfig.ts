@@ -5,11 +5,13 @@ export function createGameConfig(parent: string | HTMLElement, InitialSceneClass
     type: Phaser.AUTO,
     parent: parent,
     backgroundColor: '#87CEEB',
+    pixelArt: false,
+    resolution: window.devicePixelRatio || 1,
     scale: {
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH,
       width: '100%',
-      height: '100%'
+      height: '100%',
     },
     physics: {
       default: 'arcade',

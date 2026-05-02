@@ -10,7 +10,7 @@ const MISSIONS = [
   { id: 3, title: 'Responsible use of electricity', icon: '💡', active: true },
   { id: 4, title: 'Water saver', icon: '💧', active: true },
   { id: 5, title: 'Not my dog, still my job', icon: '🐕', active: true },
-  { id: 6, title: 'Healthy eating', icon: '🍎', active: false },
+  { id: 6, title: 'Biking my city', icon: '🚲', active: true },
 ];
 
 const HOUSE_COLORS = ['#EF4444', '#3B82F6', '#EAB308', '#EC4899', '#8B5CF6', '#F97316'];

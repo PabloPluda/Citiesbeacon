@@ -12,6 +12,7 @@ import { CrossingScene } from '../game/scenes/CrossingScene';
 import { LightsOutScene } from '../game/scenes/LightsOutScene';
 import { WaterSaverScene } from '../game/scenes/WaterSaverScene';
 import { NotMyDogScene } from '../game/scenes/NotMyDogScene';
+import { BikingScene } from '../game/scenes/BikingScene';
 
 const SCENE_MAP: Record<number, any> = {
   1: ThrowToBinScene,
@@ -19,6 +20,7 @@ const SCENE_MAP: Record<number, any> = {
   3: LightsOutScene,
   4: WaterSaverScene,
   5: NotMyDogScene,
+  6: BikingScene,
 };
 
 // ─── Circular countdown timer ─────────────────────────────────────────────────
@@ -58,6 +60,7 @@ const LEVEL_COMPLETE_MSG: Record<number, string> = {
   3: 'All lights off! 💡',
   4: 'Water saved! 💧',
   5: 'The dog is home! 🏠🐕',
+  6: 'Path complete! Great biking! 🚲',
 };
 
 function LevelCompleteOverlay({ level, missionId, onSeeResults }: { level: number; missionId: number; onSeeResults: () => void }) {

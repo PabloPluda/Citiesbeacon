@@ -24,14 +24,21 @@ function getPorts(kind: PieceKind, rot: number): [boolean, boolean, boolean, boo
 // ── Catalog ───────────────────────────────────────────────────────────────────
 interface PaletteItem { kind: Exclude<PieceKind, 'empty'>; rot: number; label: string; }
 
-const CATALOG: PaletteItem[] = [
+const ALL_PIECE_TYPES: PaletteItem[] = [
   { kind: 'straight', rot: 0, label: '│' },
   { kind: 'straight', rot: 1, label: '─' },
   { kind: 'curve',    rot: 0, label: '└' },
   { kind: 'curve',    rot: 1, label: '┌' },
   { kind: 'curve',    rot: 2, label: '┐' },
   { kind: 'curve',    rot: 3, label: '┘' },
+  { kind: 'cross',    rot: 0, label: '┼' },
 ];
+
+const QUEUE_SIZE = 6;
+
+function randomPiece(): PaletteItem {
+  return { ...ALL_PIECE_TYPES[Math.floor(Math.random() * ALL_PIECE_TYPES.length)] };
+}
 
 // ── Direction helpers ──────────────────────────────────────────────────────────
 const DR  = [-1, 0, 1, 0];
@@ -166,6 +173,10 @@ export class BikingScene extends Phaser.Scene {
   private highlightGfx!: Phaser.GameObjects.Graphics;
   private hoverGfx!: Phaser.GameObjects.Graphics;
   private catalogBg?: Phaser.GameObjects.Graphics;
+  private catalogLabelText?: Phaser.GameObjects.Text;
+  private catalogTopY = 0;
+  private catalogH = 0;
+  private pieceQueue: PaletteItem[] = [];
   private catalogContainers: Phaser.GameObjects.Container[] = [];
   private guideText?: Phaser.GameObjects.Text;
   private startBtn?: Phaser.GameObjects.Container;
@@ -196,6 +207,10 @@ export class BikingScene extends Phaser.Scene {
     this.bikeEmoji         = undefined;
     this.startBtn          = undefined;
     this.catalogBg         = undefined;
+    this.catalogLabelText  = undefined;
+    this.catalogTopY       = 0;
+    this.catalogH          = 0;
+    this.pieceQueue        = [];
     this.guideText         = undefined;
     this.timerEvent        = undefined;
   }
@@ -254,6 +269,9 @@ export class BikingScene extends Phaser.Scene {
     this.input.on('pointermove', this.onPointerMove, this);
     this.input.on('pointerup',   this.onPointerUp,   this);
 
+    this.catalogTopY  = HUD_H;
+    this.catalogH     = CAT_H;
+    this.pieceQueue   = Array.from({ length: QUEUE_SIZE }, randomPiece);
     this.buildCatalog(HUD_H, CAT_H);
 
     // Guide text below catalog
@@ -442,6 +460,10 @@ export class BikingScene extends Phaser.Scene {
       cell.rot  = this.dragItem.rot;
       this.drawCell(cell.row, cell.col);
       this.checkAndHighlight();
+      // Advance queue: consumed piece leaves, new random piece enters at back
+      this.pieceQueue.shift();
+      this.pieceQueue.push(randomPiece());
+      this.buildCatalog(this.catalogTopY, this.catalogH);
     }
     this.dragItem = null;
   }
@@ -555,7 +577,20 @@ export class BikingScene extends Phaser.Scene {
 
   private isPuzzleSolvable(): boolean {
     const eps = this.cfg.endpoints;
-    const v   = this.bfsVisited(eps[0].row, eps[0].col, false);
+    const gs  = this.cfg.gridSize;
+    // Each endpoint must have at least one non-blocked exit through its port(s)
+    for (const ep of eps) {
+      const ports = this.portsForSolvability(ep.row, ep.col);
+      let hasExit = false;
+      for (let d = 0; d < 4; d++) {
+        if (!ports[d]) continue;
+        const nr = ep.row + DR[d], nc = ep.col + DC[d];
+        if (nr < 0 || nr >= gs || nc < 0 || nc >= gs) continue;
+        if (this.portsForSolvability(nr, nc)[OPP[d]]) { hasExit = true; break; }
+      }
+      if (!hasExit) return false;
+    }
+    const v = this.bfsVisited(eps[0].row, eps[0].col, false);
     return eps.every(ep => v[ep.row][ep.col]);
   }
 
@@ -678,36 +713,62 @@ export class BikingScene extends Phaser.Scene {
   // ── Catalog ────────────────────────────────────────────────────────────────
   private buildCatalog(topY: number, height: number) {
     this.catalogBg?.destroy();
+    this.catalogLabelText?.destroy();
     this.catalogContainers.forEach(c => c.destroy());
     this.catalogContainers = [];
-    const gap    = 8;
-    const itemSz = Math.min(52, Math.floor((this.W - 40) / CATALOG.length) - gap);
-    const totalW = CATALOG.length * (itemSz + gap) - gap;
-    const startX = (this.W - totalW) / 2;
-    const itemCY = topY + 26 + (height - 26) / 2;
+
     const bg = this.add.graphics();
     bg.fillStyle(0x0d1526, 0.94);
     bg.fillRoundedRect(8, topY + 4, this.W - 16, height - 8, 12);
     this.catalogBg = bg;
-    this.add.text(this.W / 2, topY + 10, 'Drag a piece to the board', {
-      fontFamily: 'Fredoka One', fontSize: '13px', color: '#6EE7B7', resolution: DPR,
+
+    this.catalogLabelText = this.add.text(this.W / 2, topY + 8, 'Drag the first piece →', {
+      fontFamily: 'Fredoka One', fontSize: '11px', color: '#6EE7B7', resolution: DPR,
     }).setOrigin(0.5, 0);
-    CATALOG.forEach((item, i) => {
-      const cx   = startX + i * (itemSz + gap) + itemSz / 2;
-      const cont = this.add.container(cx, itemCY);
+
+    const gap  = 6;
+    const iS   = Math.max(32, Math.floor(Math.min(44, (this.W - 24 - gap * (QUEUE_SIZE - 1)) / (QUEUE_SIZE + 0.3))));
+    const aS   = Math.min(Math.floor(iS * 1.35), height - 22);
+    const totalW = aS + (QUEUE_SIZE - 1) * (iS + gap);
+    let cx = (this.W - totalW) / 2;
+    const itemCY = topY + 20 + (height - 20) / 2;
+
+    this.pieceQueue.forEach((item, i) => {
+      const isActive = i === 0;
+      const sz = isActive ? aS : iS;
+      const cont = this.add.container(cx + sz / 2, itemCY);
+
       const btnBg = this.add.graphics();
-      btnBg.fillStyle(0x1f2937, 1);
-      btnBg.fillRoundedRect(-itemSz / 2, -itemSz / 2, itemSz, itemSz, 8);
-      btnBg.lineStyle(1.5, 0x4A5568, 1);
-      btnBg.strokeRoundedRect(-itemSz / 2, -itemSz / 2, itemSz, itemSz, 8);
+      if (isActive) {
+        btnBg.fillStyle(0x162a18, 1);
+        btnBg.fillRoundedRect(-sz / 2, -sz / 2, sz, sz, 10);
+        btnBg.lineStyle(2.5, 0x4ADE80, 1);
+        btnBg.strokeRoundedRect(-sz / 2, -sz / 2, sz, sz, 10);
+      } else {
+        btnBg.fillStyle(0x161b2e, 1);
+        btnBg.fillRoundedRect(-sz / 2, -sz / 2, sz, sz, 7);
+        btnBg.lineStyle(1, 0x2d3748, 0.7);
+        btnBg.strokeRoundedRect(-sz / 2, -sz / 2, sz, sz, 7);
+      }
       cont.add(btnBg);
-      this.drawPiecePaths(cont, item.kind, item.rot, itemSz, false);
-      const lbl = this.add.text(0, itemSz / 2 - 9, item.label, { fontFamily: 'monospace', fontSize: '10px', color: '#64748B', resolution: DPR }).setOrigin(0.5);
-      cont.add(lbl);
-      const hit = this.add.rectangle(0, 0, itemSz, itemSz, 0, 0).setInteractive();
-      hit.on('pointerdown', (ptr: Phaser.Input.Pointer) => this.startDrag(item, ptr.x, ptr.y));
-      cont.add(hit);
+
+      this.drawPiecePaths(cont, item.kind, item.rot, sz, isActive);
+
+      if (!isActive) {
+        const overlay = this.add.graphics();
+        overlay.fillStyle(0x000000, 0.45);
+        overlay.fillRoundedRect(-sz / 2, -sz / 2, sz, sz, 7);
+        cont.add(overlay);
+      }
+
+      if (isActive) {
+        const hit = this.add.rectangle(0, 0, sz, sz, 0, 0).setInteractive();
+        hit.on('pointerdown', (ptr: Phaser.Input.Pointer) => this.startDrag(item, ptr.x, ptr.y));
+        cont.add(hit);
+      }
+
       this.catalogContainers.push(cont);
+      cx += sz + gap;
     });
   }
 

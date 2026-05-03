@@ -8,5 +8,12 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    proxy: {
+      '/api/posts': {
+        target: 'https://cityheroacademy.substack.com',
+        changeOrigin: true,
+        rewrite: () => '/api/v1/posts?limit=3',
+      },
+    },
   },
 })

@@ -22,7 +22,7 @@ const MISSIONS = [
   { icon: '🚲', title: 'Biking My City',                desc: 'Design bike routes across the city, placing street pieces and dodging obstacles.',    color: '#F97316', bg: '#FFF7ED' },
 ];
 
-const SUBSTACK_URL = 'https://cityheroacademy.substack.com';
+const SUBSTACK_BASE = 'https://cityheroacademy.substack.com';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper components
@@ -83,7 +83,8 @@ export default function Landing() {
   const [postsErr, setPostsErr] = useState(false);
 
   useEffect(() => {
-    fetch(`${SUBSTACK_URL}/api/v1/posts?limit=3`)
+    // /api/posts is a Cloudflare Pages Function that proxies Substack server-side
+    fetch('/api/posts')
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((data: SubstackPost[]) => setPosts(data.slice(0, 3)))
       .catch(() => setPostsErr(true));
@@ -110,7 +111,7 @@ export default function Landing() {
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <a
-            href="https://cityheroacademy.substack.com"
+            href={SUBSTACK_BASE}
             target="_blank" rel="noopener noreferrer"
             style={{ fontFamily: FF, fontSize: '0.85rem', color: '#475569', textDecoration: 'none' }}
           >
@@ -522,7 +523,7 @@ export default function Landing() {
 
           <div style={{ textAlign:'center', marginTop:44 }}>
             <a
-              href="https://cityheroacademy.substack.com"
+              href={SUBSTACK_BASE}
               target="_blank" rel="noopener noreferrer"
               style={{
                 fontFamily:FF, fontSize:'1rem', color:'#1E3A8A',
@@ -590,7 +591,7 @@ export default function Landing() {
         <div style={{ display:'flex', justifyContent:'center', gap:28, flexWrap:'wrap', marginBottom:28 }}>
           {[
             { label:'Play Game',  href:'/play' },
-            { label:'Blog',       href:'https://cityheroacademy.substack.com' },
+            { label:'Blog',       href:SUBSTACK_BASE },
             { label:'Contact',    href:'mailto:hello@cityheroacademy.com' },
           ].map(({ label, href }) => (
             <a key={label} href={href}

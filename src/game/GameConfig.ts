@@ -6,7 +6,6 @@ export function createGameConfig(parent: string | HTMLElement, InitialSceneClass
     parent: parent,
     backgroundColor: '#87CEEB',
     pixelArt: false,
-    resolution: window.devicePixelRatio || 1,
     scale: {
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH,

@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 
-const MISSION_ID = 6;
 const DPR = window.devicePixelRatio || 2;
 
 // ── Piece types ───────────────────────────────────────────────────────────────

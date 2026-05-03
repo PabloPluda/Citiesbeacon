@@ -24,7 +24,7 @@ export default function Onboarding() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (localStorage.getItem(HERO_NAME_KEY)) navigate('/profile', { replace: true });
+    if (localStorage.getItem(HERO_NAME_KEY)) navigate('/map', { replace: true });
   }, [navigate]);
 
   const handleStart = () => {

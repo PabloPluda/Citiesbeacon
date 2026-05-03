@@ -1,5 +1,15 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+
+interface SubstackPost {
+  id: number;
+  title: string;
+  subtitle?: string;
+  cover_image?: string | null;
+  post_date: string;
+  canonical_url: string;
+}
 
 const FF = 'Fredoka One, cursive';
 
@@ -12,23 +22,7 @@ const MISSIONS = [
   { icon: '🚲', title: 'Biking My City',                desc: 'Design bike routes across the city, placing street pieces and dodging obstacles.',    color: '#F97316', bg: '#FFF7ED' },
 ];
 
-const ARTICLES = [
-  {
-    title: 'Why Cities Need Civic Education Starting at Age 5',
-    tag: 'Civic Education', emoji: '🏙️',
-    href: 'https://substack.com/@pablopluda',
-  },
-  {
-    title: 'Teaching Sustainability Through Play: The CityHero Approach',
-    tag: 'Sustainability', emoji: '🌿',
-    href: 'https://substack.com/@pablopluda',
-  },
-  {
-    title: 'How Games Can Shape the Urban Citizens of Tomorrow',
-    tag: 'EdTech', emoji: '🎮',
-    href: 'https://substack.com/@pablopluda',
-  },
-];
+const SUBSTACK_URL = 'https://pablopluda.substack.com';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper components
@@ -84,6 +78,16 @@ function AppBadge({ platform, large, comingSoon }: { platform: 'App Store' | 'Go
 export default function Landing() {
   const navigate = useNavigate();
   const goPlay   = () => navigate('/play');
+
+  const [posts, setPosts]       = useState<SubstackPost[] | null>(null);
+  const [postsErr, setPostsErr] = useState(false);
+
+  useEffect(() => {
+    fetch(`${SUBSTACK_URL}/api/v1/posts?limit=3`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((data: SubstackPost[]) => setPosts(data.slice(0, 3)))
+      .catch(() => setPostsErr(true));
+  }, []);
 
   return (
     <div style={{ fontFamily: 'Outfit, sans-serif', overflowX: 'hidden', background: '#fff' }}>
@@ -430,32 +434,90 @@ export default function Landing() {
           </p>
 
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:22 }}>
-            {ARTICLES.map(({ title, tag, emoji, href }) => (
-              <a key={title} href={href} target="_blank" rel="noopener noreferrer" style={{ textDecoration:'none' }}>
+
+            {/* Loading skeletons */}
+            {posts === null && !postsErr && [0,1,2].map(i => (
+              <div key={i} style={{
+                background:'#fff', borderRadius:22,
+                boxShadow:'0 4px 18px rgba(0,0,0,0.07)', overflow:'hidden',
+              }}>
+                <div style={{ height:160, background:'linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%)', backgroundSize:'200% 100%',
+                  animation:'shimmer 1.4s infinite' }} />
+                <div style={{ padding:'20px 22px', display:'flex', flexDirection:'column', gap:10 }}>
+                  <div style={{ height:12, background:'#F1F5F9', borderRadius:99, width:'40%' }} />
+                  <div style={{ height:16, background:'#F1F5F9', borderRadius:8, width:'90%' }} />
+                  <div style={{ height:16, background:'#F1F5F9', borderRadius:8, width:'75%' }} />
+                  <div style={{ height:12, background:'#F1F5F9', borderRadius:99, width:'55%' }} />
+                </div>
+              </div>
+            ))}
+
+            {/* Real posts from Substack */}
+            {posts && posts.map((post) => (
+              <a key={post.id} href={post.canonical_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration:'none' }}>
                 <motion.div
                   whileHover={{ y:-5, boxShadow:'0 18px 44px rgba(59,130,246,0.14)' }}
                   style={{
-                    background:'#fff', borderRadius:22, padding:'26px 22px',
+                    background:'#fff', borderRadius:22, overflow:'hidden',
                     boxShadow:'0 4px 18px rgba(0,0,0,0.07)',
-                    display:'flex', flexDirection:'column', gap:14, height:'100%',
+                    display:'flex', flexDirection:'column', height:'100%',
                   }}
                 >
-                  <div style={{ fontSize:'2.2rem' }}>{emoji}</div>
-                  <div style={{
-                    display:'inline-flex', width:'fit-content',
-                    background:'#EFF6FF', borderRadius:99, padding:'3px 12px',
-                  }}>
-                    <span style={{ fontSize:'0.72rem', color:'#3B82F6', fontWeight:700 }}>{tag}</span>
-                  </div>
-                  <div style={{ fontFamily:FF, fontSize:'1rem', color:'#0F172A', lineHeight:1.4, flex:1 }}>
-                    {title}
-                  </div>
-                  <div style={{ color:'#3B82F6', fontSize:'0.85rem', fontWeight:600 }}>
-                    Read on Substack →
+                  {/* Cover image */}
+                  {post.cover_image ? (
+                    <div style={{ height:160, overflow:'hidden', flexShrink:0 }}>
+                      <img
+                        src={post.cover_image} alt={post.title}
+                        style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{
+                      height:160, flexShrink:0,
+                      background:'linear-gradient(135deg,#EFF6FF,#DBEAFE)',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      fontSize:'3.5rem',
+                    }}>
+                      📝
+                    </div>
+                  )}
+
+                  <div style={{ padding:'20px 22px', display:'flex', flexDirection:'column', gap:10, flex:1 }}>
+                    {/* Date */}
+                    <div style={{ fontSize:'0.72rem', color:'#94A3B8', fontWeight:600 }}>
+                      {new Date(post.post_date).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}
+                    </div>
+                    {/* Title */}
+                    <div style={{ fontFamily:FF, fontSize:'1rem', color:'#0F172A', lineHeight:1.4, flex:1 }}>
+                      {post.title}
+                    </div>
+                    {/* Subtitle/excerpt */}
+                    {post.subtitle && (
+                      <p style={{ fontSize:'0.83rem', color:'#64748B', lineHeight:1.6, margin:0,
+                        display:'-webkit-box', WebkitLineClamp:3,
+                        WebkitBoxOrient:'vertical' as const, overflow:'hidden',
+                      }}>
+                        {post.subtitle}
+                      </p>
+                    )}
+                    <div style={{ color:'#3B82F6', fontSize:'0.83rem', fontWeight:600, marginTop:4 }}>
+                      Read on Substack →
+                    </div>
                   </div>
                 </motion.div>
               </a>
             ))}
+
+            {/* Fallback if API failed or no posts yet */}
+            {postsErr && (
+              <div style={{
+                gridColumn:'1 / -1', textAlign:'center',
+                padding:'40px 24px', color:'#94A3B8',
+              }}>
+                <div style={{ fontSize:'2.5rem', marginBottom:12 }}>✍️</div>
+                <p style={{ fontFamily:FF, color:'#64748B' }}>Articles coming soon — stay tuned!</p>
+              </div>
+            )}
           </div>
 
           <div style={{ textAlign:'center', marginTop:44 }}>

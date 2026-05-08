@@ -194,14 +194,22 @@ interface WorldObj {
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
+function coinsPerSegment(level: number): number {
+  if (level <= 2)  return 2;
+  if (level <= 8)  return 3;
+  if (level <= 15) return 4;
+  return 5;
+}
+
 export class CrossingScene extends Phaser.Scene {
   level           = 1;
   scored          = 0;
+  coinsEarned     = 0;
   done            = false;
   tutorialActive  = false;
   penaltyCooldown = false;
   livesLost       = 0;
-  booksInCycle    = 0;   // books toward next extra life (resets every 4)
+  booksInCycle    = 0;
 
   tommyLane       = 1;
   swipeStartY     = 0;
@@ -251,6 +259,7 @@ export class CrossingScene extends Phaser.Scene {
       else { this.level = Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20); }
     }
     this.scored          = 0;
+    this.coinsEarned     = 0;
     this.crossCount      = getLevelCfg(this.level).crossings;
     this.done            = false;
     this.tutorialActive  = true;
@@ -330,10 +339,17 @@ export class CrossingScene extends Phaser.Scene {
 
     this.carGroup = this.physics.add.group();
 
-    // Traffic light bulbs
+    // Traffic light pole + housing + bulbs — all at depth > Tommy (5) so player walks behind
     for (let i = 0; i < cfg.crossings; i++) {
       const x = firstCrossX + i * SPACING;
       const poleX = x - 100, poleY = H/2 - 80;
+
+      // Redraw pole and housing as separate objects so they appear in front of Tommy
+      const poleGfx = this.add.graphics().setDepth(7);
+      poleGfx.fillStyle(0x2D3748); poleGfx.fillRect(poleX-4, H/2-80, 8, 120);
+      poleGfx.fillStyle(0x111827); poleGfx.fillRect(poleX-23, poleY-50, 46, 100);
+      poleGfx.fillStyle(0x1F2937); poleGfx.fillRect(poleX-21, poleY-48, 42, 96);
+
       const redCircle   = this.add.circle(poleX, poleY-28, 16, 0xFF0000).setDepth(11);
       const redIcon     = this.add.text(poleX, poleY-28, '🧍', { fontSize: '14px' }).setOrigin(0.5).setDepth(12);
       const greenCircle = this.add.circle(poleX, poleY+28, 16, 0x00CC44).setDepth(11);
@@ -541,23 +557,18 @@ export class CrossingScene extends Phaser.Scene {
         tryObstacleInLane(segStart + segLen * (0.10 + Math.random() * 0.80), lane, 25);
       }
 
-      // Guaranteed 1 book — placed in a zone that deliberately avoids the mid-obstacle
-      // Use first or last quarter to stay clear of the obstacle cluster
-      const bookZone = Math.random() < 0.5
-        ? segStart + segLen * (0.05 + Math.random() * 0.15)   // early zone
-        : segStart + segLen * (0.65 + Math.random() * 0.20);  // late zone
-      tryBook(bookZone, 30);
-
-      // Second book at higher levels
-      if (this.level >= 7 && Math.random() < 0.6) {
-        tryBook(segStart + segLen * (0.35 + Math.random() * 0.20), 35);
+      // Distribute coins evenly across the segment based on level
+      const numCoins = coinsPerSegment(this.level);
+      for (let ci = 0; ci < numCoins; ci++) {
+        const pos = (ci + 1) / (numCoins + 1);
+        tryBook(segStart + segLen * pos, 30);
       }
     }
   }
 
   buildBookDisplay() {
     const W = this.cameras.main.width;
-    this.bookTxt = this.add.text(W / 2, 18, '🪙 0 / 4', {
+    this.bookTxt = this.add.text(W / 2, 18, '🪙 0', {
       fontFamily: 'Fredoka One', fontSize: '18px',
       color: '#FFFFFF', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(25);
@@ -606,38 +617,22 @@ export class CrossingScene extends Phaser.Scene {
     this.time.delayedCall(2000, () => { this.penaltyCooldown = false; });
   }
 
-  // ── Collect book ──────────────────────────────────────────────────────────────
+  // ── Collect coin ──────────────────────────────────────────────────────────────
 
-  collectBook(book: WorldObj) {
+  collectCoin(book: WorldObj) {
     book.alive = false;
     this.tweens.add({ targets: book.gfx, scaleX: 1.8, scaleY: 1.8, alpha: 0, duration: 300,
       onComplete: () => book.gfx.destroy() });
 
-    this.booksInCycle++;
-    const inCycle = this.booksInCycle % 4;
-    this.bookTxt.setText(`🪙 ${inCycle === 0 ? 4 : inCycle} / 4`);
+    this.coinsEarned += 2;
+    this.bookTxt.setText(`🪙 ${this.coinsEarned}`);
 
-    // Float text
-    const plusTxt = this.add.text(this.tommy.x, this.tommy.y - 30, '🪙 +1', {
+    const plusTxt = this.add.text(this.tommy.x, this.tommy.y - 30, '+2 🪙', {
       fontFamily: 'Fredoka One', fontSize: '16px',
       color: '#FCD34D', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(22);
     this.tweens.add({ targets: plusTxt, y: plusTxt.y - 40, alpha: 0, duration: 700,
       onComplete: () => plusTxt.destroy() });
-
-    // 4 books = recover 1 life
-    if (inCycle === 0 && this.livesLost > 0) {
-      this.livesLost--;
-      this.refreshLifeIndicators();
-      const bonusTxt = this.add.text(
-        this.cameras.main.width / 2, this.sceneH / 2,
-        '❤️ +1 VIDA!', {
-          fontFamily: 'Fredoka One', fontSize: '28px',
-          color: '#FF6B6B', stroke: '#000', strokeThickness: 4,
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(30);
-      this.tweens.add({ targets: bonusTxt, y: bonusTxt.y - 60, alpha: 0, duration: 1400,
-        onComplete: () => bonusTxt.destroy() });
-    }
   }
 
   // ── Texture baking (2× render → 0.5 scale = crisp on HiDPI) ─────────────────
@@ -679,7 +674,9 @@ export class CrossingScene extends Phaser.Scene {
     const targetH = lane === 2 ? 120 : 60;
     const scale   = (targetH / HEIGHTS[texKey]) * 0.85;
 
-    const img = this.add.image(worldX, y, texKey).setOrigin(0.5, 1).setScale(scale).setDepth(4);
+    // Lane 2 (bottom row) obstacles appear in front of Tommy; lanes 0/1 behind
+    const depth = lane === 2 ? 7 : 4;
+    const img = this.add.image(worldX, y, texKey).setOrigin(0.5, 1).setScale(scale).setDepth(depth);
     this.worldObstacles.push({ worldX, lane, gfx: img, type: texKey, alive: true });
   }
 
@@ -789,7 +786,7 @@ export class CrossingScene extends Phaser.Scene {
     if (tommyX >= this.schoolX - 30) {
       this.done = true;
       this.tommy.setVelocityX(0);
-      this.time.delayedCall(500, () => EventBus.emit('game-level-complete', this.level));
+      this.time.delayedCall(500, () => EventBus.emit('game-level-complete', { level: this.level, coinsEarned: this.coinsEarned }));
       return;
     }
 
@@ -831,7 +828,7 @@ export class CrossingScene extends Phaser.Scene {
     for (const book of this.worldBooks) {
       if (!book.alive || book.lane !== this.tommyLane) continue;
       if (Math.abs(tommyX - book.worldX) < 28) {
-        this.collectBook(book);
+        this.collectCoin(book);
       }
     }
 

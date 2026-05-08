@@ -53,25 +53,24 @@ function TimerRing({ timeLeft, maxTime }: { timeLeft: number; maxTime: number })
 }
 
 // ─── Well done overlay ────────────────────────────────────────────────────────
-const WELL_DONE_MSGS = [
-  "The city is better because of you!",
-  "You're becoming a real City Hero!",
-  "Amazing work out there!",
-  "Keep it up, champion!",
-  "You make the city proud!",
-  "Incredible effort!",
-  "The community thanks you!",
-];
+const MISSION_MSG: Record<number, string> = {
+  1: 'The city is cleaner thanks to you! 🗑️',
+  2: 'Great job walking to school and respecting the lights! 🚦',
+  3: 'The city is saving energy because of you! 💡',
+  4: 'Every drop counts — the city thanks you! 💧',
+  5: 'Firulai is home safe! 🐕🏠',
+  6: 'You made it through! Great biking! 🚲',
+};
 
 function WellDoneOverlay({
-  level, missionId, heroName, coinsEarned, totalCoins, onBackToMap, onContinue,
+  missionId, heroName, coinsEarned, totalCoins, onBackToMap, onContinue,
 }: {
-  level: number; missionId: number; heroName: string;
+  missionId: number; heroName: string;
   coinsEarned: number; totalCoins: number;
   onBackToMap: () => void; onContinue: () => void;
 }) {
   const [displayCoins, setDisplayCoins] = useState(totalCoins - coinsEarned);
-  const msg = WELL_DONE_MSGS[(level + missionId) % WELL_DONE_MSGS.length];
+  const msg = MISSION_MSG[missionId] ?? 'Amazing work out there!';
 
   useEffect(() => {
     if (coinsEarned <= 0) return;
@@ -762,7 +761,6 @@ export default function GameWindow() {
         {phase === 'wellDone' && (
           <WellDoneOverlay
             key="welldone"
-            level={level}
             missionId={mId}
             heroName={heroName}
             coinsEarned={levelCoins}

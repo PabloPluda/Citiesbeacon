@@ -3,10 +3,12 @@ import { persist } from 'zustand/middleware';
 
 interface GameState {
   cityPoints: number;
+  cityCoins: number;
   highScores: Record<number, number>;
   highestLevel: Record<number, number>;   // missionId → highest completed level
   puzzlePieces: Record<number, number>;   // missionId → pieces revealed (0-12)
   addCityPoints: (points: number) => void;
+  addCityCoins: (coins: number) => void;
   updateHighScore: (missionId: number, score: number) => void;
   completeLevel: (missionId: number, level: number) => void;
   setHighestLevel: (missionId: number, level: number) => void;
@@ -29,11 +31,13 @@ export const useProgressStore = create<GameState>()(
   persist(
     (set, get) => ({
       cityPoints: 0,
+      cityCoins: 0,
       highScores: {},
       highestLevel: {},
       puzzlePieces: {},
 
       addCityPoints: (points) => set((s) => ({ cityPoints: s.cityPoints + points })),
+      addCityCoins: (coins) => set((s) => ({ cityCoins: s.cityCoins + coins })),
 
       updateHighScore: (missionId, score) => set((s) => {
         const cur = s.highScores[missionId] || 0;
@@ -62,7 +66,7 @@ export const useProgressStore = create<GameState>()(
       getHighestLevel: (missionId) => get().highestLevel[missionId] || 0,
       getPuzzlePieces: (missionId) => get().puzzlePieces[missionId] || 0,
 
-      resetProgress: () => set({ cityPoints: 0, highScores: {}, highestLevel: {}, puzzlePieces: {} }),
+      resetProgress: () => set({ cityPoints: 0, cityCoins: 0, highScores: {}, highestLevel: {}, puzzlePieces: {} }),
 
       getRankInfo: () => {
         const cp = get().cityPoints;

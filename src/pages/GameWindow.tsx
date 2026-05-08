@@ -6,7 +6,6 @@ import { ChevronLeft } from 'lucide-react';
 import { createGameConfig } from '../game/GameConfig';
 import { EventBus } from '../game/EventBus';
 import { useProgressStore } from '../store/progressStore';
-import PuzzleReveal from '../components/PuzzleReveal';
 import { ThrowToBinScene } from '../game/scenes/ThrowToBinScene';
 import { CrossingScene } from '../game/scenes/CrossingScene';
 import { LightsOutScene } from '../game/scenes/LightsOutScene';
@@ -53,46 +52,112 @@ function TimerRing({ timeLeft, maxTime }: { timeLeft: number; maxTime: number })
   );
 }
 
-// ─── Level-complete overlay ───────────────────────────────────────────────────
-const LEVEL_COMPLETE_MSG: Record<number, string> = {
-  1: 'You bagged all the trash! 🗑️',
-  2: 'You crossed safely! 🚦',
-  3: 'All lights off! 💡',
-  4: 'Water saved! 💧',
-  5: 'The dog is home! 🏠🐕',
-  6: 'Path complete! Great biking! 🚲',
-};
+// ─── Well done overlay ────────────────────────────────────────────────────────
+const WELL_DONE_MSGS = [
+  "The city is better because of you!",
+  "You're becoming a real City Hero!",
+  "Amazing work out there!",
+  "Keep it up, champion!",
+  "You make the city proud!",
+  "Incredible effort!",
+  "The community thanks you!",
+];
 
-function LevelCompleteOverlay({ level, missionId, onSeeResults }: { level: number; missionId: number; onSeeResults: () => void }) {
-  const msg = LEVEL_COMPLETE_MSG[missionId] ?? 'Level complete!';
+function WellDoneOverlay({
+  level, missionId, heroName, coinsEarned, totalCoins, onBackToMap, onContinue,
+}: {
+  level: number; missionId: number; heroName: string;
+  coinsEarned: number; totalCoins: number;
+  onBackToMap: () => void; onContinue: () => void;
+}) {
+  const [displayCoins, setDisplayCoins] = useState(totalCoins - coinsEarned);
+  const msg = WELL_DONE_MSGS[(level + missionId) % WELL_DONE_MSGS.length];
+
+  useEffect(() => {
+    if (coinsEarned <= 0) return;
+    const start = totalCoins - coinsEarned;
+    const end = totalCoins;
+    const steps = Math.min(coinsEarned, 30);
+    const delay = 700;
+    const interval = 900 / steps;
+    let count = 0;
+    const t = setTimeout(() => {
+      const id = setInterval(() => {
+        count++;
+        setDisplayCoins(Math.round(start + (end - start) * (count / steps)));
+        if (count >= steps) clearInterval(id);
+      }, interval);
+    }, delay);
+    return () => clearTimeout(t);
+  }, [coinsEarned, totalCoins]);
+
+  const MISSION_EMOJI: Record<number, string> = { 1: '🗑️', 2: '🚦', 3: '💡', 4: '💧', 5: '🐕', 6: '🚲' };
+
   return (
     <motion.div
-      initial={{ scale: 0.6, opacity: 0 }}
+      initial={{ scale: 0.7, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 1.1, opacity: 0 }}
-      transition={{ type: 'spring', bounce: 0.45 }}
+      exit={{ scale: 1.05, opacity: 0 }}
+      transition={{ type: 'spring', bounce: 0.4 }}
       style={{
         position: 'absolute', inset: 0,
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(10,20,60,0.88)', zIndex: 40, gap: 16,
+        background: 'rgba(10,20,60,0.90)', zIndex: 40, gap: 14, padding: '0 24px',
       }}
     >
-      <div style={{ fontSize: '4rem' }}>{missionId === 5 ? '🐕' : '🎉'}</div>
-      <h2 style={{ fontFamily: 'Fredoka One', color: '#FFD700', fontSize: '2.2rem', textAlign: 'center' }}>
-        Level {level} Clear!
+      <div style={{ fontSize: '3.5rem' }}>{MISSION_EMOJI[missionId] ?? '🎉'}</div>
+      <h2 style={{ fontFamily: 'Fredoka One', color: '#FFD700', fontSize: '2.4rem', textAlign: 'center', lineHeight: 1.1 }}>
+        Well done{heroName ? `, ${heroName}` : ''}!
       </h2>
-      <p style={{ fontFamily: 'Fredoka', color: '#A0AEC0', fontSize: '1.1rem', textAlign: 'center' }}>
+      <p style={{ fontFamily: 'Fredoka', color: '#CBD5E0', fontSize: '1.05rem', textAlign: 'center', lineHeight: 1.4 }}>
         {msg}
       </p>
-      <motion.button
-        whileTap={{ scale: 0.93 }}
-        className="btn btn-primary"
-        onClick={onSeeResults}
-        style={{ marginTop: 12, fontSize: '1.1rem', padding: '14px 28px' }}
-      >
-        See Your Puzzle! 🧩
-      </motion.button>
+
+      {coinsEarned > 0 && (
+        <div style={{
+          background: 'rgba(255,215,0,0.12)', border: '2px solid rgba(255,215,0,0.5)',
+          borderRadius: 20, padding: '12px 28px', textAlign: 'center', marginTop: 4,
+        }}>
+          <div style={{ fontFamily: 'Fredoka', color: 'rgba(255,215,0,0.7)', fontSize: '0.75rem', letterSpacing: '0.08em', marginBottom: 2 }}>
+            CITY COINS
+          </div>
+          <div style={{ fontFamily: 'Fredoka One', color: '#FFD700', fontSize: '2rem', lineHeight: 1 }}>
+            🪙 {displayCoins}
+          </div>
+          <div style={{ fontFamily: 'Fredoka', color: '#86EFAC', fontSize: '0.8rem', marginTop: 3 }}>
+            +{coinsEarned} this level
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 8, width: '100%', maxWidth: 300 }}>
+        <motion.button
+          whileTap={{ scale: 0.93 }}
+          onClick={onBackToMap}
+          style={{
+            flex: 1, fontFamily: 'Fredoka One', fontSize: '1rem',
+            background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)',
+            border: '2px solid rgba(255,255,255,0.25)', borderRadius: 28,
+            padding: '13px 0', cursor: 'pointer',
+          }}
+        >
+          Map 🗺️
+        </motion.button>
+        <motion.button
+          whileTap={{ scale: 0.93 }}
+          onClick={onContinue}
+          style={{
+            flex: 2, fontFamily: 'Fredoka One', fontSize: '1.1rem',
+            background: '#22C55E', color: '#fff',
+            border: 'none', borderRadius: 28,
+            padding: '13px 0', cursor: 'pointer',
+            boxShadow: '0 4px 14px rgba(34,197,94,0.4)',
+          }}
+        >
+          Continue! 🚀
+        </motion.button>
+      </div>
     </motion.div>
   );
 }
@@ -132,7 +197,7 @@ function TimeUpOverlay({ scored, onRetry, onQuit }: { scored: string; onRetry: (
 }
 
 // ─── Main GameWindow ──────────────────────────────────────────────────────────
-type Phase = 'playing' | 'levelComplete' | 'timeUp' | 'puzzleReveal';
+type Phase = 'playing' | 'wellDone' | 'timeUp';
 
 export default function GameWindow() {
   const navigate = useNavigate();
@@ -143,7 +208,7 @@ export default function GameWindow() {
   const gameRef = useRef<Phaser.Game | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { completeLevel, getHighestLevel } = useProgressStore();
+  const { completeLevel, getHighestLevel, addCityCoins, cityCoins } = useProgressStore();
 
   const forcedLevel = (location.state as { startLevel?: number } | null)?.startLevel;
   const highest = getHighestLevel(mId);
@@ -155,6 +220,8 @@ export default function GameWindow() {
   const [timeLeft, setTimeLeft] = useState(50);
   const [maxTimeLeft, setMaxTimeLeft] = useState(50); // tracks the starting time for ring
   const [phase, setPhase] = useState<Phase>('playing');
+  const [levelCoins, setLevelCoins] = useState(0);
+  const [heroName] = useState(() => localStorage.getItem('cityhero-hero-name') || '');
   const [showTutorial, setShowTutorial] = useState(false);
   const [showPreLevel, setShowPreLevel] = useState(false);
   const [showCrossingPenalty, setShowCrossingPenalty] = useState(false);
@@ -186,9 +253,13 @@ export default function GameWindow() {
     };
     const onScored = (n: string | number) => setScored(String(n));
 
-    const onLevelComplete = (completedLevel: number) => {
+    const onLevelComplete = (payload: number | { level: number; coinsEarned?: number }) => {
+      const completedLevel = typeof payload === 'number' ? payload : payload.level;
+      const coins = typeof payload === 'object' ? (payload.coinsEarned ?? 0) : 0;
       completeLevel(mId, completedLevel);
-      setPhase('levelComplete');
+      if (coins > 0) addCityCoins(coins);
+      setLevelCoins(coins);
+      setPhase('wellDone');
     };
     const onTimeUp = () => setPhase('timeUp');
 
@@ -257,17 +328,15 @@ export default function GameWindow() {
     };
   }, [mId]);  // eslint-disable-line
 
-  // After level complete, show puzzle
-  const handleSeeResults = () => setPhase('puzzleReveal');
-
-  // From puzzle: go to next level
+  // From well done: go to next level
   const handleNextLevel = () => {
-    const next = levelRef.current + 1;
+    const next = Math.min(levelRef.current + 1, 20);
     levelRef.current = next;
     setLevel(next);
     setScored('0/7');
     setTimeLeft(50);
     setMaxTimeLeft(50);
+    setLevelCoins(0);
     setPhase('playing');
     EventBus.emit('restart-scene', { level: next });
   };
@@ -279,6 +348,7 @@ export default function GameWindow() {
     setScored('0/7');
     setTimeLeft(50);
     setMaxTimeLeft(50);
+    setLevelCoins(0);
     setPhase('playing');
     EventBus.emit('restart-scene', { level: 1 });
   };
@@ -288,11 +358,10 @@ export default function GameWindow() {
     setScored('0/7');
     setTimeLeft(50);
     setMaxTimeLeft(50);
+    setLevelCoins(0);
     setPhase('playing');
     EventBus.emit('restart-scene', { level: levelRef.current });
   };
-
-  const isMissionComplete = level >= 20 && phase === 'puzzleReveal';
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#000' }}>
@@ -690,22 +759,20 @@ export default function GameWindow() {
 
       {/* ─ Overlays ─────────────────────────────────────────────────────────── */}
       <AnimatePresence>
-        {phase === 'levelComplete' && (
-          <LevelCompleteOverlay key="lvlcomplete" level={level} missionId={mId} onSeeResults={handleSeeResults} />
+        {phase === 'wellDone' && (
+          <WellDoneOverlay
+            key="welldone"
+            level={level}
+            missionId={mId}
+            heroName={heroName}
+            coinsEarned={levelCoins}
+            totalCoins={cityCoins}
+            onBackToMap={() => navigate('/map')}
+            onContinue={level >= 20 ? handlePlayAgain : handleNextLevel}
+          />
         )}
         {phase === 'timeUp' && (
           <TimeUpOverlay key="timeup" scored={scored} onRetry={handleRetry} onQuit={() => navigate('/map')} />
-        )}
-        {phase === 'puzzleReveal' && (
-          <PuzzleReveal
-            key="puzzle"
-            missionId={mId}
-            currentLevel={level}
-            isMissionComplete={isMissionComplete}
-            onNextLevel={handleNextLevel}
-            onPlayAgain={handlePlayAgain}
-            onQuit={() => navigate('/map')}
-          />
         )}
       </AnimatePresence>
     </div>

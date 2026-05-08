@@ -31,6 +31,7 @@ interface ThrownItem {
 export class ThrowToBinScene extends Phaser.Scene {
   level = 1; scored = 0; timeLeft = 40;
   done = false; tutorialActive = false;
+  coinsEarned = 0;
 
   binCX   = 0; binRimY  = 0;
   binHalfW = 62; binBodyH = 130;
@@ -56,7 +57,7 @@ export class ThrowToBinScene extends Phaser.Scene {
       if (reg != null) { this.registry.remove('startLevel'); this.level = reg; }
       else { this.level = Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20); }
     }
-    this.scored = 0; this.timeLeft = this.cfg.time;
+    this.scored = 0; this.timeLeft = this.cfg.time; this.coinsEarned = 0;
     this.done = false; this.tutorialActive = false;
     this.isDragging = false; this.selectedTrash = null;
     this.trashItems = []; this.thrownItems = [];
@@ -346,16 +347,51 @@ export class ThrowToBinScene extends Phaser.Scene {
     this.thrownItems.push({ container: trash, vx, vy, rotDir, done: false });
   }
 
-  onScored(trash: Phaser.GameObjects.Container) {
+  onScored(trash: Phaser.GameObjects.Container, type: 'clean' | 'rim' = 'clean') {
     this.scored++;
+    const coins = type === 'rim' ? 2 : 3;
+    this.coinsEarned += coins;
     EventBus.emit('game-scored-update', `${this.scored}/${this.cfg.trashGoal}`);
     this.tweens.add({ targets:trash, scaleX:0, scaleY:0, alpha:0, y:this.binRimY+40, duration:200, ease:'Quad.easeIn', onComplete:()=>trash.destroy() });
     this.showGreat(trash.x, trash.y - 20);
+    this.showCoinPopup(trash.x + 30, trash.y - 40, coins);
     this.ensureMinTrash();
     if (this.scored >= this.cfg.trashGoal) {
       this.done = true;
-      this.time.delayedCall(600, () => EventBus.emit('game-level-complete', this.level));
+      this.time.delayedCall(600, () => EventBus.emit('game-level-complete', { level: this.level, coinsEarned: this.coinsEarned }));
     }
+  }
+
+  rimBounceAndScore(ti: ThrownItem) {
+    ti.done = true;
+    const trash = ti.container;
+    const sideSign = trash.x > this.binCX ? 1 : -1;
+    this.tweens.add({
+      targets: trash,
+      x: trash.x - sideSign * 14,
+      y: trash.y - 30,
+      angle: (trash.angle as number) + sideSign * 25,
+      duration: 190,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: trash,
+          x: this.binCX,
+          y: this.binRimY + 22,
+          duration: 260,
+          ease: 'Quad.easeIn',
+          onComplete: () => this.onScored(trash, 'rim')
+        });
+      }
+    });
+  }
+
+  showCoinPopup(x: number, y: number, coins: number) {
+    const t = this.add.text(x, y, `+${coins} 🪙`, {
+      fontFamily: 'Fredoka One, sans-serif', fontSize: '26px',
+      color: '#FFD700', stroke: '#000', strokeThickness: 4
+    }).setOrigin(0.5).setDepth(27);
+    this.tweens.add({ targets: t, y: y - 55, alpha: 0, duration: 900, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
   }
 
   onMissed(trash: Phaser.GameObjects.Container) {
@@ -527,9 +563,16 @@ export class ThrowToBinScene extends Phaser.Scene {
       if (ti.vy > 0) {
         const dx = Math.abs(ti.container.x - this.binCX);
         const dy = ti.container.y - this.binRimY;
-        if (dx < this.binHalfW - 4 && dy >= -8 && dy < 65) {
+        // Rim bounce: near the edge of the opening
+        if (dx >= this.binHalfW - 20 && dx < this.binHalfW + 8 && dy >= -8 && dy < 22) {
+          this.rimBounceAndScore(ti);
+          this.thrownItems.splice(i, 1);
+          continue;
+        }
+        // Clean shot: clear through the center
+        if (dx < this.binHalfW - 20 && dy >= -4 && dy < 28) {
           ti.done = true;
-          this.onScored(ti.container);
+          this.onScored(ti.container, 'clean');
           this.thrownItems.splice(i,1);
           continue;
         }

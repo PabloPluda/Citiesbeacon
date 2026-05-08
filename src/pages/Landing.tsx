@@ -104,7 +104,7 @@ export default function Landing() {
         borderBottom: '1px solid #F1F5F9',
       }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <img src="/Logo_CHA_header.png?v=2" alt="CityHero Academy" style={{ height: 72, display: 'block' }} />
+          <img src="/Logo_CHA_header.png?v=2" alt="CityHero Academy" style={{ height: 50, display: 'block' }} />
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <a
@@ -148,7 +148,7 @@ export default function Landing() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.6, ease: 'easeOut' }}
             style={{
-              height: 'clamp(110px, 22vw, 170px)',
+              height: 'clamp(138px, 27vw, 213px)',
               display: 'block',
               margin: '0 auto 32px',
               filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.35))',

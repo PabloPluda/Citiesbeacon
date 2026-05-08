@@ -82,6 +82,7 @@ export class LightsOutScene extends Phaser.Scene {
   level       = 1;
   score       = 0;
   streak      = 0;
+  coinsEarned = 0;
   done        = false;
 
   scrollSpeed  = 80;
@@ -117,6 +118,7 @@ export class LightsOutScene extends Phaser.Scene {
     }
     this.score       = 0;
     this.streak      = 0;
+    this.coinsEarned = 0;
     this.done        = false;
     this.buildings   = [];
     this.worldRight  = 0;
@@ -276,7 +278,7 @@ export class LightsOutScene extends Phaser.Scene {
     if (this.done) return;
     if (this.score >= win) {
       this.done = true;
-      EventBus.emit('game-level-complete', this.level);
+      EventBus.emit('game-level-complete', { level: this.level, coinsEarned: this.coinsEarned });
     } else if (this.score <= -lose) {
       this.done = true;
       this.time.delayedCall(300, () => EventBus.emit('game-time-up', this.score));
@@ -391,12 +393,12 @@ export class LightsOutScene extends Phaser.Scene {
     const wy = bldg.container.y + w.ly + WIN_H / 2;
 
     if (w.state === 'OCCUPIED') {
-      // Wrong tap — no shake, just a floating penalty number
+      // Wrong tap
+      this.coinsEarned = Math.max(0, this.coinsEarned - 2);
       const penalty = this.add.text(wx, wy - 10, `${SCORE_WRONG}`, {
         fontFamily: 'Fredoka One', fontSize: '28px', color: '#FF4444',
         stroke: '#000000', strokeThickness: 3,
       }).setOrigin(0.5, 1).setDepth(62).setScrollFactor(0);
-      // Convert world position to screen position for scrollFactor(0) text
       penalty.setPosition(wx, wy - 10);
       this.tweens.add({ targets: penalty, y: wy - 55, alpha: 0, duration: 750, onComplete: () => penalty.destroy() });
 
@@ -406,6 +408,7 @@ export class LightsOutScene extends Phaser.Scene {
 
     } else {
       // Correct tap
+      this.coinsEarned += 1;
       this.streak++;
       const pop = this.add.circle(wx, wy, 10, 0xFEF08A, 0.9).setDepth(60);
       this.tweens.add({ targets: pop, scale: 3.5, alpha: 0, duration: 300, onComplete: () => pop.destroy() });

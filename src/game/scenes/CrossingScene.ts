@@ -589,13 +589,13 @@ export class CrossingScene extends Phaser.Scene {
 
   // ── Penalty ───────────────────────────────────────────────────────────────────
 
-  penalize() {
+  penalize(reason: 'red' | 'obstacle' = 'red') {
     if (this.done || this.tutorialActive || this.penaltyCooldown) return;
     this.penaltyCooldown = true;
     this.livesLost++;
     this.tommy.x = Math.max(220, this.tommy.x - 140);
     this.tommy.setVelocityX(0);
-    EventBus.emit('show-crossing-penalty');
+    EventBus.emit('show-crossing-penalty', reason);
 
     const W = this.cameras.main.width, H = this.sceneH;
     const lifeIdx = this.livesLost - 1;
@@ -818,7 +818,7 @@ export class CrossingScene extends Phaser.Scene {
           obs.alive = false;
           this.tweens.add({ targets: obs.gfx, alpha: 0, duration: 350,
             onComplete: () => obs.gfx.destroy() });
-          this.penalize();
+          this.penalize('obstacle');
           break;
         }
       }
@@ -898,6 +898,17 @@ export class CrossingScene extends Phaser.Scene {
       const c = child as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
       if (!c.active || !c.body) return;
       const stopTop = H/2-60, stopBot = H/2+266, FRONT = 44;
+
+      // UP cars: stop 2s before pedestrian green so the crosswalk clears in time
+      if (c.dir === 'up' && c.cr.state === 'red') {
+        const redCycle = 2600 + this.level * 40;
+        if (c.cr.timer > redCycle - 2000) {
+          if (c.y > stopBot) c.setVelocityY(0);  // still approaching → freeze before entry
+          // already inside crosswalk → let it continue through and exit naturally
+          return;
+        }
+      }
+
       if (c.cr.state === 'green') {
         if (c.dir === 'down') {
           if (c.y >= stopTop - FRONT) return;

@@ -224,6 +224,7 @@ export default function GameWindow() {
   const [showTutorial, setShowTutorial] = useState(false);
   const [showPreLevel, setShowPreLevel] = useState(false);
   const [showCrossingPenalty, setShowCrossingPenalty] = useState(false);
+  const [crossingPenaltyMsg, setCrossingPenaltyMsg] = useState('Wait for the green light! 😊');
   const [showCrossingTutorial, setShowCrossingTutorial] = useState(false);
   const [showCrossingPraise, setShowCrossingPraise] = useState(false);
   const [showCrossingStart, setShowCrossingStart] = useState(false);
@@ -268,7 +269,10 @@ export default function GameWindow() {
     EventBus.on('game-time-up', onTimeUp);
     EventBus.on('show-tutorial', () => setShowTutorial(true));
     EventBus.on('show-pre-level', () => setShowPreLevel(true));
-    const onCrossingPenalty = () => {
+    const onCrossingPenalty = (reason?: string) => {
+      setCrossingPenaltyMsg(reason === 'obstacle'
+        ? 'Pay more attention walking in the street! 👀'
+        : 'Wait for the green light! 😊');
       setShowCrossingPenalty(true);
       setTimeout(() => setShowCrossingPenalty(false), 2000);
     };
@@ -517,7 +521,7 @@ export default function GameWindow() {
             lineHeight: 1.3,
             whiteSpace: 'nowrap',
           }}>
-            Wait for the green light! 😊
+            {crossingPenaltyMsg}
           </div>
         </div>
       )}
@@ -733,12 +737,6 @@ export default function GameWindow() {
         {/* Timer — hidden for CrossingScene (2) and LightsOutScene (3) */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
           {mId !== 2 && mId !== 3 && <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />}
-          <span style={{
-            fontFamily: 'Fredoka One', fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)',
-            textShadow: '1px 1px 2px black', letterSpacing: '0.05em',
-          }}>
-            LVL {level}/20
-          </span>
         </div>
 
         {/* Scored — hidden for LightsOutScene (uses in-canvas meter bar instead) */}

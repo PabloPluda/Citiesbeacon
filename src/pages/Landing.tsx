@@ -104,7 +104,7 @@ export default function Landing() {
         borderBottom: '1px solid #F1F5F9',
       }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <img src="/Logo_CHA_header.png?v=1" alt="CityHero Academy" style={{ height: 72, display: 'block' }} />
+          <img src="/Logo_CHA_header.png?v=2" alt="CityHero Academy" style={{ height: 72, display: 'block' }} />
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <a

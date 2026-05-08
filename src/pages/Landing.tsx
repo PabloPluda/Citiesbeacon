@@ -103,9 +103,8 @@ export default function Landing() {
         boxShadow: '0 2px 20px rgba(0,0,0,0.06)',
         borderBottom: '1px solid #F1F5F9',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: '1.5rem' }}>🏙️</span>
-          <span style={{ fontFamily: FF, fontSize: '1.05rem', color: '#1E3A8A' }}>CityHero Academy</span>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <img src="/Logo_CHA_header.png?v=1" alt="CityHero Academy" style={{ height: 36, display: 'block' }} />
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <a
@@ -142,25 +141,19 @@ export default function Landing() {
         <div style={{ position:'relative', zIndex:1, maxWidth:620, margin:'0 auto' }}>
 
           {/* logo */}
-          <motion.div
+          <motion.img
+            src="/Logo_CHA.png?v=2"
+            alt="CityHero Academy"
             initial={{ opacity: 0, scale: 0.85 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.6, ease: 'easeOut' }}
             style={{
-              display: 'inline-block',
-              background: '#fff',
-              borderRadius: 24,
-              padding: '16px 28px',
-              marginBottom: 32,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+              height: 'clamp(110px, 22vw, 170px)',
+              display: 'block',
+              margin: '0 auto 32px',
+              filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.35))',
             }}
-          >
-            <img
-              src="/Logo_CHA.png?v=2"
-              alt="CityHero Academy"
-              style={{ height: 'clamp(110px, 22vw, 170px)', display: 'block' }}
-            />
-          </motion.div>
+          />
 
           {/* badge */}
           <div style={{

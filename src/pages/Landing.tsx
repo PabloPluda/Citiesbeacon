@@ -142,19 +142,25 @@ export default function Landing() {
         <div style={{ position:'relative', zIndex:1, maxWidth:620, margin:'0 auto' }}>
 
           {/* logo */}
-          <motion.img
-            src="/Logo_CHA.png"
-            alt="CityHero Academy"
+          <motion.div
             initial={{ opacity: 0, scale: 0.85 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.6, ease: 'easeOut' }}
             style={{
-              height: 'clamp(90px, 18vw, 150px)',
-              display: 'block',
-              margin: '0 auto 32px',
-              filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.3))',
+              display: 'inline-block',
+              background: '#fff',
+              borderRadius: 24,
+              padding: '16px 28px',
+              marginBottom: 32,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
             }}
-          />
+          >
+            <img
+              src="/Logo_CHA.png"
+              alt="CityHero Academy"
+              style={{ height: 'clamp(80px, 16vw, 130px)', display: 'block' }}
+            />
+          </motion.div>
 
           {/* badge */}
           <div style={{

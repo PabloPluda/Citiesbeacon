@@ -156,9 +156,9 @@ export default function Landing() {
             }}
           >
             <img
-              src="/Logo_CHA.png"
+              src="/Logo_CHA.png?v=2"
               alt="CityHero Academy"
-              style={{ height: 'clamp(80px, 16vw, 130px)', display: 'block' }}
+              style={{ height: 'clamp(110px, 22vw, 170px)', display: 'block' }}
             />
           </motion.div>
 
@@ -698,7 +698,7 @@ export default function Landing() {
       {/* ── Footer ───────────────────────────────────────────────────────── */}
       <footer style={{ background:'#0F172A', padding:'48px 24px 36px', textAlign:'center' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginBottom:16 }}>
-          <img src="/Logo_CHA.png" alt="CityHero Academy" style={{ height: 34, display: 'block', filter: 'brightness(0) invert(1)', opacity: 0.9 }} />
+          <img src="/Logo_CHA.png?v=2" alt="CityHero Academy" style={{ height: 34, display: 'block', filter: 'brightness(0) invert(1)', opacity: 0.9 }} />
         </div>
         <p style={{ fontSize:'0.85rem', color:'rgba(255,255,255,0.5)', maxWidth:420, margin:'0 auto 28px', lineHeight:1.7 }}>
           A free educational platform helping children ages 5–10 become caring, responsible city citizens.

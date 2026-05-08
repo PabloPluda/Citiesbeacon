@@ -6,7 +6,7 @@ const MISSION_ID = 3;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const WIN_W      = 52;
-const WIN_H      = 44;
+const WIN_H      = 59;   // matches 517×584 portrait ratio
 const WIN_GAP_X  = 14;
 const WIN_GAP_Y  = 16;
 const WALL_PAD   = 22;
@@ -30,6 +30,10 @@ const BAR_H      = 18;
 
 const WALL_COLORS = [0x2D3561, 0x1A2744, 0x2D3748, 0x3B3054, 0x1E3A2F, 0x3D2B1F, 0x2A2A4A];
 const ROOF_COLORS = [0x3B4A6B, 0x2D3A5C, 0x3A3054, 0x4A3020, 0x1E3B28];
+
+const OFF_KEYS   = ['OFF_1', 'OFF_2'];
+const ON_KEYS    = ['ON_1', 'ON_2', 'ON_3', 'ON_4', 'ON_5', 'ON_6'];
+const EMPTY_KEYS = ['empty_1', 'empty_2'];
 
 // ─── Level helpers ────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
@@ -61,11 +65,10 @@ function bldgDims(floors: number, winCols: number) {
 type WinState = 'OFF' | 'EMPTY' | 'OCCUPIED';
 
 interface WinInfo {
-  state:     WinState;
-  lx:        number;
-  ly:        number;
-  lightGfx:  Phaser.GameObjects.Graphics;
-  personTxt: Phaser.GameObjects.Text;
+  state: WinState;
+  lx:    number;
+  ly:    number;
+  img:   Phaser.GameObjects.Image;
 }
 
 interface Building {
@@ -92,6 +95,17 @@ export class LightsOutScene extends Phaser.Scene {
   groundY    = 0;
 
   constructor() { super('LightsOutScene'); }
+
+  preload() {
+    [...OFF_KEYS, ...ON_KEYS, ...EMPTY_KEYS]
+      .forEach(k => this.load.image(k, `/windows/${k}.png`));
+  }
+
+  setWindowTexture(img: Phaser.GameObjects.Image, state: WinState) {
+    if (state === 'OFF')      img.setTexture(Phaser.Utils.Array.GetRandom(OFF_KEYS));
+    else if (state === 'OCCUPIED') img.setTexture(Phaser.Utils.Array.GetRandom(ON_KEYS));
+    else                      img.setTexture(Phaser.Utils.Array.GetRandom(EMPTY_KEYS));
+  }
 
   init(data?: { level?: number }) {
     if (data?.level !== undefined) {
@@ -350,16 +364,12 @@ export class LightsOutScene extends Phaser.Scene {
           }
         }
 
-        const lightGfx = this.add.graphics();
-        this.drawWindow(lightGfx, lx, ly, state);
-        container.add(lightGfx);
+        const img = this.add.image(lx + WIN_W / 2, ly + WIN_H / 2, OFF_KEYS[0])
+          .setDisplaySize(WIN_W, WIN_H).setOrigin(0.5);
+        this.setWindowTexture(img, state);
+        container.add(img);
 
-        const personTxt = this.add.text(lx + WIN_W / 2, ly + WIN_H * 0.58, '👤', {
-          fontSize: '22px',
-        }).setOrigin(0.5, 0.5).setVisible(state === 'OCCUPIED');
-        container.add(personTxt);
-
-        windows.push({ state, lx, ly, lightGfx, personTxt });
+        windows.push({ state, lx, ly, img });
       }
     }
 
@@ -367,31 +377,10 @@ export class LightsOutScene extends Phaser.Scene {
     this.worldRight = startX + width;
   }
 
-  drawWindow(g: Phaser.GameObjects.Graphics, lx: number, ly: number, state: WinState) {
-    g.clear();
-    if (state !== 'OFF') {
-      g.fillStyle(0xFEF08A, 0.18);
-      g.fillRoundedRect(lx - 6, ly - 6, WIN_W + 12, WIN_H + 12, 4);
-      g.fillStyle(0xFEF08A);
-      g.fillRoundedRect(lx, ly, WIN_W, WIN_H, 3);
-      g.fillStyle(0xFFFDE7, 0.6);
-      g.fillRoundedRect(lx + 4, ly + 4, WIN_W - 8, WIN_H / 2, 2);
-    } else {
-      g.fillStyle(0x0D1117);
-      g.fillRoundedRect(lx, ly, WIN_W, WIN_H, 3);
-    }
-    g.lineStyle(2, 0x556080, 0.9);
-    g.strokeRoundedRect(lx, ly, WIN_W, WIN_H, 3);
-    g.lineStyle(1, 0x556080, 0.5);
-    g.lineBetween(lx + WIN_W / 2, ly + 2, lx + WIN_W / 2, ly + WIN_H - 2);
-    g.lineBetween(lx + 2, ly + WIN_H / 2, lx + WIN_W - 2, ly + WIN_H / 2);
-  }
-
   turnOffWindow(bldg: Building, idx: number) {
     const w = bldg.windows[idx];
     w.state = 'OFF';
-    this.drawWindow(w.lightGfx, w.lx, w.ly, 'OFF');
-    w.personTxt.setVisible(false);
+    this.setWindowTexture(w.img, 'OFF');
   }
 
   handleTap(bldg: Building, idx: number) {
@@ -448,22 +437,21 @@ export class LightsOutScene extends Phaser.Scene {
       fontFamily: 'Fredoka One', fontSize: '24px', color: '#FFFFFF',
     }).setOrigin(0.5).setDepth(81));
 
-    const y0 = cy - 100;
-    const g1 = this.add.graphics().setDepth(81);
-    g1.fillStyle(0xFEF08A); g1.fillRoundedRect(cx - 125, y0, WIN_W + 16, WIN_H + 16, 4);
-    g1.lineStyle(2, 0x556080); g1.strokeRoundedRect(cx - 125, y0, WIN_W + 16, WIN_H + 16, 4);
-    objs.push(g1, this.add.text(cx - 117 + WIN_W / 2, y0 + WIN_H + 22, '✅ Tap! (+1)', {
-      fontFamily: 'Fredoka One', fontSize: '17px', color: '#4ADE80',
+    const y0 = cy - 110;
+    const imgW = WIN_W * 1.6, imgH = WIN_H * 1.6;
+
+    // Empty window — tap to turn off
+    const emptyImg = this.add.image(cx - 108, y0 + imgH / 2, Phaser.Utils.Array.GetRandom(EMPTY_KEYS))
+      .setDisplaySize(imgW, imgH).setOrigin(0.5).setDepth(81);
+    objs.push(emptyImg, this.add.text(cx - 108, y0 + imgH + 14, '✅ Tap! (+1)', {
+      fontFamily: 'Fredoka One', fontSize: '16px', color: '#4ADE80',
     }).setOrigin(0.5).setDepth(81));
 
-    const g2 = this.add.graphics().setDepth(81);
-    g2.fillStyle(0xFED7AA); g2.fillRoundedRect(cx + 52, y0, WIN_W + 16, WIN_H + 16, 4);
-    g2.lineStyle(2, 0x556080); g2.strokeRoundedRect(cx + 52, y0, WIN_W + 16, WIN_H + 16, 4);
-    objs.push(g2);
-    objs.push(this.add.text(cx + 60 + WIN_W / 2, y0 + (WIN_H + 16) * 0.56, '👤', {
-      fontSize: '22px' }).setOrigin(0.5).setDepth(82));
-    objs.push(this.add.text(cx + 60 + WIN_W / 2, y0 + WIN_H + 22, '❌ Leave! (-3)', {
-      fontFamily: 'Fredoka One', fontSize: '17px', color: '#F87171',
+    // Occupied window — don't tap
+    const onImg = this.add.image(cx + 52, y0 + imgH / 2, Phaser.Utils.Array.GetRandom(ON_KEYS))
+      .setDisplaySize(imgW, imgH).setOrigin(0.5).setDepth(81);
+    objs.push(onImg, this.add.text(cx + 52, y0 + imgH + 14, '❌ Leave! (-3)', {
+      fontFamily: 'Fredoka One', fontSize: '16px', color: '#F87171',
     }).setOrigin(0.5).setDepth(81));
 
     objs.push(this.add.text(cx, cy + 32, '🟢 Turn off lights → bar goes green\n🔴 Miss or tap people → bar goes red', {
@@ -512,8 +500,7 @@ export class LightsOutScene extends Phaser.Scene {
           if (Math.random() < cfg.litRate * dt) {
             const ns: WinState = Math.random() < 0.50 ? 'OCCUPIED' : 'EMPTY';
             w.state = ns;
-            this.drawWindow(w.lightGfx, w.lx, w.ly, ns);
-            w.personTxt.setVisible(ns === 'OCCUPIED');
+            this.setWindowTexture(w.img, ns);
           }
         }
 

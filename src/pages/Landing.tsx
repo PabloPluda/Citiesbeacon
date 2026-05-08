@@ -104,10 +104,7 @@ export default function Landing() {
         borderBottom: '1px solid #F1F5F9',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: '1.7rem' }}>🏙️</span>
-          <span style={{ fontFamily: FF, fontSize: '1.05rem', color: '#1E3A8A' }}>
-            CityHero Academy
-          </span>
+          <img src="/Logo_CHA.png" alt="CityHero Academy" style={{ height: 38, display: 'block' }} />
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <a
@@ -150,7 +147,7 @@ export default function Landing() {
             borderRadius:99, padding:'6px 18px', marginBottom:28,
           }}>
             <span style={{ color:'#FCD34D', fontFamily:FF, fontSize:'0.82rem' }}>
-              🌍 Free · Ages 5–8 · No Ads · No Account Needed
+              🌍 Free · Ages 5–10 · No Ads · No Account Needed
             </span>
           </div>
 
@@ -168,7 +165,7 @@ export default function Landing() {
             color: 'rgba(255,255,255,0.88)', lineHeight: 1.75,
             maxWidth: 500, margin: '0 auto 40px',
           }}>
-            CityHero Academy is a free educational game where children ages 5–8
+            CityHero Academy is a free educational game where children ages 5–10
             complete 6 real city missions — learning civic responsibility, sustainability,
             and empathy through interactive play.
           </p>
@@ -226,7 +223,7 @@ export default function Landing() {
           maxWidth:760, margin:'0 auto',
         }}>
           {[
-            { n:'5–8',  label:'Years old',    emoji:'🧒' },
+            { n:'5–10',  label:'Years old',    emoji:'🧒' },
             { n:'6',    label:'Missions',      emoji:'🏙️' },
             { n:'120+', label:'Game levels',   emoji:'⭐' },
             { n:'100%', label:'Free, no ads',  emoji:'🎁' },
@@ -539,7 +536,104 @@ export default function Landing() {
         </div>
       </section>
 
-      <Wave fromColor="#F8FAFF" toColor="#1E3A8A" />
+      <Wave fromColor="#F8FAFF" toColor="#FFFBEB" />
+
+      {/* ── Book ─────────────────────────────────────────────────────────── */}
+      <section style={{ background: '#FFFBEB', padding: '72px 24px' }}>
+        <div style={{ maxWidth: 840, margin: '0 auto' }}>
+          <SectionLabel text="From the Author" color="#B45309" bg="#FEF3C7" />
+          <h2 style={{ fontFamily: FF, fontSize: 'clamp(1.6rem,5vw,2.2rem)', color: '#78350F', textAlign: 'center', marginBottom: 48 }}>
+            Also by Pablo Pluda
+          </h2>
+
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            style={{
+              background: '#fff',
+              borderRadius: 28,
+              boxShadow: '0 8px 40px rgba(180,83,9,0.10)',
+              border: '2px solid #FDE68A',
+              display: 'flex', flexWrap: 'wrap',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Book cover */}
+            <div style={{
+              flexShrink: 0, width: 'clamp(180px, 30%, 240px)',
+              background: 'linear-gradient(135deg, #FDE68A, #FCA5A5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 24,
+              minHeight: 280,
+            }}>
+              <img
+                src="/book_cover.png"
+                alt="It's not that hard, buddy"
+                style={{
+                  width: '100%', maxWidth: 180,
+                  borderRadius: 10,
+                  boxShadow: '4px 8px 32px rgba(0,0,0,0.22)',
+                  display: 'block',
+                }}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            </div>
+
+            {/* Text */}
+            <div style={{ flex: 1, minWidth: 240, padding: 'clamp(28px,4vw,44px)' }}>
+              <div style={{
+                fontFamily: FF, fontSize: '0.75rem', letterSpacing: '0.1em',
+                textTransform: 'uppercase', color: '#B45309', marginBottom: 10,
+              }}>
+                Children's Book
+              </div>
+              <h3 style={{
+                fontFamily: FF, fontSize: 'clamp(1.3rem,4vw,1.7rem)',
+                color: '#78350F', lineHeight: 1.25, marginBottom: 16, marginTop: 0,
+              }}>
+                "It's Not That Hard, Buddy"
+              </h3>
+              <p style={{
+                fontSize: '0.93rem', color: '#57534E', lineHeight: 1.75,
+                margin: '0 0 16px',
+              }}>
+                A fun and heartfelt book for young readers that shows how everyday
+                challenges — the ones that feel SO big — are usually much more
+                manageable than they seem. Perfect for children ages 5–10 who are
+                learning to face new situations with courage and a smile.
+              </p>
+              <p style={{
+                fontSize: '0.93rem', color: '#57534E', lineHeight: 1.75,
+                margin: '0 0 28px',
+              }}>
+                A great companion to CityHero Academy's message: small actions,
+                big impact — and yes, you can do it!
+              </p>
+              <motion.a
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                href="https://amzn.to/499n3lB"
+                target="_blank" rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 10,
+                  fontFamily: FF, fontSize: '1rem', color: '#fff',
+                  background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                  border: 'none', borderRadius: 99,
+                  padding: '13px 32px', cursor: 'pointer',
+                  textDecoration: 'none',
+                  boxShadow: '0 6px 0 #92400E, 0 10px 24px rgba(217,119,6,0.35)',
+                }}
+              >
+                📖 Get it on Amazon
+              </motion.a>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      <Wave fromColor="#FFFBEB" toColor="#1E3A8A" />
 
       {/* ── App Download ─────────────────────────────────────────────────── */}
       <section style={{
@@ -582,11 +676,10 @@ export default function Landing() {
       {/* ── Footer ───────────────────────────────────────────────────────── */}
       <footer style={{ background:'#0F172A', padding:'48px 24px 36px', textAlign:'center' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginBottom:16 }}>
-          <span style={{ fontSize:'1.6rem' }}>🏙️</span>
-          <span style={{ fontFamily:FF, color:'#fff', fontSize:'1.05rem' }}>CityHero Academy</span>
+          <img src="/Logo_CHA.png" alt="CityHero Academy" style={{ height: 34, display: 'block', filter: 'brightness(0) invert(1)', opacity: 0.9 }} />
         </div>
         <p style={{ fontSize:'0.85rem', color:'rgba(255,255,255,0.5)', maxWidth:420, margin:'0 auto 28px', lineHeight:1.7 }}>
-          A free educational platform helping children ages 5–8 become caring, responsible city citizens.
+          A free educational platform helping children ages 5–10 become caring, responsible city citizens.
         </p>
         <div style={{ display:'flex', justifyContent:'center', gap:28, flexWrap:'wrap', marginBottom:28 }}>
           {[

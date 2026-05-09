@@ -43,7 +43,7 @@ export default function MissionMap() {
           <ChevronLeft size={32} color="var(--primary)" />
         </button>
         <div style={{ textAlign: 'center' }}>
-          <h2 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-primary)', fontFamily: 'Fredoka One' }}>City Map</h2>
+          <img src="/Logo_CHA_header.png?v=2" alt="CityHero Academy" style={{ height: 44, display: 'block', margin: '0 auto 2px' }} />
           <span className="text-dialog" style={{ fontSize: '0.9rem', color: 'var(--accent-2)' }}>
             {currentCP}/{nextCP} CP • {rank}
           </span>

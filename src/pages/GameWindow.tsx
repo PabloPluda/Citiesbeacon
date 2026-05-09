@@ -59,7 +59,7 @@ const MISSION_MSG: Record<number, string> = {
   3: 'The city is saving energy because of you! 💡',
   4: 'Every drop counts — the city thanks you! 💧',
   5: 'Firulai is home safe! 🐕🏠',
-  6: 'You made it through! Great biking! 🚲',
+  6: 'Using the bike is the best choice for short trips! You got exercise AND the air is cleaner thanks to you — keep it up! 🌿',
 };
 
 function WellDoneOverlay({
@@ -256,6 +256,7 @@ export default function GameWindow() {
     const onLevelComplete = (payload: number | { level: number; coinsEarned?: number }) => {
       const completedLevel = typeof payload === 'number' ? payload : payload.level;
       const coins = typeof payload === 'object' ? (payload.coinsEarned ?? 0) : 0;
+      levelRef.current = completedLevel;
       completeLevel(mId, completedLevel);
       if (coins > 0) addCityCoins(coins);
       setLevelCoins(coins);

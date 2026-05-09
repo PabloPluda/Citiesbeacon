@@ -147,6 +147,7 @@ export class BikingScene extends Phaser.Scene {
   private isAnimating = false;
   private connectionValid = false;
   private connectedUpTo = 0;
+  private coinsEarned = 0;
 
   private dragItem: PaletteItem | null = null;
   private dragVisual?: Phaser.GameObjects.Container;
@@ -178,6 +179,7 @@ export class BikingScene extends Phaser.Scene {
     this.timerEvent        = undefined;
     this.rows              = 0;
     this.cols              = 0;
+    this.coinsEarned       = 0;
   }
 
   create() {
@@ -725,6 +727,7 @@ export class BikingScene extends Phaser.Scene {
     this.timerEvent?.destroy();
     this.startBtn?.setVisible(false);
     const cells    = this.getConnectedCells();
+    this.coinsEarned = cells.length * 5;
     const wps      = cells.map(([r, c]) => ({ x: this.originX + c * this.cellSize + this.cellSize / 2, y: this.originY + r * this.cellSize + this.cellSize / 2 }));
     const bikeSize = Math.max(20, Math.floor(this.cellSize * 0.52));
     this.bikeEmoji = this.add.text(wps[0].x, wps[0].y, '🚲', { fontSize: `${bikeSize}px`, resolution: DPR }).setOrigin(0.5).setDepth(20);
@@ -733,7 +736,7 @@ export class BikingScene extends Phaser.Scene {
   }
 
   private animateStep(wps: { x: number; y: number }[], idx: number, dur: number) {
-    if (idx >= wps.length) { this.time.delayedCall(300, () => EventBus.emit('game-level-complete', this.level)); return; }
+    if (idx >= wps.length) { this.time.delayedCall(300, () => EventBus.emit('game-level-complete', { level: this.level, coinsEarned: this.coinsEarned })); return; }
     this.tweens.add({ targets: this.bikeEmoji, x: wps[idx].x, y: wps[idx].y, duration: dur, ease: 'Linear', onComplete: () => this.animateStep(wps, idx + 1, dur) });
   }
 

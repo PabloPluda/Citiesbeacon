@@ -165,6 +165,8 @@ export class BikingScene extends Phaser.Scene {
       ['bike_left-down',  '/bike/left down.png'],
       ['bike_up-left',    '/bike/up-left.png'],
       ['bike_cross',      '/bike/cross.png'],
+      ['bike_vacio',      '/bike/vacio.png'],
+      ['bike_block',      '/bike/block.png'],
     ];
     for (const [key, url] of tiles) {
       if (!this.textures.exists(key)) this.load.image(key, url);
@@ -300,61 +302,35 @@ export class BikingScene extends Phaser.Scene {
     const cont = this.add.container(cx, cy);
 
     if (cell.isObstacle) {
-      const bg = this.add.graphics();
-      bg.fillStyle(0x1e1b2e, 1);
-      bg.fillRoundedRect(-cs / 2 + 2, -cs / 2 + 2, cs - 4, cs - 4, 8);
-      bg.lineStyle(2.5, 0xB45309, 0.9);
-      bg.strokeRoundedRect(-cs / 2 + 2, -cs / 2 + 2, cs - 4, cs - 4, 8);
-      cont.add(bg);
-      const wgfx = this.add.graphics();
-      const wSz = Math.max(3, Math.floor(cs * 0.11));
-      const wGap = Math.floor(cs * 0.08);
-      wgfx.fillStyle(0xFBBF24, 0.75);
-      for (let wr = 0; wr < 2; wr++)
-        for (let wc = 0; wc < 3; wc++)
-          wgfx.fillRect((wc - 1) * (wSz + wGap) - wSz / 2, (wr - 0.5) * (wSz + wGap) - wSz / 2, wSz, wSz);
-      const dgfx = this.add.graphics();
-      dgfx.fillStyle(0x92400E, 1);
-      const dw = Math.floor(cs * 0.14), dh = Math.floor(cs * 0.18);
-      dgfx.fillRect(-dw / 2, cs / 2 - 2 - dh, dw, dh);
-      cont.add([wgfx, dgfx]);
-      this.cellContainers[row][col] = cont;
-      return;
-    }
-
-    const bg = this.add.graphics();
-    if (cell.endpointIdx >= 0) {
+      cont.add(this.add.image(0, 0, 'bike_block').setDisplaySize(cs, cs));
+    } else if (cell.endpointIdx >= 0) {
       const ep = this.cfg.endpoints[cell.endpointIdx];
-      bg.fillStyle(ep.color, 0.2);
-      bg.fillRoundedRect(-cs / 2 + 2, -cs / 2 + 2, cs - 4, cs - 4, 8);
-      bg.lineStyle(3, ep.color, 0.9);
-      bg.strokeRoundedRect(-cs / 2 + 2, -cs / 2 + 2, cs - 4, cs - 4, 8);
-    } else {
-      bg.fillStyle(0x243456, 1);
-      bg.fillRoundedRect(-cs / 2 + 2, -cs / 2 + 2, cs - 4, cs - 4, 8);
-      bg.lineStyle(1, 0x334870, 1);
-      bg.strokeRoundedRect(-cs / 2 + 2, -cs / 2 + 2, cs - 4, cs - 4, 8);
-    }
-    cont.add(bg);
-
-    if (cell.endpointIdx >= 0) {
-      const ep    = this.cfg.endpoints[cell.endpointIdx];
+      const bg = this.add.graphics();
+      bg.fillStyle(ep.color, 0.35);
+      bg.fillRect(-cs / 2, -cs / 2, cs, cs);
+      bg.lineStyle(3, ep.color, 1);
+      bg.strokeRect(-cs / 2, -cs / 2, cs, cs);
+      cont.add(bg);
       const iSize = Math.max(14, Math.floor(cs * 0.34));
-      const icon  = this.add.text(0, -Math.floor(cs * 0.06), ep.icon, { fontSize: `${iSize}px`, resolution: DPR }).setOrigin(0.5);
-      const lbl   = this.add.text(0, cs / 2 - 13, ep.label, { fontFamily: 'Fredoka One', fontSize: '10px', color: '#ffffff', resolution: DPR }).setOrigin(0.5);
-      cont.add([icon, lbl]);
-      // Endpoints act as crosses — draw arms in all 4 directions
+      cont.add(this.add.text(0, -Math.floor(cs * 0.06), ep.icon, { fontSize: `${iSize}px`, resolution: DPR }).setOrigin(0.5));
+      cont.add(this.add.text(0, cs / 2 - 13, ep.label, { fontFamily: 'Fredoka One', fontSize: '10px', color: '#ffffff', resolution: DPR }).setOrigin(0.5));
       for (let d = 0; d < 4; d++) this.drawEndpointArm(cont, d, ep.color, cs, 0.85);
+    } else {
+      cont.add(this.add.image(0, 0, 'bike_vacio').setDisplaySize(cs, cs));
+      if (cell.kind !== 'empty') this.drawPiecePaths(cont, cell.kind, cell.rot, cs, false);
+      if (!cell.fixed) {
+        const hit = this.add.rectangle(0, 0, cs, cs, 0, 0).setInteractive();
+        hit.on('pointerdown', (ptr: Phaser.Input.Pointer) => { if (!this.dragItem) this.onCellTap(row, col, ptr); });
+        cont.add(hit);
+      }
     }
 
-    if (cell.kind !== 'empty' && cell.endpointIdx < 0)
-      this.drawPiecePaths(cont, cell.kind, cell.rot, cs, false);
+    // thin black border on every cell
+    const border = this.add.graphics();
+    border.lineStyle(1, 0x000000, 0.4);
+    border.strokeRect(-cs / 2, -cs / 2, cs, cs);
+    cont.add(border);
 
-    if (!cell.fixed) {
-      const hit = this.add.rectangle(0, 0, cs - 4, cs - 4, 0, 0).setInteractive();
-      hit.on('pointerdown', (ptr: Phaser.Input.Pointer) => { if (!this.dragItem) this.onCellTap(row, col, ptr); });
-      cont.add(hit);
-    }
     this.cellContainers[row][col] = cont;
   }
 

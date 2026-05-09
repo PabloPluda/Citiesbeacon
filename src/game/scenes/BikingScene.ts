@@ -156,6 +156,21 @@ export class BikingScene extends Phaser.Scene {
 
   constructor() { super('BikingScene'); }
 
+  preload() {
+    const tiles: [string, string][] = [
+      ['bike_vertical',   '/bike/vertical.png'],
+      ['bike_horizontal', '/bike/horizontal.png'],
+      ['bike_up-right',   '/bike/up-right.png'],
+      ['bike_down-right', '/bike/down-right.png'],
+      ['bike_left-down',  '/bike/left down.png'],
+      ['bike_up-left',    '/bike/up-left.png'],
+      ['bike_cross',      '/bike/cross.png'],
+    ];
+    for (const [key, url] of tiles) {
+      if (!this.textures.exists(key)) this.load.image(key, url);
+    }
+  }
+
   init(data?: { level?: number }) {
     const sv = (data?.level ?? (this.registry.get('startLevel') as number | undefined)) ?? 1;
     this.level             = Math.max(1, Math.min(20, sv));
@@ -354,23 +369,18 @@ export class BikingScene extends Phaser.Scene {
     cont.add(gfx);
   }
 
-  private drawPiecePaths(cont: Phaser.GameObjects.Container, kind: PieceKind, rot: number, cs: number, glowing: boolean) {
-    const gfx = this.add.graphics();
-    const tw = cs * 0.26, sw = tw * 0.28, arm = cs / 2 - 3;
-    const ports = getPorts(kind, rot);
-    gfx.fillStyle(0x374151, 1);
-    gfx.fillRect(-tw / 2, -tw / 2, tw, tw);
-    if (ports[0]) gfx.fillRect(-tw / 2, -arm, tw, arm);
-    if (ports[1]) gfx.fillRect(0, -tw / 2, arm, tw);
-    if (ports[2]) gfx.fillRect(-tw / 2, 0, tw, arm);
-    if (ports[3]) gfx.fillRect(-arm, -tw / 2, arm, tw);
-    gfx.fillStyle(glowing ? 0x86EFAC : 0x22C55E, 1);
-    gfx.fillRect(-sw / 2, -sw / 2, sw, sw);
-    if (ports[0]) gfx.fillRect(-sw / 2, -arm, sw, arm);
-    if (ports[1]) gfx.fillRect(0, -sw / 2, arm, sw);
-    if (ports[2]) gfx.fillRect(-sw / 2, 0, sw, arm);
-    if (ports[3]) gfx.fillRect(-arm, -sw / 2, arm, sw);
-    cont.add(gfx);
+  private pieceTextureKey(kind: PieceKind, rot: number): string | null {
+    if (kind === 'straight') return rot === 0 ? 'bike_vertical' : 'bike_horizontal';
+    if (kind === 'cross')    return 'bike_cross';
+    if (kind === 'curve')    return ['bike_up-right', 'bike_down-right', 'bike_left-down', 'bike_up-left'][rot & 3];
+    return null;
+  }
+
+  private drawPiecePaths(cont: Phaser.GameObjects.Container, kind: PieceKind, rot: number, cs: number, _glowing: boolean) {
+    const key = this.pieceTextureKey(kind, rot);
+    if (!key) return;
+    const img = this.add.image(0, 0, key).setDisplaySize(cs, cs);
+    cont.add(img);
   }
 
   private onCellTap(row: number, col: number, _ptr: Phaser.Input.Pointer) {

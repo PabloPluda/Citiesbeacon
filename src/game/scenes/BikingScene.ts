@@ -44,61 +44,35 @@ const DR  = [-1, 0, 1, 0];
 const DC  = [0, 1, 0, -1];
 const OPP = [2, 3, 0, 1] as const;
 
-// Returns the dominant cardinal direction from (fr,fc) toward (tr,tc)
-function dominantDir(fr: number, fc: number, tr: number, tc: number): number {
-  const dr = tr - fr, dc = tc - fc;
-  return Math.abs(dr) >= Math.abs(dc) ? (dr >= 0 ? 2 : 0) : (dc >= 0 ? 1 : 3);
-}
-
-// Returns exactly 2 distinct ports for an intermediate waypoint, based on
-// the direction toward its previous and next endpoint.
-function twoPortsForWaypoint(
-  r: number, c: number,
-  pr: number, pc: number,
-  nr: number, nc: number,
-): [number, number] {
-  const p1 = dominantDir(r, c, pr, pc);
-  let   p2 = dominantDir(r, c, nr, nc);
-  if (p1 !== p2) return [p1, p2];
-  // Collinear: pick a perpendicular direction toward the avg of neighbors
-  const avgR = (pr + nr) / 2, avgC = (pc + nc) / 2;
-  const perps = ([0, 1, 2, 3] as number[]).filter(d => d !== p1 && d !== OPP[p1 as 0|1|2|3]);
-  const scores = perps.map(d => DR[d] * (avgR - r) + DC[d] * (avgC - c));
-  p2 = perps[scores.indexOf(Math.max(...scores))] ?? ((p1 + 1) % 4);
-  return [p1, p2];
-}
-
 // ── Level config ───────────────────────────────────────────────────────────────
 interface Endpoint {
   row: number; col: number;
   label: string; icon: string; color: number;
-  openPort: number;
-  openPort2?: number; // second port for intermediate waypoints
 }
 
 interface LevelCfg {
-  gridSize: number;
+  gridRows: number;
+  gridCols: number;
   timerSec: number;
   endpoints: Endpoint[];
 }
 
-// Generates 4 well-spread perimeter endpoints whose positions vary with level.
-function generateEndpoints4(gs: number, level: number): Endpoint[] {
-  const range = gs - 2; // interior positions: 1 .. gs-2
+// Endpoints on each edge, varied by level. No openPort needed — all endpoints are crosses.
+function generateEndpoints4(rows: number, cols: number, level: number): Endpoint[] {
+  const rangeC = cols - 2;
+  const rangeR = rows - 2;
 
-  // One endpoint on each edge at a level-derived offset
-  const topC    = 1 + (level * 3)     % range;
-  const rightR  = 1 + (level * 5 + 1) % range;
-  const botC    = 1 + (level * 2 + 2) % range;
-  const leftR   = 1 + (level * 7 + 3) % range;
+  const topC   = 1 + (level * 3)     % rangeC;
+  const rightR = 1 + (level * 5 + 1) % rangeR;
+  const botC   = 1 + (level * 2 + 2) % rangeC;
+  const leftR  = 1 + (level * 7 + 3) % rangeR;
 
-  // Rotate which edge gets which label so the route feels different each set of levels
   const rot = Math.floor(level / 4) % 4;
   const edgeDefs = [
-    { row: 0,      col: topC,    openPort: 2 }, // top   → exits down
-    { row: rightR, col: gs - 1,  openPort: 3 }, // right → exits left
-    { row: gs - 1, col: botC,    openPort: 0 }, // bot   → exits up
-    { row: leftR,  col: 0,       openPort: 1 }, // left  → exits right
+    { row: 0,        col: topC     },
+    { row: rightR,   col: cols - 1 },
+    { row: rows - 1, col: botC     },
+    { row: leftR,    col: 0        },
   ];
 
   const meta = [
@@ -108,46 +82,34 @@ function generateEndpoints4(gs: number, level: number): Endpoint[] {
     { label: 'Library', icon: '📚', color: 0x8B5CF6 },
   ];
 
-  // Build raw endpoints (openPort2 filled in next)
-  const eps: Endpoint[] = [0, 1, 2, 3].map(i => ({
+  return [0, 1, 2, 3].map(i => ({
     ...edgeDefs[(i + rot) % 4],
     ...meta[i],
   }));
-
-  // Compute openPort2 for intermediates (indices 1 and 2)
-  for (let i = 1; i <= 2; i++) {
-    const [p1, p2] = twoPortsForWaypoint(
-      eps[i].row, eps[i].col,
-      eps[i - 1].row, eps[i - 1].col,
-      eps[i + 1].row, eps[i + 1].col,
-    );
-    eps[i].openPort  = p1;
-    eps[i].openPort2 = p2;
-  }
-
-  return eps;
 }
 
 function getLevelCfg(level: number): LevelCfg {
   if (level <= 4) {
     return {
-      gridSize: 4, timerSec: 120,
+      gridRows: 5, gridCols: 4, timerSec: 120,
       endpoints: [
-        { row: 3, col: 0, label: 'Home',   icon: '🏠', color: 0xFF6B6B, openPort: 1 },
-        { row: 0, col: 3, label: 'School', icon: '🏫', color: 0x4DA6FF, openPort: 3 },
+        { row: 4, col: 0, label: 'Home',   icon: '🏠', color: 0xFF6B6B },
+        { row: 0, col: 3, label: 'School', icon: '🏫', color: 0x4DA6FF },
       ],
     };
   }
   if (level <= 10) {
-    // Intermediate Park gets 2 ports based on its neighbors
-    const home:   Endpoint = { row: 4, col: 0, label: 'Home',   icon: '🏠', color: 0xFF6B6B, openPort: 1 };
-    const school: Endpoint = { row: 2, col: 4, label: 'School', icon: '🏫', color: 0x4DA6FF, openPort: 3 };
-    const [p1, p2] = twoPortsForWaypoint(0, 2, home.row, home.col, school.row, school.col);
-    const park:   Endpoint = { row: 0, col: 2, label: 'Park', icon: '🌳', color: 0x22C55E, openPort: p1, openPort2: p2 };
-    return { gridSize: 5, timerSec: 150, endpoints: [home, park, school] };
+    return {
+      gridRows: 6, gridCols: 5, timerSec: 150,
+      endpoints: [
+        { row: 5, col: 0, label: 'Home',   icon: '🏠', color: 0xFF6B6B },
+        { row: 0, col: 2, label: 'Park',   icon: '🌳', color: 0x22C55E },
+        { row: 2, col: 4, label: 'School', icon: '🏫', color: 0x4DA6FF },
+      ],
+    };
   }
-  const gs = level <= 15 ? 6 : 7;
-  return { gridSize: gs, timerSec: 180, endpoints: generateEndpoints4(gs, level) };
+  const [gridRows, gridCols] = level <= 15 ? [7, 6] : [8, 7];
+  return { gridRows, gridCols, timerSec: 180, endpoints: generateEndpoints4(gridRows, gridCols, level) };
 }
 
 // ── Cell ───────────────────────────────────────────────────────────────────────
@@ -164,6 +126,8 @@ export class BikingScene extends Phaser.Scene {
   private timerEvent?: Phaser.Time.TimerEvent;
   private grid: Cell[][] = [];
   private cfg!: LevelCfg;
+  private rows = 0;
+  private cols = 0;
   private cellSize = 80;
   private originX = 0;
   private originY = 0;
@@ -212,6 +176,8 @@ export class BikingScene extends Phaser.Scene {
     this.pieceQueue        = [];
     this.guideText         = undefined;
     this.timerEvent        = undefined;
+    this.rows              = 0;
+    this.cols              = 0;
   }
 
   create() {
@@ -219,6 +185,8 @@ export class BikingScene extends Phaser.Scene {
     this.H = this.scale.height;
     this.cfg      = getLevelCfg(this.level);
     this.timeLeft = this.cfg.timerSec;
+    this.rows     = this.cfg.gridRows;
+    this.cols     = this.cfg.gridCols;
 
     const HUD_H    = 72;
     const CAT_H    = 100;
@@ -229,19 +197,19 @@ export class BikingScene extends Phaser.Scene {
 
     const availH = this.H - HUD_H - CAT_H - GUIDE_H - BTN_H - BTN_GAP - GRID_PAD * 2;
     const availW = this.W - GRID_PAD * 2;
-    this.cellSize = Math.floor(Math.min(availW, availH) / this.cfg.gridSize);
+    this.cellSize = Math.floor(Math.min(availW / this.cols, availH / this.rows));
 
-    const totalPx = this.cellSize * this.cfg.gridSize;
-    this.originX  = Math.floor((this.W - totalPx) / 2);
-    this.originY  = HUD_H + CAT_H + GUIDE_H + GRID_PAD + Math.floor((availH - totalPx) / 2);
+    const totalPixW = this.cellSize * this.cols;
+    const totalPixH = this.cellSize * this.rows;
+    this.originX = Math.floor((this.W - totalPixW) / 2);
+    this.originY = HUD_H + CAT_H + GUIDE_H + GRID_PAD + Math.floor((availH - totalPixH) / 2);
 
     this.add.rectangle(this.W / 2, this.H / 2, this.W, this.H, 0x1a2744);
     this.highlightGfx = this.add.graphics();
     this.hoverGfx     = this.add.graphics();
 
-    // Grid data
-    this.grid = Array.from({ length: this.cfg.gridSize }, (_, r) =>
-      Array.from({ length: this.cfg.gridSize }, (_, c): Cell => ({
+    this.grid = Array.from({ length: this.rows }, (_, r) =>
+      Array.from({ length: this.cols }, (_, c): Cell => ({
         row: r, col: c, kind: 'empty', rot: 0,
         fixed: false, endpointIdx: -1, isObstacle: false,
       }))
@@ -251,29 +219,28 @@ export class BikingScene extends Phaser.Scene {
       this.grid[ep.row][ep.col].endpointIdx = i;
     });
 
-    const numObstacles = this.level >= 4 ? this.cfg.gridSize - 3 : 0;
+    const numObstacles = this.level >= 4 ? this.cols - 3 : 0;
     this.placeObstacles(numObstacles);
 
-    this.cellContainers = Array.from({ length: this.cfg.gridSize }, () =>
-      Array(this.cfg.gridSize).fill(null)
+    this.cellContainers = Array.from({ length: this.rows }, () =>
+      Array(this.cols).fill(null)
     );
-    for (let r = 0; r < this.cfg.gridSize; r++)
-      for (let c = 0; c < this.cfg.gridSize; c++)
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++)
         this.drawCell(r, c);
 
-    this.add.text(this.W / 2, this.originY + totalPx + 5, 'Tap a placed piece to rotate it', {
+    this.add.text(this.W / 2, this.originY + totalPixH + 5, 'Tap a placed piece to rotate it', {
       fontFamily: 'Fredoka One', fontSize: '12px', color: 'rgba(255,255,255,0.4)', resolution: DPR,
     }).setOrigin(0.5, 0);
 
     this.input.on('pointermove', this.onPointerMove, this);
     this.input.on('pointerup',   this.onPointerUp,   this);
 
-    this.catalogTopY  = HUD_H;
-    this.catalogH     = CAT_H;
-    this.pieceQueue   = Array.from({ length: QUEUE_SIZE }, randomPiece);
+    this.catalogTopY = HUD_H;
+    this.catalogH    = CAT_H;
+    this.pieceQueue  = Array.from({ length: QUEUE_SIZE }, randomPiece);
     this.buildCatalog(HUD_H, CAT_H);
 
-    // Guide text below catalog
     this.guideText = this.add.text(this.W / 2, HUD_H + CAT_H + 4, '', {
       fontFamily: 'Fredoka One', fontSize: '13px', color: '#FCD34D', resolution: DPR,
     }).setOrigin(0.5, 0);
@@ -354,19 +321,13 @@ export class BikingScene extends Phaser.Scene {
     cont.add(bg);
 
     if (cell.endpointIdx >= 0) {
-      const ep   = this.cfg.endpoints[cell.endpointIdx];
-      const last = this.cfg.endpoints.length - 1;
-      const isInter = cell.endpointIdx > 0 && cell.endpointIdx < last;
+      const ep    = this.cfg.endpoints[cell.endpointIdx];
       const iSize = Math.max(14, Math.floor(cs * 0.34));
       const icon  = this.add.text(0, -Math.floor(cs * 0.06), ep.icon, { fontSize: `${iSize}px`, resolution: DPR }).setOrigin(0.5);
       const lbl   = this.add.text(0, cs / 2 - 13, ep.label, { fontFamily: 'Fredoka One', fontSize: '10px', color: '#ffffff', resolution: DPR }).setOrigin(0.5);
       cont.add([icon, lbl]);
-      if (isInter) {
-        this.drawEndpointArm(cont, ep.openPort, ep.color, cs, 0.85);
-        if (ep.openPort2 !== undefined) this.drawEndpointArm(cont, ep.openPort2, ep.color, cs, 0.85);
-      } else {
-        this.drawEndpointArm(cont, ep.openPort, ep.color, cs, 0.85);
-      }
+      // Endpoints act as crosses — draw arms in all 4 directions
+      for (let d = 0; d < 4; d++) this.drawEndpointArm(cont, d, ep.color, cs, 0.85);
     }
 
     if (cell.kind !== 'empty' && cell.endpointIdx < 0)
@@ -459,7 +420,6 @@ export class BikingScene extends Phaser.Scene {
       cell.rot  = this.dragItem.rot;
       this.drawCell(cell.row, cell.col);
       this.checkAndHighlight();
-      // Advance queue: consumed piece leaves, new random piece enters at back
       this.pieceQueue.shift();
       this.pieceQueue.push(randomPiece());
       this.buildCatalog(this.catalogTopY, this.catalogH);
@@ -470,8 +430,7 @@ export class BikingScene extends Phaser.Scene {
   private getCellAt(px: number, py: number): Cell | null {
     const col = Math.floor((px - this.originX) / this.cellSize);
     const row = Math.floor((py - this.originY) / this.cellSize);
-    const gs  = this.cfg.gridSize;
-    if (row < 0 || row >= gs || col < 0 || col >= gs) return null;
+    if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return null;
     const cell = this.grid[row][col];
     return cell.isObstacle ? null : cell;
   }
@@ -479,51 +438,28 @@ export class BikingScene extends Phaser.Scene {
   // ── Connection engine ──────────────────────────────────────────────────────
   private portsFor2(cell: Cell): [boolean, boolean, boolean, boolean] {
     if (cell.isObstacle) return [false, false, false, false];
-    if (cell.endpointIdx >= 0) {
-      const idx  = cell.endpointIdx;
-      const last = this.cfg.endpoints.length - 1;
-      const ep   = this.cfg.endpoints[idx];
-      const p: [boolean, boolean, boolean, boolean] = [false, false, false, false];
-      p[ep.openPort] = true;
-      if (idx > 0 && idx < last && ep.openPort2 !== undefined) p[ep.openPort2] = true;
-      return p;
-    }
+    if (cell.endpointIdx >= 0) return [true, true, true, true];
     return getPorts(cell.kind, cell.rot);
   }
 
-  // Version used for obstacle solvability checks: treats empty cells as all-4-open
   private portsForSolvability(r: number, c: number): [boolean, boolean, boolean, boolean] {
     const cell = this.grid[r][c];
     if (cell.isObstacle) return [false, false, false, false];
-    if (cell.endpointIdx >= 0) {
-      const idx  = cell.endpointIdx;
-      const last = this.cfg.endpoints.length - 1;
-      const ep   = this.cfg.endpoints[idx];
-      const p: [boolean, boolean, boolean, boolean] = [false, false, false, false];
-      p[ep.openPort] = true;
-      if (idx > 0 && idx < last && ep.openPort2 !== undefined) p[ep.openPort2] = true;
-      return p;
-    }
     return [true, true, true, true];
   }
 
   private bfsVisited(startR: number, startC: number, useActualPieces: boolean): boolean[][] {
-    const gs      = this.cfg.gridSize;
-    const visited = Array.from({ length: gs }, () => Array<boolean>(gs).fill(false));
+    const visited = Array.from({ length: this.rows }, () => Array<boolean>(this.cols).fill(false));
     const queue: [number, number][] = [[startR, startC]];
     visited[startR][startC] = true;
     while (queue.length) {
       const [r, c] = queue.shift()!;
-      const ports  = useActualPieces
-        ? this.portsFor2(this.grid[r][c])
-        : this.portsForSolvability(r, c);
+      const ports  = useActualPieces ? this.portsFor2(this.grid[r][c]) : this.portsForSolvability(r, c);
       for (let d = 0; d < 4; d++) {
         if (!ports[d]) continue;
         const nr = r + DR[d], nc = c + DC[d];
-        if (nr < 0 || nr >= gs || nc < 0 || nc >= gs || visited[nr][nc]) continue;
-        const nPorts = useActualPieces
-          ? this.portsFor2(this.grid[nr][nc])
-          : this.portsForSolvability(nr, nc);
+        if (nr < 0 || nr >= this.rows || nc < 0 || nc >= this.cols || visited[nr][nc]) continue;
+        const nPorts = useActualPieces ? this.portsFor2(this.grid[nr][nc]) : this.portsForSolvability(nr, nc);
         if (!nPorts[OPP[d]]) continue;
         visited[nr][nc] = true;
         queue.push([nr, nc]);
@@ -550,12 +486,10 @@ export class BikingScene extends Phaser.Scene {
   }
 
   private getConnectedCells(): [number, number][] {
-    const eps   = this.cfg.endpoints;
-    const gs    = this.cfg.gridSize;
-    const v     = this.bfsVisited(eps[0].row, eps[0].col, true);
+    const eps      = this.cfg.endpoints;
+    const v        = this.bfsVisited(eps[0].row, eps[0].col, true);
     const order: [number, number][] = [];
-    // BFS order for animation — redo traversal to get order
-    const visited2 = Array.from({ length: gs }, () => Array<boolean>(gs).fill(false));
+    const visited2 = Array.from({ length: this.rows }, () => Array<boolean>(this.cols).fill(false));
     const queue: [number, number][] = [[eps[0].row, eps[0].col]];
     visited2[eps[0].row][eps[0].col] = true;
     while (queue.length) {
@@ -565,7 +499,7 @@ export class BikingScene extends Phaser.Scene {
       for (let d = 0; d < 4; d++) {
         if (!ports[d]) continue;
         const nr = r + DR[d], nc = c + DC[d];
-        if (nr < 0 || nr >= gs || nc < 0 || nc >= gs || visited2[nr][nc]) continue;
+        if (nr < 0 || nr >= this.rows || nc < 0 || nc >= this.cols || visited2[nr][nc]) continue;
         if (!this.portsFor2(this.grid[nr][nc])[OPP[d]]) continue;
         visited2[nr][nc] = true;
         queue.push([nr, nc]);
@@ -576,15 +510,11 @@ export class BikingScene extends Phaser.Scene {
 
   private isPuzzleSolvable(): boolean {
     const eps = this.cfg.endpoints;
-    const gs  = this.cfg.gridSize;
-    // Each endpoint must have at least one non-blocked exit through its port(s)
     for (const ep of eps) {
-      const ports = this.portsForSolvability(ep.row, ep.col);
       let hasExit = false;
       for (let d = 0; d < 4; d++) {
-        if (!ports[d]) continue;
         const nr = ep.row + DR[d], nc = ep.col + DC[d];
-        if (nr < 0 || nr >= gs || nc < 0 || nc >= gs) continue;
+        if (nr < 0 || nr >= this.rows || nc < 0 || nc >= this.cols) continue;
         if (this.portsForSolvability(nr, nc)[OPP[d]]) { hasExit = true; break; }
       }
       if (!hasExit) return false;
@@ -606,7 +536,6 @@ export class BikingScene extends Phaser.Scene {
         );
       }
     }
-    // Progress tracking
     const newUpTo = this.getConnectedUpTo();
     if (newUpTo > this.connectedUpTo) {
       for (let i = this.connectedUpTo + 1; i <= newUpTo; i++) this.showCelebration(i);
@@ -621,21 +550,18 @@ export class BikingScene extends Phaser.Scene {
   private updateGuide(upTo: number) {
     const eps  = this.cfg.endpoints;
     const last = eps.length - 1;
-    let text: string;
     if (upTo >= last) {
-      text = 'All connected! Press Start! 🚲';
-    } else if (upTo === 0) {
-      text = `Route ${eps[0].icon} ${eps[0].label} → ${eps[1].icon} ${eps[1].label}`;
+      this.guideText?.setText('All connected! Press Start! 🚲');
     } else {
-      text = `Now go to ${eps[upTo + 1].icon} ${eps[upTo + 1].label}`;
+      const routeStr = eps.map(ep => ep.label).join(' - ');
+      this.guideText?.setText(`Route: ${routeStr}`);
     }
-    this.guideText?.setText(text);
   }
 
   private showCelebration(epIdx: number) {
-    const ep  = this.cfg.endpoints[epIdx];
-    const cx  = this.originX + ep.col * this.cellSize + this.cellSize / 2;
-    const cy  = this.originY + ep.row * this.cellSize + this.cellSize / 2;
+    const ep   = this.cfg.endpoints[epIdx];
+    const cx   = this.originX + ep.col * this.cellSize + this.cellSize / 2;
+    const cy   = this.originY + ep.row * this.cellSize + this.cellSize / 2;
     const msgs = ['Well done! 🎉', 'Amazing! ⭐', 'Perfect! 🌟', 'Great! 💫'];
     const txt  = this.add.text(cx, cy - 16, msgs[(epIdx - 1) % msgs.length], {
       fontFamily: 'Fredoka One', fontSize: '15px', color: '#FBBF24',
@@ -649,10 +575,9 @@ export class BikingScene extends Phaser.Scene {
 
   // ── Obstacle system ────────────────────────────────────────────────────────
   private bfsPath(fromR: number, fromC: number, toR: number, toC: number): [number, number][] | null {
-    const gs = this.cfg.gridSize;
     type Pos = [number, number];
-    const visited = Array.from({ length: gs }, () => Array<boolean>(gs).fill(false));
-    const parent  = Array.from({ length: gs }, () => Array<Pos | null>(gs).fill(null));
+    const visited = Array.from({ length: this.rows }, () => Array<boolean>(this.cols).fill(false));
+    const parent  = Array.from({ length: this.rows }, () => Array<Pos | null>(this.cols).fill(null));
     const queue: Pos[] = [[fromR, fromC]];
     visited[fromR][fromC] = true;
     while (queue.length) {
@@ -667,7 +592,7 @@ export class BikingScene extends Phaser.Scene {
       for (let d = 0; d < 4; d++) {
         if (!ports[d]) continue;
         const nr = r + DR[d], nc = c + DC[d];
-        if (nr < 0 || nr >= gs || nc < 0 || nc >= gs || visited[nr][nc]) continue;
+        if (nr < 0 || nr >= this.rows || nc < 0 || nc >= this.cols || visited[nr][nc]) continue;
         if (!this.portsForSolvability(nr, nc)[OPP[d]]) continue;
         visited[nr][nc] = true;
         parent[nr][nc] = [r, c];
@@ -725,16 +650,16 @@ export class BikingScene extends Phaser.Scene {
       fontFamily: 'Fredoka One', fontSize: '11px', color: '#6EE7B7', resolution: DPR,
     }).setOrigin(0.5, 0);
 
-    const gap  = 6;
-    const iS   = Math.max(32, Math.floor(Math.min(44, (this.W - 24 - gap * (QUEUE_SIZE - 1)) / (QUEUE_SIZE + 0.3))));
-    const aS   = Math.min(Math.floor(iS * 1.35), height - 22);
+    const gap    = 6;
+    const iS     = Math.max(32, Math.floor(Math.min(44, (this.W - 24 - gap * (QUEUE_SIZE - 1)) / (QUEUE_SIZE + 0.3))));
+    const aS     = Math.min(Math.floor(iS * 1.35), height - 22);
     const totalW = aS + (QUEUE_SIZE - 1) * (iS + gap);
     let cx = (this.W - totalW) / 2;
     const itemCY = topY + 20 + (height - 20) / 2;
 
     this.pieceQueue.forEach((item, i) => {
       const isActive = i === 0;
-      const sz = isActive ? aS : iS;
+      const sz   = isActive ? aS : iS;
       const cont = this.add.container(cx + sz / 2, itemCY);
 
       const btnBg = this.add.graphics();
@@ -750,7 +675,6 @@ export class BikingScene extends Phaser.Scene {
         btnBg.strokeRoundedRect(-sz / 2, -sz / 2, sz, sz, 7);
       }
       cont.add(btnBg);
-
       this.drawPiecePaths(cont, item.kind, item.rot, sz, isActive);
 
       if (!isActive) {

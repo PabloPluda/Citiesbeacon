@@ -12,6 +12,9 @@ import { LightsOutScene } from '../game/scenes/LightsOutScene';
 import { WaterSaverScene } from '../game/scenes/WaterSaverScene';
 import { NotMyDogScene } from '../game/scenes/NotMyDogScene';
 import { BikingScene } from '../game/scenes/BikingScene';
+import { CityBuilderScene } from '../game/scenes/CityBuilderScene';
+import { CATS, colorToCss } from '../game/cityBuilderData';
+import type { BuildItem } from '../game/cityBuilderData';
 
 const SCENE_MAP: Record<number, any> = {
   1: ThrowToBinScene,
@@ -20,6 +23,7 @@ const SCENE_MAP: Record<number, any> = {
   4: WaterSaverScene,
   5: NotMyDogScene,
   6: BikingScene,
+  7: CityBuilderScene,
 };
 
 // ─── Circular countdown timer ─────────────────────────────────────────────────
@@ -60,6 +64,7 @@ const MISSION_MSG: Record<number, string> = {
   4: 'Every drop counts — the city thanks you! 💧',
   5: 'Firulai is home safe! 🐕🏠',
   6: 'Using the bike is the best choice for short trips! You got exercise AND the air is cleaner thanks to you — keep it up! 🌿',
+  7: 'Your city is growing! Keep earning CityCoins to build more. 🏙️',
 };
 
 function WellDoneOverlay({
@@ -231,6 +236,11 @@ export default function GameWindow() {
   const [crossingStartLevel, setCrossingStartLevel] = useState(1);
   const [praiseText, setPraiseText] = useState('Well done! 🎉');
 
+  // CityBuilder overlays
+  const [cbCat, setCbCat] = useState(-1);
+  const [cbItem, setCbItem] = useState<BuildItem | null>(null);
+  const [cbPreview, setCbPreview] = useState(false);
+
   // Dog game overlays
   const [showDogTutorial, setShowDogTutorial] = useState(false);
   const [showDogPreLevel, setShowDogPreLevel] = useState(false);
@@ -311,6 +321,9 @@ export default function GameWindow() {
     };
     EventBus.on('show-dog-message', onDogMessage);
 
+    const onCBPreview = (ready: boolean) => setCbPreview(ready);
+    EventBus.on('citybuilder-preview-ready', onCBPreview);
+
     return () => {
       EventBus.off('game-timer', onTimer);
       EventBus.off('game-scored-update', onScored);
@@ -325,6 +338,7 @@ export default function GameWindow() {
       EventBus.off('show-dog-tutorial', () => setShowDogTutorial(false));
       EventBus.off('show-dog-prelevel', onDogPreLevel);
       EventBus.off('show-dog-message', onDogMessage);
+      EventBus.off('citybuilder-preview-ready', onCBPreview);
       if (gameRef.current) {
         gameRef.current.destroy(true);
         gameRef.current = null;
@@ -370,7 +384,7 @@ export default function GameWindow() {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: '#000' }}>
       {/* Phaser canvas */}
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div ref={containerRef} style={{ width: '100%', height: '100%', touchAction: 'none' }} />
 
       {/* ─ Tutorial HTML overlay (crisp native text) ──────────────────── */}
       {showTutorial && (
@@ -735,13 +749,17 @@ export default function GameWindow() {
           <ChevronLeft size={24} color="var(--primary)" />
         </button>
 
-        {/* Timer — hidden for CrossingScene (2) and LightsOutScene (3) */}
+        {/* Timer — hidden for CrossingScene (2), LightsOutScene (3), CityBuilder (7) */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          {mId !== 2 && mId !== 3 && <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />}
+          {mId !== 2 && mId !== 3 && mId !== 7 && <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />}
+          {mId === 7 && (
+            <img src="/Logo_CHA_header.png?v=2" alt="CityHero Academy"
+              style={{ height: 34, display: 'block', filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.45))' }} />
+          )}
         </div>
 
-        {/* Scored — hidden for LightsOutScene (uses in-canvas meter bar instead) */}
-        {mId !== 3 && (
+        {/* Scored — hidden for LightsOutScene (3) and CityBuilder (7) */}
+        {mId !== 3 && mId !== 7 && (
           <div style={{
             background: 'rgba(255,255,255,0.92)', borderRadius: 20,
             padding: '6px 14px', textAlign: 'center',
@@ -753,7 +771,139 @@ export default function GameWindow() {
             <div style={{ fontFamily: 'Fredoka', fontSize: '0.65rem', color: '#999' }}>SCORED</div>
           </div>
         )}
+        {mId === 7 && (
+          <div style={{
+            background: 'rgba(255,215,0,0.15)', border: '2px solid rgba(255,215,0,0.5)',
+            borderRadius: 20, padding: '5px 12px', textAlign: 'center',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.25)', pointerEvents: 'none',
+          }}>
+            <div style={{ fontFamily: 'Fredoka One', fontSize: '1.2rem', color: '#FFD700', lineHeight: 1 }}>
+              🪙 {cityCoins}
+            </div>
+            <div style={{ fontFamily: 'Fredoka', fontSize: '0.6rem', color: 'rgba(255,215,0,0.7)' }}>COINS</div>
+          </div>
+        )}
       </div>
+
+      {/* ─ CityBuilder menu overlay ───────────────────────────────────────────── */}
+      {mId === 7 && (
+        <div style={{
+          position: 'absolute', top: 64, left: 0, right: 0,
+          zIndex: 62, pointerEvents: 'none',
+        }}>
+          {/* Category bar */}
+          <div style={{
+            display: 'flex', background: 'rgba(15,23,42,0.97)',
+            borderBottom: '1px solid rgba(71,85,105,0.8)',
+            pointerEvents: 'auto',
+          }}>
+            {CATS.map((cat, i) => {
+              const isActive = cbCat === i;
+              return (
+                <button key={cat.label} onClick={() => {
+                  const next = cbCat === i ? -1 : i;
+                  setCbCat(next);
+                  if (next < 0) { setCbItem(null); EventBus.emit('citybuilder-select', null); }
+                }} style={{
+                  flex: 1, border: 'none', cursor: 'pointer',
+                  background: isActive ? 'rgba(34,197,94,0.2)' : 'transparent',
+                  borderBottom: isActive ? '2px solid #22C55E' : '2px solid transparent',
+                  padding: '8px 4px 6px',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                }}>
+                  <span style={{ fontSize: '1.75rem', lineHeight: 1 }}>{cat.emoji}</span>
+                  <span style={{
+                    fontFamily: 'Fredoka One', fontSize: '0.65rem',
+                    color: isActive ? '#4ADE80' : '#94A3B8',
+                  }}>{cat.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Subcategory bar */}
+          {cbCat >= 0 && (
+            <div style={{
+              display: 'flex', background: 'rgba(8,12,26,0.97)',
+              borderBottom: '1px solid rgba(51,65,85,0.8)',
+              padding: '6px 4px',
+              gap: 6, justifyContent: 'center',
+              flexWrap: 'nowrap', overflowX: 'auto',
+              pointerEvents: 'auto',
+            }}>
+              {CATS[cbCat].items.map(item => {
+                const canAfford = cityCoins >= item.cost;
+                const isSel     = cbItem?.key === item.key;
+                return (
+                  <button key={item.key} onClick={() => {
+                    const next = isSel ? null : item;
+                    setCbItem(next);
+                    if (!next) setCbPreview(false);
+                    EventBus.emit('citybuilder-select', next);
+                  }} style={{
+                    flex: '0 0 auto',
+                    border: isSel ? '2px solid #4ADE80' : '2px solid transparent',
+                    borderRadius: 12,
+                    background: isSel ? 'rgba(34,197,94,0.2)' : 'rgba(30,41,59,0.9)',
+                    cursor: canAfford ? 'pointer' : 'not-allowed',
+                    padding: '6px 10px',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                    opacity: canAfford ? 1 : 0.45,
+                    minWidth: 68,
+                  }}>
+                    <div style={{
+                      width: 28, height: 16, borderRadius: 4,
+                      background: colorToCss(item.color),
+                      boxShadow: `0 2px 6px ${colorToCss(item.color)}88`,
+                    }} />
+                    <span style={{ fontFamily: 'Fredoka One', fontSize: '0.65rem', color: '#E2E8F0', textAlign: 'center', lineHeight: 1.2 }}>
+                      {item.label}
+                    </span>
+                    <span style={{ fontFamily: 'Fredoka One', fontSize: '0.6rem', color: canAfford ? '#FCD34D' : '#6B7280' }}>
+                      🪙{item.cost}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─ CityBuilder confirm/cancel ─────────────────────────────────────────── */}
+      {mId === 7 && cbPreview && (
+        <div style={{
+          position: 'absolute', bottom: 24, left: 0, right: 0,
+          display: 'flex', justifyContent: 'center', gap: 14,
+          zIndex: 65, pointerEvents: 'auto',
+        }}>
+          <motion.button whileTap={{ scale: 0.93 }}
+            onClick={() => {
+              EventBus.emit('citybuilder-cancel');
+              setCbPreview(false);
+              setCbItem(null);
+            }}
+            style={{
+              fontFamily: 'Fredoka One', fontSize: '1rem',
+              background: 'rgba(239,68,68,0.92)', color: '#fff',
+              border: '2px solid rgba(252,165,165,0.5)', borderRadius: 28,
+              padding: '13px 28px', cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(239,68,68,0.45)',
+            }}>✗ Cancel</motion.button>
+          <motion.button whileTap={{ scale: 0.93 }}
+            onClick={() => {
+              EventBus.emit('citybuilder-confirm');
+              setCbPreview(false);
+            }}
+            style={{
+              fontFamily: 'Fredoka One', fontSize: '1rem',
+              background: 'rgba(34,197,94,0.95)', color: '#fff',
+              border: '2px solid rgba(134,239,172,0.5)', borderRadius: 28,
+              padding: '13px 28px', cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(34,197,94,0.45)',
+            }}>✓ Place it!</motion.button>
+        </div>
+      )}
 
       {/* ─ Overlays ─────────────────────────────────────────────────────────── */}
       <AnimatePresence>

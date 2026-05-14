@@ -839,22 +839,17 @@ export default function GameWindow() {
             })}
           </div>
 
-          {/* Subcategory bar + demolish button row */}
-          <div style={{
-            display: 'flex', alignItems: 'center',
-            background: 'rgba(8,12,26,0.97)',
-            borderBottom: '1px solid rgba(51,65,85,0.8)',
-            padding: '6px 8px',
-            gap: 6,
-            pointerEvents: 'auto',
-            minHeight: 58,
-          }}>
-            {/* Items */}
+          {/* Subcategory bar (conditional) */}
+          {cbCat >= 0 && (
             <div style={{
-              display: 'flex', flex: 1,
+              display: 'flex',
+              background: 'rgba(8,12,26,0.97)',
+              borderBottom: '1px solid rgba(51,65,85,0.8)',
+              padding: '6px 8px',
               gap: 6, flexWrap: 'nowrap', overflowX: 'auto',
+              pointerEvents: 'auto',
             }}>
-              {cbCat >= 0 && CATS[cbCat].items.map(item => {
+              {CATS[cbCat].items.map(item => {
                 const canAfford = cityCoins >= item.cost;
                 const isSel     = cbItem?.key === item.key;
                 return (
@@ -889,8 +884,10 @@ export default function GameWindow() {
                 );
               })}
             </div>
+          )}
 
-            {/* Demolish button */}
+          {/* Demolish button — standalone, always below the bars */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 10px 0', pointerEvents: 'none' }}>
             <button
               onClick={() => {
                 const next = !cbDemolish;
@@ -900,15 +897,14 @@ export default function GameWindow() {
                 EventBus.emit('citybuilder-demolish-mode', next);
               }}
               style={{
-                flexShrink: 0,
                 width: 46, height: 46, borderRadius: '50%',
-                border: cbDemolish ? '2px solid #FCA5A5' : '2px solid rgba(100,116,139,0.5)',
-                background: cbDemolish ? 'rgba(239,68,68,0.88)' : 'rgba(30,41,59,0.92)',
+                border: cbDemolish ? '2px solid #FCA5A5' : '2px solid rgba(255,255,255,0.25)',
+                background: cbDemolish ? 'rgba(239,68,68,0.88)' : 'rgba(15,23,42,0.75)',
                 fontSize: '1.5rem', lineHeight: 1,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer',
-                boxShadow: cbDemolish ? '0 0 14px rgba(239,68,68,0.55)' : '0 2px 8px rgba(0,0,0,0.4)',
-                transition: 'background 0.15s, box-shadow 0.15s',
+                boxShadow: cbDemolish ? '0 0 14px rgba(239,68,68,0.6)' : '0 2px 10px rgba(0,0,0,0.5)',
+                pointerEvents: 'auto',
               }}
             >🚜</button>
           </div>

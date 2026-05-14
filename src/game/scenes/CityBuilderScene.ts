@@ -252,8 +252,9 @@ export class CityBuilderScene extends Phaser.Scene {
     const cam    = this.cameras.main;
     const canvas = this.game.canvas;
 
-    // ── Phaser pointerdown: placement + drag start (fires on desktop too) ────
+    // ── Phaser pointerdown: desktop (mouse) only — mobile uses native touchstart ──
     this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
+      if (ptr.wasTouch) return;   // native touchstart already handled it
       if (this.input.pointer2.isDown) {
         this.dragging   = false;
         this.isPinching = true;
@@ -265,9 +266,8 @@ export class CityBuilderScene extends Phaser.Scene {
         return;
       }
       if (this.selectedItem) {
-        const worldX = ptr.x + cam.scrollX;
-        const worldY = ptr.y + cam.scrollY;
-        const { col, row } = this.worldToIso(worldX, worldY);
+        const wp = cam.getWorldPoint(ptr.x, ptr.y);
+        const { col, row } = this.worldToIso(wp.x, wp.y);
         if (this.inBounds(col, row)) this.setPreview(col, row);
         return;
       }
@@ -302,7 +302,8 @@ export class CityBuilderScene extends Phaser.Scene {
       if (e.touches.length !== 1) return;
       const { x: sx, y: sy } = screenPt(e.touches[0]);
       if (this.selectedItem) {
-        const { col, row } = this.worldToIso(sx + cam.scrollX, sy + cam.scrollY);
+        const wp = cam.getWorldPoint(sx, sy);
+        const { col, row } = this.worldToIso(wp.x, wp.y);
         if (this.inBounds(col, row)) this.setPreview(col, row);
       } else {
         this.dragging  = true;

@@ -36,6 +36,11 @@ export class CityBuilderScene extends Phaser.Scene {
   private pinchDist0 = 0;
   private pinchZoom0 = 1;
 
+  // Demolish mode
+  private demolishMode = false;
+  private demolishCol  = -1;
+  private demolishRow  = -1;
+
   constructor() { super('CityBuilderScene'); }
 
   init() {
@@ -43,6 +48,9 @@ export class CityBuilderScene extends Phaser.Scene {
     this.previewCol   = -1;
     this.previewRow   = -1;
     this.grid = Array.from({ length: GRID }, () => Array(GRID).fill(null));
+    this.demolishMode = false;
+    this.demolishCol  = -1;
+    this.demolishRow  = -1;
   }
 
   create() {
@@ -64,19 +72,48 @@ export class CityBuilderScene extends Phaser.Scene {
     const onSelect  = (item: BuildItem | null) => {
       this.selectedItem = item;
       if (!item) this.clearPreview();
+      if (item) { this.demolishMode = false; this.demolishCol = -1; this.demolishRow = -1; this.previewGfx.clear(); }
     };
     const onConfirm = () => this.confirmPlacement();
     const onCancel  = () => { this.selectedItem = null; this.clearPreview(); };
 
-    EventBus.on('restart-scene',       onRestart);
-    EventBus.on('citybuilder-select',  onSelect);
-    EventBus.on('citybuilder-confirm', onConfirm);
-    EventBus.on('citybuilder-cancel',  onCancel);
+    const onDemolishMode = (on: boolean) => {
+      this.demolishMode = on;
+      if (on) { this.selectedItem = null; this.clearPreview(); }
+      else    { this.demolishCol = -1; this.demolishRow = -1; this.previewGfx.clear(); }
+    };
+    const onDemolishConfirm = () => {
+      if (this.demolishCol < 0) return;
+      this.grid[this.demolishRow][this.demolishCol] = null;
+      this.redrawBuildings();
+      this.demolishCol  = -1;
+      this.demolishRow  = -1;
+      this.demolishMode = false;
+      this.previewGfx.clear();
+      EventBus.emit('citybuilder-demolish-done');
+    };
+    const onDemolishCancel = () => {
+      this.demolishCol = -1;
+      this.demolishRow = -1;
+      this.previewGfx.clear();
+      EventBus.emit('citybuilder-demolish-preview', null);
+    };
+
+    EventBus.on('restart-scene',            onRestart);
+    EventBus.on('citybuilder-select',       onSelect);
+    EventBus.on('citybuilder-confirm',      onConfirm);
+    EventBus.on('citybuilder-cancel',       onCancel);
+    EventBus.on('citybuilder-demolish-mode',    onDemolishMode);
+    EventBus.on('citybuilder-demolish-confirm', onDemolishConfirm);
+    EventBus.on('citybuilder-demolish-cancel',  onDemolishCancel);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      EventBus.off('restart-scene',       onRestart);
-      EventBus.off('citybuilder-select',  onSelect);
-      EventBus.off('citybuilder-confirm', onConfirm);
-      EventBus.off('citybuilder-cancel',  onCancel);
+      EventBus.off('restart-scene',            onRestart);
+      EventBus.off('citybuilder-select',       onSelect);
+      EventBus.off('citybuilder-confirm',      onConfirm);
+      EventBus.off('citybuilder-cancel',       onCancel);
+      EventBus.off('citybuilder-demolish-mode',    onDemolishMode);
+      EventBus.off('citybuilder-demolish-confirm', onDemolishConfirm);
+      EventBus.off('citybuilder-demolish-cancel',  onDemolishCancel);
     });
 
     // ── Background ─────────────────────────────────────────────────────────────
@@ -242,8 +279,7 @@ export class CityBuilderScene extends Phaser.Scene {
     this.previewCol = -1;
     this.previewRow = -1;
     EventBus.emit('citybuilder-preview-ready', false);
-    EventBus.emit('citybuilder-placed', null);  // triggers React coin re-render hint
-    this.showToast(`✅ ${this.selectedItem.label} placed!`);
+    EventBus.emit('citybuilder-placed', { label: this.selectedItem.label });
   }
 
   // ─── Input ────────────────────────────────────────────────────────────────────
@@ -301,9 +337,36 @@ export class CityBuilderScene extends Phaser.Scene {
       }
       if (e.touches.length !== 1) return;
       const { x: sx, y: sy } = screenPt(e.touches[0]);
+      const wp = cam.getWorldPoint(sx, sy);
+      const { col, row } = this.worldToIso(wp.x, wp.y);
+
+      if (this.demolishMode) {
+        if (this.inBounds(col, row) && this.grid[row][col]) {
+          this.demolishCol = col;
+          this.demolishRow = row;
+          this.previewGfx.clear();
+          const { x, y } = this.isoToScreen(col, row);
+          this.previewGfx.fillStyle(0xFF3333, 0.22);
+          this.previewGfx.fillPoints([
+            { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
+            { x, y: y + TILE_HH }, { x: x - TILE_HW, y },
+          ], true);
+          this.previewGfx.lineStyle(2, 0xFF3333, 0.9);
+          this.previewGfx.strokePoints([
+            { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
+            { x, y: y + TILE_HH }, { x: x - TILE_HW, y },
+          ], true);
+          EventBus.emit('citybuilder-demolish-preview', { label: this.grid[row][col]!.label });
+        } else {
+          this.demolishCol = -1;
+          this.demolishRow = -1;
+          this.previewGfx.clear();
+          EventBus.emit('citybuilder-demolish-preview', null);
+        }
+        return;
+      }
+
       if (this.selectedItem) {
-        const wp = cam.getWorldPoint(sx, sy);
-        const { col, row } = this.worldToIso(wp.x, wp.y);
         if (this.inBounds(col, row)) this.setPreview(col, row);
       } else {
         this.dragging  = true;
@@ -346,7 +409,7 @@ export class CityBuilderScene extends Phaser.Scene {
   // ─── Update: hover highlight ──────────────────────────────────────────────────
 
   update() {
-    if (!this.selectedItem || this.isPinching) {
+    if ((!this.selectedItem && !this.demolishMode) || this.isPinching) {
       this.hoverGfx.clear();
       return;
     }
@@ -359,11 +422,14 @@ export class CityBuilderScene extends Phaser.Scene {
     this.hoverGfx.clear();
     if (this.inBounds(col, row)) {
       const { x, y } = this.isoToScreen(col, row);
-      this.hoverGfx.lineStyle(2, 0xFFFFFF, 0.85);
-      this.hoverGfx.strokePoints([
-        { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
-        { x, y: y + TILE_HH }, { x: x - TILE_HW, y },
-      ], true);
+      const canDemolish = this.demolishMode && !!this.grid[row][col];
+      if (!this.demolishMode || canDemolish) {
+        this.hoverGfx.lineStyle(2, this.demolishMode ? 0xFF3333 : 0xFFFFFF, 0.85);
+        this.hoverGfx.strokePoints([
+          { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
+          { x, y: y + TILE_HH }, { x: x - TILE_HW, y },
+        ], true);
+      }
     }
   }
 

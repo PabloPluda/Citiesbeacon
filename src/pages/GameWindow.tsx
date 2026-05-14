@@ -240,6 +240,9 @@ export default function GameWindow() {
   const [cbCat, setCbCat] = useState(-1);
   const [cbItem, setCbItem] = useState<BuildItem | null>(null);
   const [cbPreview, setCbPreview] = useState(false);
+  const [cbPlacedLabel, setCbPlacedLabel] = useState<string | null>(null);
+  const [cbDemolish, setCbDemolish] = useState(false);
+  const [cbDemolishLabel, setCbDemolishLabel] = useState<string | null>(null);
 
   // Dog game overlays
   const [showDogTutorial, setShowDogTutorial] = useState(false);
@@ -321,8 +324,17 @@ export default function GameWindow() {
     };
     EventBus.on('show-dog-message', onDogMessage);
 
-    const onCBPreview = (ready: boolean) => setCbPreview(ready);
-    EventBus.on('citybuilder-preview-ready', onCBPreview);
+    const onCBPreview    = (ready: boolean) => setCbPreview(ready);
+    const onCBPlaced     = (data: { label: string }) => {
+      setCbPlacedLabel(data.label);
+      setTimeout(() => setCbPlacedLabel(null), 2500);
+    };
+    const onDemolishPrev = (data: { label: string } | null) => setCbDemolishLabel(data?.label ?? null);
+    const onDemolishDone = () => { setCbDemolish(false); setCbDemolishLabel(null); };
+    EventBus.on('citybuilder-preview-ready',     onCBPreview);
+    EventBus.on('citybuilder-placed',            onCBPlaced);
+    EventBus.on('citybuilder-demolish-preview',  onDemolishPrev);
+    EventBus.on('citybuilder-demolish-done',     onDemolishDone);
 
     return () => {
       EventBus.off('game-timer', onTimer);
@@ -338,7 +350,10 @@ export default function GameWindow() {
       EventBus.off('show-dog-tutorial', () => setShowDogTutorial(false));
       EventBus.off('show-dog-prelevel', onDogPreLevel);
       EventBus.off('show-dog-message', onDogMessage);
-      EventBus.off('citybuilder-preview-ready', onCBPreview);
+      EventBus.off('citybuilder-preview-ready',    onCBPreview);
+      EventBus.off('citybuilder-placed',           onCBPlaced);
+      EventBus.off('citybuilder-demolish-preview', onDemolishPrev);
+      EventBus.off('citybuilder-demolish-done',    onDemolishDone);
       if (gameRef.current) {
         gameRef.current.destroy(true);
         gameRef.current = null;
@@ -803,6 +818,9 @@ export default function GameWindow() {
                 <button key={cat.label} onClick={() => {
                   const next = cbCat === i ? -1 : i;
                   setCbCat(next);
+                  setCbDemolish(false);
+                  setCbDemolishLabel(null);
+                  EventBus.emit('citybuilder-demolish-mode', false);
                   if (next < 0) { setCbItem(null); EventBus.emit('citybuilder-select', null); }
                 }} style={{
                   flex: 1, border: 'none', cursor: 'pointer',
@@ -821,17 +839,22 @@ export default function GameWindow() {
             })}
           </div>
 
-          {/* Subcategory bar */}
-          {cbCat >= 0 && (
+          {/* Subcategory bar + demolish button row */}
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            background: 'rgba(8,12,26,0.97)',
+            borderBottom: '1px solid rgba(51,65,85,0.8)',
+            padding: '6px 8px',
+            gap: 6,
+            pointerEvents: 'auto',
+            minHeight: 58,
+          }}>
+            {/* Items */}
             <div style={{
-              display: 'flex', background: 'rgba(8,12,26,0.97)',
-              borderBottom: '1px solid rgba(51,65,85,0.8)',
-              padding: '6px 4px',
-              gap: 6, justifyContent: 'center',
-              flexWrap: 'nowrap', overflowX: 'auto',
-              pointerEvents: 'auto',
+              display: 'flex', flex: 1,
+              gap: 6, flexWrap: 'nowrap', overflowX: 'auto',
             }}>
-              {CATS[cbCat].items.map(item => {
+              {cbCat >= 0 && CATS[cbCat].items.map(item => {
                 const canAfford = cityCoins >= item.cost;
                 const isSel     = cbItem?.key === item.key;
                 return (
@@ -866,42 +889,115 @@ export default function GameWindow() {
                 );
               })}
             </div>
+
+            {/* Demolish button */}
+            <button
+              onClick={() => {
+                const next = !cbDemolish;
+                setCbDemolish(next);
+                setCbDemolishLabel(null);
+                if (next) { setCbCat(-1); setCbItem(null); setCbPreview(false); EventBus.emit('citybuilder-select', null); }
+                EventBus.emit('citybuilder-demolish-mode', next);
+              }}
+              style={{
+                flexShrink: 0,
+                width: 46, height: 46, borderRadius: '50%',
+                border: cbDemolish ? '2px solid #FCA5A5' : '2px solid rgba(100,116,139,0.5)',
+                background: cbDemolish ? 'rgba(239,68,68,0.88)' : 'rgba(30,41,59,0.92)',
+                fontSize: '1.5rem', lineHeight: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: cbDemolish ? '0 0 14px rgba(239,68,68,0.55)' : '0 2px 8px rgba(0,0,0,0.4)',
+                transition: 'background 0.15s, box-shadow 0.15s',
+              }}
+            >🚜</button>
+          </div>
+
+          {/* Placement celebration toast */}
+          {cbPlacedLabel && (
+            <div style={{
+              display: 'flex', justifyContent: 'center',
+              padding: '6px 12px 0',
+              pointerEvents: 'none',
+              animation: 'praise-pop 0.3s ease-out',
+            }}>
+              <div style={{
+                background: 'rgba(22,163,74,0.95)',
+                border: '2px solid #4ADE80',
+                borderRadius: 18,
+                padding: '8px 22px',
+                display: 'flex', alignItems: 'center', gap: 8,
+                boxShadow: '0 4px 18px rgba(0,0,0,0.35)',
+              }}>
+                <span style={{ fontSize: '1.3rem' }}>🎉</span>
+                <span style={{ fontFamily: 'Fredoka One', fontSize: '1.05rem', color: '#fff' }}>
+                  New {cbPlacedLabel} in the city!
+                </span>
+                <span style={{ fontSize: '1.3rem' }}>🎉</span>
+              </div>
+            </div>
           )}
         </div>
       )}
 
-      {/* ─ CityBuilder confirm/cancel ─────────────────────────────────────────── */}
-      {mId === 7 && cbPreview && (
+      {/* ─ CityBuilder confirm/cancel (placement & demolish) ────────────────── */}
+      {mId === 7 && (cbPreview || !!cbDemolishLabel) && (
         <div style={{
-          position: 'absolute', bottom: 24, left: 0, right: 0,
-          display: 'flex', justifyContent: 'center', gap: 14,
+          position: 'absolute', bottom: 80, left: 0, right: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
           zIndex: 65, pointerEvents: 'auto',
         }}>
-          <motion.button whileTap={{ scale: 0.93 }}
-            onClick={() => {
-              EventBus.emit('citybuilder-cancel');
-              setCbPreview(false);
-              setCbItem(null);
-            }}
-            style={{
-              fontFamily: 'Fredoka One', fontSize: '1rem',
-              background: 'rgba(239,68,68,0.92)', color: '#fff',
-              border: '2px solid rgba(252,165,165,0.5)', borderRadius: 28,
-              padding: '13px 28px', cursor: 'pointer',
-              boxShadow: '0 4px 16px rgba(239,68,68,0.45)',
-            }}>✗ Cancel</motion.button>
-          <motion.button whileTap={{ scale: 0.93 }}
-            onClick={() => {
-              EventBus.emit('citybuilder-confirm');
-              setCbPreview(false);
-            }}
-            style={{
-              fontFamily: 'Fredoka One', fontSize: '1rem',
-              background: 'rgba(34,197,94,0.95)', color: '#fff',
-              border: '2px solid rgba(134,239,172,0.5)', borderRadius: 28,
-              padding: '13px 28px', cursor: 'pointer',
-              boxShadow: '0 4px 16px rgba(34,197,94,0.45)',
-            }}>✓ Place it!</motion.button>
+          {cbDemolishLabel && (
+            <div style={{
+              background: 'rgba(20,10,10,0.82)',
+              border: '1px solid rgba(252,165,165,0.4)',
+              borderRadius: 16, padding: '8px 22px',
+              fontFamily: 'Fredoka One', fontSize: '0.95rem', color: '#FCA5A5',
+              textAlign: 'center',
+            }}>
+              Remove {cbDemolishLabel} from the city?
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 14 }}>
+            <motion.button whileTap={{ scale: 0.93 }}
+              onClick={() => {
+                if (cbDemolishLabel) {
+                  EventBus.emit('citybuilder-demolish-cancel');
+                } else {
+                  EventBus.emit('citybuilder-cancel');
+                  setCbPreview(false);
+                  setCbItem(null);
+                }
+              }}
+              style={{
+                fontFamily: 'Fredoka One', fontSize: '1rem',
+                background: 'rgba(239,68,68,0.92)', color: '#fff',
+                border: '2px solid rgba(252,165,165,0.5)', borderRadius: 28,
+                padding: '13px 28px', cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(239,68,68,0.45)',
+              }}>✗ Cancel</motion.button>
+            <motion.button whileTap={{ scale: 0.93 }}
+              onClick={() => {
+                if (cbDemolishLabel) {
+                  EventBus.emit('citybuilder-demolish-confirm');
+                  setCbDemolishLabel(null);
+                } else {
+                  EventBus.emit('citybuilder-confirm');
+                  setCbPreview(false);
+                }
+              }}
+              style={{
+                fontFamily: 'Fredoka One', fontSize: '1rem',
+                background: cbDemolishLabel ? 'rgba(239,68,68,0.95)' : 'rgba(34,197,94,0.95)',
+                color: '#fff',
+                border: `2px solid ${cbDemolishLabel ? 'rgba(252,165,165,0.5)' : 'rgba(134,239,172,0.5)'}`,
+                borderRadius: 28,
+                padding: '13px 28px', cursor: 'pointer',
+                boxShadow: cbDemolishLabel ? '0 4px 16px rgba(239,68,68,0.45)' : '0 4px 16px rgba(34,197,94,0.45)',
+              }}>
+              {cbDemolishLabel ? '🗑️ Remove' : '✓ Place it!'}
+            </motion.button>
+          </div>
         </div>
       )}
 

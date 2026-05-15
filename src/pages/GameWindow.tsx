@@ -13,7 +13,7 @@ import { WaterSaverScene } from '../game/scenes/WaterSaverScene';
 import { NotMyDogScene } from '../game/scenes/NotMyDogScene';
 import { BikingScene } from '../game/scenes/BikingScene';
 import { CityBuilderScene } from '../game/scenes/CityBuilderScene';
-import { CATS, colorToCss } from '../game/cityBuilderData';
+import { CATS } from '../game/cityBuilderData';
 import type { BuildItem } from '../game/cityBuilderData';
 
 const SCENE_MAP: Record<number, any> = {
@@ -869,11 +869,11 @@ export default function GameWindow() {
                     opacity: canAfford ? 1 : 0.45,
                     minWidth: 68,
                   }}>
-                    <div style={{
-                      width: 28, height: 16, borderRadius: 4,
-                      background: colorToCss(item.color),
-                      boxShadow: `0 2px 6px ${colorToCss(item.color)}88`,
-                    }} />
+                    <img
+                      src={`/builder/${item.file}.png`}
+                      alt={item.label}
+                      style={{ width: 44, height: 44, objectFit: 'contain' }}
+                    />
                     <span style={{ fontFamily: 'Fredoka One', fontSize: '0.65rem', color: '#E2E8F0', textAlign: 'center', lineHeight: 1.2 }}>
                       {item.label}
                     </span>

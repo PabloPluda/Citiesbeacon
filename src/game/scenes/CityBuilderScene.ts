@@ -1,13 +1,17 @@
 import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
+import { CATS } from '../cityBuilderData';
 import type { BuildItem } from '../cityBuilderData';
 
 // ─── Tile / grid constants ────────────────────────────────────────────────────
-const TILE_HW     = 24;    // iso tile half-width (px)
-const TILE_HH     = 12;    // iso tile half-height
+const TILE_HW     = 40;    // iso tile half-width (px)
+const TILE_HH     = 20;    // iso tile half-height
 const GRID        = 15;
-const GRID_ORIGIN_Y = 215; // world-space Y of the (0,0) tile centre (below React menus)
+const GRID_ORIGIN_Y = 250; // world-space Y of the (0,0) tile centre (below React menus)
+
+// ─── Grid cell type ───────────────────────────────────────────────────────────
+type GridCell = { item: BuildItem; anchorCol: number; anchorRow: number } | null;
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
 export class CityBuilderScene extends Phaser.Scene {
@@ -18,13 +22,15 @@ export class CityBuilderScene extends Phaser.Scene {
   private previewCol = -1;
   private previewRow = -1;
 
-  private tileGfx!:     Phaser.GameObjects.Graphics;
-  private buildingGfx!: Phaser.GameObjects.Graphics;
-  private previewGfx!:  Phaser.GameObjects.Graphics;
-  private hoverGfx!:    Phaser.GameObjects.Graphics;
-  private toastText!:   Phaser.GameObjects.Text;
+  private tileGfx!:    Phaser.GameObjects.Graphics;
+  private previewGfx!: Phaser.GameObjects.Graphics;
+  private hoverGfx!:   Phaser.GameObjects.Graphics;
+  private toastText!:  Phaser.GameObjects.Text;
 
-  private grid: (BuildItem | null)[][] = [];
+  private grid: GridCell[][] = [];
+
+  private buildingSprites: Phaser.GameObjects.Image[] = [];
+  private previewSprite: Phaser.GameObjects.Image | null = null;
 
   // Camera drag
   private dragStart  = { x: 0, y: 0 };
@@ -51,6 +57,16 @@ export class CityBuilderScene extends Phaser.Scene {
     this.demolishMode = false;
     this.demolishCol  = -1;
     this.demolishRow  = -1;
+    this.buildingSprites = [];
+    this.previewSprite = null;
+  }
+
+  preload() {
+    CATS.forEach(cat =>
+      cat.items.forEach(item =>
+        this.load.image(item.key, `/builder/${item.file}.png`)
+      )
+    );
   }
 
   create() {
@@ -84,7 +100,12 @@ export class CityBuilderScene extends Phaser.Scene {
     };
     const onDemolishConfirm = () => {
       if (this.demolishCol < 0) return;
-      this.grid[this.demolishRow][this.demolishCol] = null;
+      const cell = this.grid[this.demolishRow][this.demolishCol];
+      if (!cell) return;
+      const { anchorCol, anchorRow, item } = cell;
+      for (let dr = 0; dr < item.d; dr++)
+        for (let dc = 0; dc < item.w; dc++)
+          this.grid[anchorRow + dr][anchorCol + dc] = null;
       this.redrawBuildings();
       this.demolishCol  = -1;
       this.demolishRow  = -1;
@@ -122,10 +143,9 @@ export class CityBuilderScene extends Phaser.Scene {
     bg.fillRect(-2000, -500, 6000, 4000);
 
     // ── Layers ─────────────────────────────────────────────────────────────────
-    this.tileGfx     = this.add.graphics().setDepth(2);
-    this.buildingGfx = this.add.graphics().setDepth(4);
-    this.previewGfx  = this.add.graphics().setDepth(6);
-    this.hoverGfx    = this.add.graphics().setDepth(7);
+    this.tileGfx    = this.add.graphics().setDepth(2);
+    this.previewGfx = this.add.graphics().setDepth(6);
+    this.hoverGfx   = this.add.graphics().setDepth(7);
 
     // Toast (screen-fixed)
     this.toastText = this.add.text(this.W / 2, H - 120, '', {
@@ -159,12 +179,15 @@ export class CityBuilderScene extends Phaser.Scene {
     return col >= 0 && col < GRID && row >= 0 && row < GRID;
   }
 
-  private darken(color: number, f: number) {
-    return (
-      (Math.round(((color >> 16) & 0xFF) * f) << 16) |
-      (Math.round(((color >>  8) & 0xFF) * f) <<  8) |
-       Math.round(  (color        & 0xFF) * f)
-    );
+  // ─── Sprite anchor helper ─────────────────────────────────────────────────────
+
+  private spriteAnchor(col: number, row: number, w: number, d: number) {
+    const { x: cx0, y: cy0 } = this.isoToScreen(col, row);
+    return {
+      x: cx0 + (w - d) / 2 * TILE_HW,
+      y: cy0 + (w + d - 1) * TILE_HH,
+      targetW: (w + d) * TILE_HW,
+    };
   }
 
   // ─── Drawing ──────────────────────────────────────────────────────────────────
@@ -190,66 +213,46 @@ export class CityBuilderScene extends Phaser.Scene {
     }
   }
 
-  private drawBlock(
-    g: Phaser.GameObjects.Graphics,
-    col: number, row: number,
-    item: BuildItem,
-    alpha = 1,
-  ) {
-    const { x: cx, y: cy } = this.isoToScreen(col, row);
-    const bh = item.bh;
-    const c  = item.color;
+  // ─── Can-place check ─────────────────────────────────────────────────────────
 
-    g.fillStyle(c, alpha);
-    g.fillPoints([
-      { x: cx,            y: cy - bh - TILE_HH },
-      { x: cx + TILE_HW,  y: cy - bh },
-      { x: cx,            y: cy - bh + TILE_HH },
-      { x: cx - TILE_HW,  y: cy - bh },
-    ], true);
-
-    g.fillStyle(this.darken(c, 0.58), alpha);
-    g.fillPoints([
-      { x: cx - TILE_HW,  y: cy - bh },
-      { x: cx,            y: cy - bh + TILE_HH },
-      { x: cx,            y: cy + TILE_HH },
-      { x: cx - TILE_HW,  y: cy },
-    ], true);
-
-    g.fillStyle(this.darken(c, 0.74), alpha);
-    g.fillPoints([
-      { x: cx,            y: cy - bh + TILE_HH },
-      { x: cx + TILE_HW,  y: cy - bh },
-      { x: cx + TILE_HW,  y: cy },
-      { x: cx,            y: cy + TILE_HH },
-    ], true);
-
-    g.lineStyle(1, 0x000000, alpha * 0.28);
-    g.strokePoints([
-      { x: cx,            y: cy - bh - TILE_HH },
-      { x: cx + TILE_HW,  y: cy - bh },
-      { x: cx,            y: cy - bh + TILE_HH },
-      { x: cx - TILE_HW,  y: cy - bh },
-    ], true);
+  private canPlace(col: number, row: number, item: BuildItem): boolean {
+    for (let dr = 0; dr < item.d; dr++)
+      for (let dc = 0; dc < item.w; dc++)
+        if (!this.inBounds(col + dc, row + dr) || this.grid[row + dr][col + dc] !== null)
+          return false;
+    return true;
   }
 
+  // ─── Sprite rendering ─────────────────────────────────────────────────────────
+
   private redrawBuildings() {
-    const g = this.buildingGfx;
-    g.clear();
+    this.buildingSprites.forEach(s => s.destroy());
+    this.buildingSprites = [];
+    const seen = new Set<string>();
     const cells: { col: number; row: number; item: BuildItem }[] = [];
-    for (let row = 0; row < GRID; row++) {
-      for (let col = 0; col < GRID; col++) {
-        const item = this.grid[row][col];
-        if (item) cells.push({ col, row, item });
+    for (let r = 0; r < GRID; r++)
+      for (let c = 0; c < GRID; c++) {
+        const cell = this.grid[r][c];
+        if (!cell) continue;
+        const k = `${cell.anchorCol},${cell.anchorRow}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        cells.push({ col: cell.anchorCol, row: cell.anchorRow, item: cell.item });
       }
-    }
     cells.sort((a, b) => (a.col + a.row) - (b.col + b.row));
-    cells.forEach(({ col, row, item }) => this.drawBlock(g, col, row, item));
+    cells.forEach(({ col, row, item }) => {
+      const { x, y, targetW } = this.spriteAnchor(col, row, item.w, item.d);
+      const spr = this.add.image(x, y, item.key).setOrigin(0.5, 1);
+      spr.setScale(targetW / spr.width);
+      spr.setDepth(10 + col + row + item.w + item.d - 2);
+      this.buildingSprites.push(spr);
+    });
   }
 
   // ─── Placement ────────────────────────────────────────────────────────────────
 
   private clearPreview() {
+    if (this.previewSprite) { this.previewSprite.destroy(); this.previewSprite = null; }
     this.previewGfx.clear();
     this.previewCol = -1;
     this.previewRow = -1;
@@ -257,29 +260,51 @@ export class CityBuilderScene extends Phaser.Scene {
   }
 
   private setPreview(col: number, row: number) {
-    if (!this.selectedItem) return;
+    if (!this.selectedItem || !this.canPlace(col, row, this.selectedItem)) return;
     this.previewCol = col;
     this.previewRow = row;
+    // Clear old preview
+    if (this.previewSprite) { this.previewSprite.destroy(); this.previewSprite = null; }
     this.previewGfx.clear();
-    this.drawBlock(this.previewGfx, col, row, this.selectedItem, 0.52);
+    // Highlight cells
+    const item = this.selectedItem;
+    for (let dr = 0; dr < item.d; dr++)
+      for (let dc = 0; dc < item.w; dc++) {
+        const { x, y } = this.isoToScreen(col + dc, row + dr);
+        this.previewGfx.fillStyle(0xFFFFFF, 0.18);
+        this.previewGfx.fillPoints([
+          { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
+          { x, y: y + TILE_HH }, { x: x - TILE_HW, y },
+        ], true);
+      }
+    // Semi-transparent sprite
+    const { x, y, targetW } = this.spriteAnchor(col, row, item.w, item.d);
+    this.previewSprite = this.add.image(x, y, item.key).setOrigin(0.5, 1);
+    this.previewSprite.setScale(targetW / this.previewSprite.width);
+    this.previewSprite.setAlpha(0.65);
+    this.previewSprite.setDepth(50 + col + row);
     EventBus.emit('citybuilder-preview-ready', true);
   }
 
   private confirmPlacement() {
     if (this.previewCol < 0 || !this.selectedItem) return;
-    const cost = this.selectedItem.cost;
-    if (useProgressStore.getState().cityCoins < cost) {
-      this.showToast(`Need 🪙${cost} coins!`);
+    const item = this.selectedItem;
+    if (useProgressStore.getState().cityCoins < item.cost) {
+      this.showToast(`Need 🪙${item.cost} coins!`);
       return;
     }
-    useProgressStore.getState().addCityCoins(-cost);
-    this.grid[this.previewRow][this.previewCol] = this.selectedItem;
+    if (!this.canPlace(this.previewCol, this.previewRow, item)) return;
+    useProgressStore.getState().addCityCoins(-item.cost);
+    for (let dr = 0; dr < item.d; dr++)
+      for (let dc = 0; dc < item.w; dc++)
+        this.grid[this.previewRow + dr][this.previewCol + dc] = { item, anchorCol: this.previewCol, anchorRow: this.previewRow };
     this.redrawBuildings();
+    if (this.previewSprite) { this.previewSprite.destroy(); this.previewSprite = null; }
     this.previewGfx.clear();
     this.previewCol = -1;
     this.previewRow = -1;
     EventBus.emit('citybuilder-preview-ready', false);
-    EventBus.emit('citybuilder-placed', { label: this.selectedItem.label });
+    EventBus.emit('citybuilder-placed', { label: item.label });
   }
 
   // ─── Input ────────────────────────────────────────────────────────────────────
@@ -342,21 +367,20 @@ export class CityBuilderScene extends Phaser.Scene {
 
       if (this.demolishMode) {
         if (this.inBounds(col, row) && this.grid[row][col]) {
-          this.demolishCol = col;
-          this.demolishRow = row;
+          const cell = this.grid[row][col]!;
+          this.demolishCol = cell.anchorCol;
+          this.demolishRow = cell.anchorRow;
           this.previewGfx.clear();
-          const { x, y } = this.isoToScreen(col, row);
-          this.previewGfx.fillStyle(0xFF3333, 0.22);
-          this.previewGfx.fillPoints([
-            { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
-            { x, y: y + TILE_HH }, { x: x - TILE_HW, y },
-          ], true);
-          this.previewGfx.lineStyle(2, 0xFF3333, 0.9);
-          this.previewGfx.strokePoints([
-            { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
-            { x, y: y + TILE_HH }, { x: x - TILE_HW, y },
-          ], true);
-          EventBus.emit('citybuilder-demolish-preview', { label: this.grid[row][col]!.label });
+          const { w, d } = cell.item;
+          for (let dr = 0; dr < d; dr++)
+            for (let dc = 0; dc < w; dc++) {
+              const { x, y } = this.isoToScreen(cell.anchorCol + dc, cell.anchorRow + dr);
+              this.previewGfx.fillStyle(0xFF3333, 0.22);
+              this.previewGfx.fillPoints([{ x, y: y - TILE_HH }, { x: x + TILE_HW, y }, { x, y: y + TILE_HH }, { x: x - TILE_HW, y }], true);
+              this.previewGfx.lineStyle(2, 0xFF3333, 0.9);
+              this.previewGfx.strokePoints([{ x, y: y - TILE_HH }, { x: x + TILE_HW, y }, { x, y: y + TILE_HH }, { x: x - TILE_HW, y }], true);
+            }
+          EventBus.emit('citybuilder-demolish-preview', { label: cell.item.label });
         } else {
           this.demolishCol = -1;
           this.demolishRow = -1;
@@ -420,16 +444,27 @@ export class CityBuilderScene extends Phaser.Scene {
     const wp  = cam.getWorldPoint(ptr.x, ptr.y);
     const { col, row } = this.worldToIso(wp.x, wp.y);
     this.hoverGfx.clear();
-    if (this.inBounds(col, row)) {
-      const { x, y } = this.isoToScreen(col, row);
-      const canDemolish = this.demolishMode && !!this.grid[row][col];
-      if (!this.demolishMode || canDemolish) {
-        this.hoverGfx.lineStyle(2, this.demolishMode ? 0xFF3333 : 0xFFFFFF, 0.85);
-        this.hoverGfx.strokePoints([
-          { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
-          { x, y: y + TILE_HH }, { x: x - TILE_HW, y },
-        ], true);
-      }
+    if (!this.inBounds(col, row)) return;
+
+    if (this.selectedItem) {
+      const { w, d } = this.selectedItem;
+      const canP = this.canPlace(col, row, this.selectedItem);
+      for (let dr = 0; dr < d; dr++)
+        for (let dc = 0; dc < w; dc++) {
+          if (!this.inBounds(col + dc, row + dr)) continue;
+          const { x, y } = this.isoToScreen(col + dc, row + dr);
+          this.hoverGfx.lineStyle(2, canP ? 0xFFFFFF : 0xFF6666, 0.85);
+          this.hoverGfx.strokePoints([{ x, y: y - TILE_HH }, { x: x + TILE_HW, y }, { x, y: y + TILE_HH }, { x: x - TILE_HW, y }], true);
+        }
+    } else if (this.demolishMode && this.grid[row]?.[col]) {
+      const cell = this.grid[row][col]!;
+      const { w, d } = cell.item;
+      for (let dr = 0; dr < d; dr++)
+        for (let dc = 0; dc < w; dc++) {
+          const { x, y } = this.isoToScreen(cell.anchorCol + dc, cell.anchorRow + dr);
+          this.hoverGfx.lineStyle(2, 0xFF3333, 0.85);
+          this.hoverGfx.strokePoints([{ x, y: y - TILE_HH }, { x: x + TILE_HW, y }, { x, y: y + TILE_HH }, { x: x - TILE_HW, y }], true);
+        }
     }
   }
 

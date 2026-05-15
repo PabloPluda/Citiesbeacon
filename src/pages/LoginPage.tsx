@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../store/userStore';
 
 type Mode = 'login' | 'register';
@@ -103,7 +104,13 @@ function CountryPicker({ value, onChange }: { value: string; onChange: (v: strin
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function LoginPage() {
-  const { signIn, signUp, authError, loading, clearError } = useUserStore();
+  const { signIn, signUp, authError, loading, clearError, user } = useUserStore();
+  const navigate = useNavigate();
+
+  // Redirect as soon as user is set (login or register success)
+  useEffect(() => {
+    if (user) navigate('/map', { replace: true });
+  }, [user, navigate]);
 
   const [mode, setMode]     = useState<Mode>('login');
   const [username, setUser] = useState('');

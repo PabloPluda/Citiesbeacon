@@ -870,7 +870,7 @@ export default function GameWindow() {
                     minWidth: 68,
                   }}>
                     <img
-                      src={`/builder/${item.file}.png`}
+                      src={`/Builder/${item.file}.png`}
                       alt={item.label}
                       style={{ width: 44, height: 44, objectFit: 'contain' }}
                     />

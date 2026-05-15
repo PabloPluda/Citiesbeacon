@@ -4,7 +4,7 @@ export interface BuildItem {
   cost:  number;
   w:     number;   // footprint cols
   d:     number;   // footprint rows
-  file:  string;   // filename without .png, under /builder/
+  file:  string;   // filename without .png, under /Builder/
 }
 
 export const CATS: { label: string; emoji: string; items: BuildItem[] }[] = [

@@ -64,7 +64,7 @@ export class CityBuilderScene extends Phaser.Scene {
   preload() {
     CATS.forEach(cat =>
       cat.items.forEach(item =>
-        this.load.image(item.key, `/builder/${item.file}.png`)
+        this.load.image(item.key, `/Builder/${item.file}.png`)
       )
     );
   }

@@ -197,6 +197,7 @@ export class CityBuilderScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(110).setScrollFactor(0).setAlpha(0);
 
     this.drawGrid();
+    this.redrawBuildings();
     this.setupInput();
   }
 

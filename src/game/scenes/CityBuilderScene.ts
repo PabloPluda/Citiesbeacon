@@ -304,17 +304,21 @@ export class CityBuilderScene extends Phaser.Scene {
   }
 
   private setPreview(col: number, row: number) {
-    if (!this.selectedItem || !this.canPlace(col, row, this.selectedItem)) return;
-    this.previewCol = col;
-    this.previewRow = row;
+    if (!this.selectedItem) return;
+    const item = this.selectedItem;
+    // Tapped cell = south corner of footprint → anchor is top-left
+    const ac = col - (item.w - 1);
+    const ar = row - (item.d - 1);
+    if (!this.canPlace(ac, ar, item)) return;
+    this.previewCol = ac;
+    this.previewRow = ar;
     // Clear old preview
     if (this.previewSprite) { this.previewSprite.destroy(); this.previewSprite = null; }
     this.previewGfx.clear();
     // Highlight cells
-    const item = this.selectedItem;
     for (let dr = 0; dr < item.d; dr++)
       for (let dc = 0; dc < item.w; dc++) {
-        const { x, y } = this.isoToScreen(col + dc, row + dr);
+        const { x, y } = this.isoToScreen(ac + dc, ar + dr);
         this.previewGfx.fillStyle(0xFFFFFF, 0.18);
         this.previewGfx.fillPoints([
           { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
@@ -322,11 +326,11 @@ export class CityBuilderScene extends Phaser.Scene {
         ], true);
       }
     // Semi-transparent sprite
-    const { x, y, targetW } = this.spriteAnchor(col, row, item.w, item.d);
+    const { x, y, targetW } = this.spriteAnchor(ac, ar, item.w, item.d);
     this.previewSprite = this.add.image(x, y, item.key).setOrigin(0.5, 1);
     this.previewSprite.setScale(targetW / this.previewSprite.width);
     this.previewSprite.setAlpha(0.65);
-    this.previewSprite.setDepth(50 + col + row);
+    this.previewSprite.setDepth(50 + ac + ar);
     EventBus.emit('citybuilder-preview-ready', true);
   }
 

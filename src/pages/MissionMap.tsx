@@ -82,6 +82,7 @@ function MissionCard({ id, onPlay }: { id: number; onPlay: () => void }) {
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundColor: '#1E3A5F',
+        border: '1.5px solid rgba(0,0,0,0.7)',
         boxShadow: '0 16px 48px rgba(0,0,0,0.55)',
       }}
     >

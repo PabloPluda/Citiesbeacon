@@ -84,7 +84,14 @@ export const useUserStore = create<UserState>()((set) => ({
       password,
     });
     if (error) {
-      set({ authError: 'Usuario o contraseña incorrectos.', loading: false });
+      console.error('[signIn]', error);
+      const msg = error.message.toLowerCase();
+      if (msg.includes('invalid') || msg.includes('credentials'))
+        set({ authError: 'Wrong username or password.', loading: false });
+      else if (msg.includes('confirm') || msg.includes('email'))
+        set({ authError: 'Account needs email confirmation — disable it in Supabase Auth settings.', loading: false });
+      else
+        set({ authError: `Login error: ${error.message}`, loading: false });
       return;
     }
     const { data: profile } = await supabase
@@ -102,16 +109,24 @@ export const useUserStore = create<UserState>()((set) => ({
 
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) {
-      set({
-        authError: error.message.includes('already registered')
-          ? 'Ese usuario ya existe.'
-          : error.message,
-        loading: false,
-      });
+      console.error('[signUp]', error);
+      const msg = error.message.toLowerCase();
+      if (msg.includes('already registered') || msg.includes('already exists'))
+        set({ authError: 'That username is already taken.', loading: false });
+      else if (msg.includes('password') && msg.includes('least'))
+        set({ authError: 'Password too short — contact support.', loading: false });
+      else
+        set({ authError: `Sign-up error: ${error.message}`, loading: false });
       return;
     }
     if (!data.user) {
-      set({ authError: 'Error al crear cuenta. Intentá de nuevo.', loading: false });
+      set({ authError: 'Could not create account. Try again.', loading: false });
+      return;
+    }
+
+    // If session is null, email confirmation is still enabled in Supabase
+    if (!data.session) {
+      set({ authError: 'Email confirmation is enabled — please disable it in Supabase Auth → Settings.', loading: false });
       return;
     }
 
@@ -124,7 +139,8 @@ export const useUserStore = create<UserState>()((set) => ({
       city_grid: [],
     });
     if (profileError) {
-      set({ authError: 'Error al crear perfil. Intentá de nuevo.', loading: false });
+      console.error('[signUp profile]', profileError);
+      set({ authError: `Profile error: ${profileError.message}`, loading: false });
       return;
     }
 

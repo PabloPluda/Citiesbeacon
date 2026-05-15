@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { useProgressStore } from '../store/progressStore';
+import { useUserStore } from '../store/userStore';
 
 const HERO_NAME_KEY = 'cityhero-hero-name';
 const FF = 'Fredoka One, cursive';
@@ -15,8 +16,9 @@ const SCRAPBOOK = [
 export default function Profile() {
   const { highestLevel, getRankInfo } = useProgressStore();
   const { rank, nextRank, progress, currentCP, nextCP } = getRankInfo();
+  const { signOut, profile } = useUserStore();
 
-  const heroName         = localStorage.getItem(HERO_NAME_KEY) || 'CityHero';
+  const heroName = profile?.username || localStorage.getItem(HERO_NAME_KEY) || 'CityHero';
   const missionsMastered = SCRAPBOOK.filter(m => (highestLevel[m.id] || 0) >= 12).length;
 
   return (
@@ -247,6 +249,20 @@ export default function Profile() {
             🌈 Reach Level 12 in each mission to unlock its photo!
           </p>
         </div>
+
+        {/* Log out */}
+        <button
+          onClick={() => signOut()}
+          style={{
+            width: '100%', padding: '14px 0', marginTop: 8,
+            background: 'transparent', border: '1.5px solid #CBD5E1',
+            borderRadius: 16, cursor: 'pointer',
+            fontFamily: 'Fredoka One, cursive', fontSize: 16, color: '#94A3B8',
+            letterSpacing: 0.3,
+          }}
+        >
+          Log Out
+        </button>
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ import { WaterSaverScene } from '../game/scenes/WaterSaverScene';
 import { NotMyDogScene } from '../game/scenes/NotMyDogScene';
 import { BikingScene } from '../game/scenes/BikingScene';
 import { CityBuilderScene } from '../game/scenes/CityBuilderScene';
+import { CATS as DEFAULT_CATS } from '../game/cityBuilderData';
 import type { BuildItem } from '../game/cityBuilderData';
 import { useAdminStore } from '../store/adminStore';
 
@@ -213,8 +214,8 @@ export default function GameWindow() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { completeLevel, getHighestLevel, addCityCoins, cityCoins } = useProgressStore();
-  const getEffectiveCats = useAdminStore(s => s.getEffectiveCats);
-  const CATS = getEffectiveCats();
+  const builderCats = useAdminStore(s => s.builderCats);
+  const CATS = builderCats ?? DEFAULT_CATS;
 
   const forcedLevel = (location.state as { startLevel?: number } | null)?.startLevel;
   const highest = getHighestLevel(mId);

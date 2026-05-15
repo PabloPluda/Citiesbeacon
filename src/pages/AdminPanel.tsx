@@ -80,13 +80,13 @@ function ItemCard({
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         <span style={labelStyle}>W</span>
         <select value={item.w} onChange={e => onChange({ w: Number(e.target.value) })} style={selectStyle}>
-          <option value={1}>1</option>
-          <option value={2}>2</option>
+          <option value={1}>1</option><option value={2}>2</option>
+          <option value={3}>3</option><option value={4}>4</option>
         </select>
         <span style={labelStyle}>D</span>
         <select value={item.d} onChange={e => onChange({ d: Number(e.target.value) })} style={selectStyle}>
-          <option value={1}>1</option>
-          <option value={2}>2</option>
+          <option value={1}>1</option><option value={2}>2</option>
+          <option value={3}>3</option><option value={4}>4</option>
         </select>
       </div>
 

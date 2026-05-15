@@ -8,7 +8,7 @@ import type { SavedBuilding } from '../../store/userStore';
 // ─── Tile / grid constants ────────────────────────────────────────────────────
 const TILE_HW     = 40;    // iso tile half-width (px)
 const TILE_HH     = 20;    // iso tile half-height
-const GRID        = 15;
+const GRID        = 20;
 const GRID_ORIGIN_Y = 250; // world-space Y of the (0,0) tile centre (below React menus)
 
 // ─── Grid cell type ───────────────────────────────────────────────────────────

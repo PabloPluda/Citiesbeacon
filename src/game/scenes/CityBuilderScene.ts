@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
-import { CATS } from '../cityBuilderData';
 import type { BuildItem } from '../cityBuilderData';
+import { useAdminStore } from '../../store/adminStore';
 
 // ─── Tile / grid constants ────────────────────────────────────────────────────
 const TILE_HW     = 40;    // iso tile half-width (px)
@@ -62,7 +62,7 @@ export class CityBuilderScene extends Phaser.Scene {
   }
 
   preload() {
-    CATS.forEach(cat =>
+    useAdminStore.getState().getEffectiveCats().forEach(cat =>
       cat.items.forEach(item =>
         this.load.image(item.key, `/Builder/${item.file}.png`)
       )

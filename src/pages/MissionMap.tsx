@@ -3,16 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ChevronLeft, Lock } from 'lucide-react';
 import { useProgressStore } from '../store/progressStore';
+import { useAdminStore, DEFAULT_MISSION_CONFIG } from '../store/adminStore';
 
-const MISSIONS = [
-  { id: 1, title: 'Keeping the city clean', icon: '🗑️', active: true },
-  { id: 2, title: 'Crossing the right way', icon: '🚶', active: true },
-  { id: 3, title: 'Responsible use of electricity', icon: '💡', active: true },
-  { id: 4, title: 'Water saver', icon: '💧', active: true },
-  { id: 5, title: 'Not my dog, still my job', icon: '🐕', active: true },
-  { id: 6, title: 'Biking my city', icon: '🚲', active: true },
-  { id: 7, title: 'City Builder', icon: '🏙️', active: true },
-];
+const MISSION_IDS = DEFAULT_MISSION_CONFIG.map(m => m.id);
 
 const HOUSE_COLORS = ['#EF4444', '#3B82F6', '#EAB308', '#EC4899', '#8B5CF6', '#F97316'];
 
@@ -21,6 +14,8 @@ export default function MissionMap() {
   const { getRankInfo, getHighestLevel, getPuzzlePieces, setHighestLevel } = useProgressStore();
   const { rank, currentCP, nextCP } = getRankInfo();
   const [startLevels, setStartLevels] = useState<Record<number, number>>({});
+  const getEffectiveMission = useAdminStore(s => s.getEffectiveMission);
+  const MISSIONS = MISSION_IDS.map(id => ({ id, active: true, ...getEffectiveMission(id) }));
 
   return (
     <div style={{

@@ -13,8 +13,8 @@ import { WaterSaverScene } from '../game/scenes/WaterSaverScene';
 import { NotMyDogScene } from '../game/scenes/NotMyDogScene';
 import { BikingScene } from '../game/scenes/BikingScene';
 import { CityBuilderScene } from '../game/scenes/CityBuilderScene';
-import { CATS } from '../game/cityBuilderData';
 import type { BuildItem } from '../game/cityBuilderData';
+import { useAdminStore } from '../store/adminStore';
 
 const SCENE_MAP: Record<number, any> = {
   1: ThrowToBinScene,
@@ -213,6 +213,8 @@ export default function GameWindow() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { completeLevel, getHighestLevel, addCityCoins, cityCoins } = useProgressStore();
+  const getEffectiveCats = useAdminStore(s => s.getEffectiveCats);
+  const CATS = getEffectiveCats();
 
   const forcedLevel = (location.state as { startLevel?: number } | null)?.startLevel;
   const highest = getHighestLevel(mId);

@@ -5,6 +5,7 @@ import MissionMap from './pages/MissionMap';
 import GameWindow from './pages/GameWindow';
 import Profile from './pages/Profile';
 import Layout from './components/Layout';
+import AdminPanel from './pages/AdminPanel';
 import './index.css';
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/game/:missionId" element={<GameWindow />} />
         </Route>
 
+        <Route path="/admin" element={<AdminPanel />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

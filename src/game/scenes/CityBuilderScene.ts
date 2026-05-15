@@ -11,6 +11,16 @@ const TILE_HH     = 20;    // iso tile half-height
 const GRID        = 20;
 const GRID_ORIGIN_Y = 250; // world-space Y of the (0,0) tile centre (below React menus)
 
+// ─── Road connector auto-upgrade map ─────────────────────────────────────────
+// Key = sorted direction set joined by ','.  Directions: ul ur dl dr
+const ROAD_CONN: Record<string, { key: string; file: string }> = {
+  'dl,ul,ur':    { key: 'conn_ul_ur_dl',    file: 'Road-1x1_upleftuprightdownleft' },
+  'dr,ul,ur':    { key: 'conn_ul_ur_dr',    file: 'Road-1x1_upleftuprightdownright' },
+  'dl,dr,ul':    { key: 'conn_ul_dl_dr',    file: 'Road-Tile_13_upleftdownleftdownright' },
+  'dl,dr,ur':    { key: 'conn_ur_dl_dr',    file: 'Road-Tile_13_uprightdownleftdownright' },
+  'dl,dr,ul,ur': { key: 'conn_4',           file: 'Road-1x1_4 sides' },
+};
+
 // ─── Grid cell type ───────────────────────────────────────────────────────────
 type GridCell = { item: BuildItem; anchorCol: number; anchorRow: number } | null;
 
@@ -66,7 +76,10 @@ export class CityBuilderScene extends Phaser.Scene {
     if (saved?.length) {
       const allItems = useAdminStore.getState().getEffectiveCats()
         .flatMap(c => c.items);
-      const itemByKey = new Map(allItems.map(i => [i.key, i]));
+      const connItems: BuildItem[] = Object.values(ROAD_CONN).map(({ key, file }) =>
+        ({ key, label: 'Road Connector', cost: 0, w: 1, d: 1, file })
+      );
+      const itemByKey = new Map([...allItems, ...connItems].map(i => [i.key, i]));
       saved.forEach(({ key, col, row }) => {
         const item = itemByKey.get(key);
         if (!item) return;
@@ -109,6 +122,9 @@ export class CityBuilderScene extends Phaser.Scene {
         this.load.image(item.key, `/Builder/${item.file}.png`)
       )
     );
+    Object.values(ROAD_CONN).forEach(({ key, file }) =>
+      this.load.image(key, `/Builder/${file}.png`)
+    );
   }
 
   create() {
@@ -145,10 +161,15 @@ export class CityBuilderScene extends Phaser.Scene {
       const cell = this.grid[this.demolishRow][this.demolishCol];
       if (!cell) return;
       const { anchorCol, anchorRow, item } = cell;
+      const wasRoad = this.isRoadItem(item);
       for (let dr = 0; dr < item.d; dr++)
         for (let dc = 0; dc < item.w; dc++)
           this.grid[anchorRow + dr][anchorCol + dc] = null;
-      this.redrawBuildings();
+      if (wasRoad) {
+        this.updateRoadConnectors(anchorCol, anchorRow);
+      } else {
+        this.redrawBuildings();
+      }
       this.demolishCol  = -1;
       this.demolishRow  = -1;
       this.demolishMode = false;
@@ -334,6 +355,65 @@ export class CityBuilderScene extends Phaser.Scene {
     EventBus.emit('citybuilder-preview-ready', true);
   }
 
+  // ─── Road auto-connector helpers ─────────────────────────────────────────────
+
+  private isRoadItem(item: BuildItem): boolean {
+    if (Object.values(ROAD_CONN).some(c => c.key === item.key)) return true;
+    return useAdminStore.getState().getEffectiveCats()
+      .find(c => c.label === 'Road')?.items
+      .some(i => i.key === item.key) ?? false;
+  }
+
+  private roadDirsAt(col: number, row: number): string[] {
+    const dirs: string[] = [];
+    const check = (nc: number, nr: number, dir: string) => {
+      if (!this.inBounds(nc, nr)) return;
+      const cell = this.grid[nr][nc];
+      if (cell && this.isRoadItem(cell.item)) dirs.push(dir);
+    };
+    check(col - 1, row,     'ul');
+    check(col,     row - 1, 'ur');
+    check(col,     row + 1, 'dl');
+    check(col + 1, row,     'dr');
+    return dirs.sort();
+  }
+
+  private applyConnector(col: number, row: number): boolean {
+    const cell = this.grid[row][col];
+    if (!cell || !this.isRoadItem(cell.item)) return false;
+    const dirs = this.roadDirsAt(col, row);
+    if (dirs.length >= 3) {
+      const conn = ROAD_CONN[dirs.join(',')];
+      if (!conn || cell.item.key === conn.key) return false;
+      const connItem: BuildItem = { key: conn.key, label: 'Road Connector', cost: 0, w: 1, d: 1, file: conn.file };
+      this.grid[row][col] = { item: connItem, anchorCol: col, anchorRow: row };
+      return true;
+    }
+    if (dirs.length < 3 && Object.values(ROAD_CONN).some(c => c.key === cell.item.key)) {
+      const cats = useAdminStore.getState().getEffectiveCats();
+      const baseItem = cats.find(c => c.label === 'Road')?.items[0];
+      if (!baseItem) return false;
+      this.grid[row][col] = { item: baseItem, anchorCol: col, anchorRow: row };
+      return true;
+    }
+    return false;
+  }
+
+  private updateRoadConnectors(col: number, row: number) {
+    const candidates = [
+      [col,     row    ],
+      [col - 1, row    ],
+      [col,     row - 1],
+      [col,     row + 1],
+      [col + 1, row    ],
+    ];
+    let changed = false;
+    for (const [c, r] of candidates) {
+      if (this.inBounds(c, r) && this.applyConnector(c, r)) changed = true;
+    }
+    if (changed) this.redrawBuildings();
+  }
+
   private confirmPlacement() {
     if (this.previewCol < 0 || !this.selectedItem) return;
     const item = this.selectedItem;
@@ -346,7 +426,11 @@ export class CityBuilderScene extends Phaser.Scene {
     for (let dr = 0; dr < item.d; dr++)
       for (let dc = 0; dc < item.w; dc++)
         this.grid[this.previewRow + dr][this.previewCol + dc] = { item, anchorCol: this.previewCol, anchorRow: this.previewRow };
-    this.redrawBuildings();
+    if (this.isRoadItem(item)) {
+      this.updateRoadConnectors(this.previewCol, this.previewRow);
+    } else {
+      this.redrawBuildings();
+    }
     if (this.previewSprite) { this.previewSprite.destroy(); this.previewSprite = null; }
     this.previewGfx.clear();
     this.previewCol = -1;

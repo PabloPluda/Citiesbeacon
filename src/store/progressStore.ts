@@ -1,12 +1,16 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { supabase } from '../lib/supabase';
+import type { SavedBuilding } from './userStore';
 
 interface GameState {
   cityPoints: number;
   cityCoins: number;
   highScores: Record<number, number>;
   highestLevel: Record<number, number>;   // missionId → highest completed level
-  puzzlePieces: Record<number, number>;   // missionId → pieces revealed (0-12)
+  puzzlePieces: Record<number, number>;   // missionId → pieces revealed (0-20)
+  cityGrid: SavedBuilding[];              // CityBuilder placed buildings
+
   addCityPoints: (points: number) => void;
   addCityCoins: (coins: number) => void;
   updateHighScore: (missionId: number, score: number) => void;
@@ -15,6 +19,7 @@ interface GameState {
   getHighestLevel: (missionId: number) => number;
   getPuzzlePieces: (missionId: number) => number;
   getRankInfo: () => { rank: string; nextRank: string; progress: number; currentCP: number; nextCP: number };
+  setCityGrid: (grid: SavedBuilding[]) => void;
   resetProgress: () => void;
 }
 
@@ -27,6 +32,29 @@ const RANKS = [
   { name: '👑 Master CityHero', cp: 2000 }
 ];
 
+// Debounced Supabase sync — waits 1.5 s after last change before writing
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSync() {
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncToSupabase, 1500);
+}
+
+async function syncToSupabase() {
+  // Avoid circular import: import userStore lazily
+  const { useUserStore } = await import('./userStore');
+  const userId = useUserStore.getState().user?.id;
+  if (!userId) return;
+
+  const { cityCoins, cityPoints, highScores, highestLevel, puzzlePieces, cityGrid } =
+    useProgressStore.getState();
+
+  await supabase.from('perfiles_usuarios').update({
+    monedas: cityCoins,
+    progreso_juegos: { cityPoints, highScores, highestLevel, puzzlePieces },
+    city_grid: cityGrid,
+  }).eq('id', userId);
+}
+
 export const useProgressStore = create<GameState>()(
   persist(
     (set, get) => ({
@@ -35,38 +63,61 @@ export const useProgressStore = create<GameState>()(
       highScores: {},
       highestLevel: {},
       puzzlePieces: {},
+      cityGrid: [],
 
-      addCityPoints: (points) => set((s) => ({ cityPoints: s.cityPoints + points })),
-      addCityCoins: (coins) => set((s) => ({ cityCoins: s.cityCoins + coins })),
+      addCityPoints: (points) => {
+        set((s) => ({ cityPoints: s.cityPoints + points }));
+        scheduleSync();
+      },
 
-      updateHighScore: (missionId, score) => set((s) => {
-        const cur = s.highScores[missionId] || 0;
-        return score > cur ? { highScores: { ...s.highScores, [missionId]: score } } : s;
-      }),
+      addCityCoins: (coins) => {
+        set((s) => ({ cityCoins: s.cityCoins + coins }));
+        scheduleSync();
+      },
 
-      completeLevel: (missionId, level) => set((s) => {
-        const prevHighest = s.highestLevel[missionId] || 0;
-        const newHighest = Math.max(prevHighest, level);
-        // Puzzle pieces = highest level reached (max 20)
-        const newPieces = Math.min(20, newHighest);
-        // Award CP for completing a new level
-        const earnedCP = prevHighest < level ? 20 : 0;
-        return {
-          highestLevel: { ...s.highestLevel, [missionId]: newHighest },
-          puzzlePieces: { ...s.puzzlePieces, [missionId]: newPieces },
-          cityPoints: s.cityPoints + earnedCP,
-        };
-      }),
+      updateHighScore: (missionId, score) => {
+        set((s) => {
+          const cur = s.highScores[missionId] || 0;
+          return score > cur ? { highScores: { ...s.highScores, [missionId]: score } } : s;
+        });
+        scheduleSync();
+      },
 
-      setHighestLevel: (missionId, level) => set((s) => ({
-        highestLevel: { ...s.highestLevel, [missionId]: level },
-        puzzlePieces: { ...s.puzzlePieces, [missionId]: Math.min(20, level) },
-      })),
+      completeLevel: (missionId, level) => {
+        set((s) => {
+          const prevHighest = s.highestLevel[missionId] || 0;
+          const newHighest = Math.max(prevHighest, level);
+          const newPieces = Math.min(20, newHighest);
+          const earnedCP = prevHighest < level ? 20 : 0;
+          return {
+            highestLevel: { ...s.highestLevel, [missionId]: newHighest },
+            puzzlePieces: { ...s.puzzlePieces, [missionId]: newPieces },
+            cityPoints: s.cityPoints + earnedCP,
+          };
+        });
+        scheduleSync();
+      },
+
+      setHighestLevel: (missionId, level) => {
+        set((s) => ({
+          highestLevel: { ...s.highestLevel, [missionId]: level },
+          puzzlePieces: { ...s.puzzlePieces, [missionId]: Math.min(20, level) },
+        }));
+        scheduleSync();
+      },
+
+      setCityGrid: (grid) => {
+        set({ cityGrid: grid });
+        scheduleSync();
+      },
 
       getHighestLevel: (missionId) => get().highestLevel[missionId] || 0,
       getPuzzlePieces: (missionId) => get().puzzlePieces[missionId] || 0,
 
-      resetProgress: () => set({ cityPoints: 0, cityCoins: 0, highScores: {}, highestLevel: {}, puzzlePieces: {} }),
+      resetProgress: () => set({
+        cityPoints: 0, cityCoins: 0, highScores: {}, highestLevel: {},
+        puzzlePieces: {}, cityGrid: [],
+      }),
 
       getRankInfo: () => {
         const cp = get().cityPoints;

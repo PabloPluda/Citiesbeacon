@@ -3,6 +3,7 @@ import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
 import type { BuildItem } from '../cityBuilderData';
 import { useAdminStore } from '../../store/adminStore';
+import type { SavedBuilding } from '../../store/userStore';
 
 // ─── Tile / grid constants ────────────────────────────────────────────────────
 const TILE_HW     = 40;    // iso tile half-width (px)
@@ -59,6 +60,47 @@ export class CityBuilderScene extends Phaser.Scene {
     this.demolishRow  = -1;
     this.buildingSprites = [];
     this.previewSprite = null;
+
+    // Restore saved city grid from progressStore
+    const saved = useProgressStore.getState().cityGrid as SavedBuilding[];
+    if (saved?.length) {
+      const allItems = useAdminStore.getState().getEffectiveCats()
+        .flatMap(c => c.items);
+      const itemByKey = new Map(allItems.map(i => [i.key, i]));
+      saved.forEach(({ key, col, row }) => {
+        const item = itemByKey.get(key);
+        if (!item) return;
+        if (!this.canPlaceDirect(col, row, item)) return;
+        for (let dr = 0; dr < item.d; dr++)
+          for (let dc = 0; dc < item.w; dc++)
+            this.grid[row + dr][col + dc] = { item, anchorCol: col, anchorRow: row };
+      });
+    }
+  }
+
+  private canPlaceDirect(col: number, row: number, item: BuildItem): boolean {
+    for (let dr = 0; dr < item.d; dr++)
+      for (let dc = 0; dc < item.w; dc++)
+        if (col + dc >= GRID || row + dr >= GRID ||
+            col + dc < 0   || row + dr < 0   ||
+            this.grid[row + dr]?.[col + dc] !== null)
+          return false;
+    return true;
+  }
+
+  private serializeGrid(): SavedBuilding[] {
+    const seen = new Set<string>();
+    const out: SavedBuilding[] = [];
+    for (let r = 0; r < GRID; r++)
+      for (let c = 0; c < GRID; c++) {
+        const cell = this.grid[r][c];
+        if (!cell) continue;
+        const k = `${cell.anchorCol},${cell.anchorRow}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push({ key: cell.item.key, col: cell.anchorCol, row: cell.anchorRow });
+      }
+    return out;
   }
 
   preload() {
@@ -111,6 +153,7 @@ export class CityBuilderScene extends Phaser.Scene {
       this.demolishRow  = -1;
       this.demolishMode = false;
       this.previewGfx.clear();
+      useProgressStore.getState().setCityGrid(this.serializeGrid());
       EventBus.emit('citybuilder-demolish-done');
     };
     const onDemolishCancel = () => {
@@ -303,6 +346,7 @@ export class CityBuilderScene extends Phaser.Scene {
     this.previewGfx.clear();
     this.previewCol = -1;
     this.previewRow = -1;
+    useProgressStore.getState().setCityGrid(this.serializeGrid());
     EventBus.emit('citybuilder-preview-ready', false);
     EventBus.emit('citybuilder-placed', { label: item.label });
   }

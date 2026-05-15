@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminStore, DEFAULT_MISSION_CONFIG } from '../store/adminStore';
 import type { AdminBuildCat } from '../store/adminStore';
 import type { BuildItem } from '../game/cityBuilderData';
+import { supabase } from '../lib/supabase';
 
-type Tab = 'missions' | 'builder';
+type Tab = 'missions' | 'builder' | 'analytics';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -192,6 +193,182 @@ function AddItemCard({ onAdd }: { onAdd: (item: BuildItem) => void }) {
   );
 }
 
+// ─── Analytics Tab ───────────────────────────────────────────────────────────
+
+interface CountryRow { pais_residencia: string | null; count: number }
+interface Stats {
+  total: number;
+  newInPeriod: number;
+  activeInPeriod: number;
+  countries: CountryRow[];
+}
+
+function today() { return new Date().toISOString().slice(0, 10); }
+function monthAgo() {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function AnalyticsTab() {
+  const [from, setFrom]   = useState(monthAgo());
+  const [to, setTo]       = useState(today());
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const fetchStats = async () => {
+    setLoading(true); setError('');
+    try {
+      const fromTs = `${from}T00:00:00.000Z`;
+      const toTs   = `${to}T23:59:59.999Z`;
+
+      // Total users
+      const { count: total, error: e1 } = await supabase
+        .from('perfiles_usuarios').select('*', { count: 'exact', head: true });
+      if (e1) throw e1;
+
+      // New users in period (by created_at)
+      const { count: newIn, error: e2 } = await supabase
+        .from('perfiles_usuarios').select('*', { count: 'exact', head: true })
+        .gte('created_at', fromTs).lte('created_at', toTs);
+      if (e2) throw e2;
+
+      // Active users in period (by last_active)
+      const { count: activeIn, error: e3 } = await supabase
+        .from('perfiles_usuarios').select('*', { count: 'exact', head: true })
+        .gte('last_active', fromTs).lte('last_active', toTs);
+      if (e3) throw e3;
+
+      // Countries breakdown (new users in period)
+      const { data: countryRows, error: e4 } = await supabase
+        .from('perfiles_usuarios')
+        .select('pais_residencia')
+        .gte('created_at', fromTs).lte('created_at', toTs);
+      if (e4) throw e4;
+
+      const countryMap: Record<string, number> = {};
+      (countryRows ?? []).forEach(r => {
+        const c = r.pais_residencia || 'Unknown';
+        countryMap[c] = (countryMap[c] || 0) + 1;
+      });
+      const countries: CountryRow[] = Object.entries(countryMap)
+        .map(([pais_residencia, count]) => ({ pais_residencia, count }))
+        .sort((a, b) => b.count - a.count);
+
+      setStats({ total: total ?? 0, newInPeriod: newIn ?? 0, activeInPeriod: activeIn ?? 0, countries });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : (e as { message?: string })?.message ?? String(e);
+      setError(`Error fetching data: ${msg}`);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchStats(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const maxCountry = stats ? Math.max(...stats.countries.map(c => c.count), 1) : 1;
+
+  return (
+    <div>
+      <h2 style={{ margin: '0 0 20px', fontSize: 16, color: '#1E293B' }}>Usage Analytics</h2>
+
+      {/* Date filter */}
+      <div style={{
+        background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+        padding: '16px 20px', marginBottom: 24,
+        display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end',
+      }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 11, color: '#94A3B8', fontWeight: 600, marginBottom: 4 }}>FROM</label>
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+            style={{ ...inputStyle, width: 150 }} />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 11, color: '#94A3B8', fontWeight: 600, marginBottom: 4 }}>TO</label>
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            style={{ ...inputStyle, width: 150 }} />
+        </div>
+        <button onClick={fetchStats} disabled={loading}
+          style={{ ...btnStyle, background: '#6366F1', color: '#fff', height: 34 }}>
+          {loading ? 'Loading…' : 'Apply'}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{
+          background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 10,
+          padding: '10px 14px', color: '#EF4444', fontSize: 13, marginBottom: 20,
+        }}>{error}</div>
+      )}
+
+      {stats && (
+        <>
+          {/* Stat cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 28 }}>
+            <StatCard label="Total Users" value={stats.total} icon="👥" color="#6366F1" note="all time" />
+            <StatCard label="New Users" value={stats.newInPeriod} icon="🆕" color="#10B981"
+              note={`${from} → ${to}`} />
+            <StatCard label="Active Users" value={stats.activeInPeriod} icon="🎮" color="#F59E0B"
+              note={`last_active in period`} />
+          </div>
+
+          {/* Countries */}
+          <div style={{
+            background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: '20px',
+          }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 14, color: '#1E293B' }}>
+              🌍 Countries — new users in selected period
+              <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 400, marginLeft: 8 }}>
+                ({stats.countries.length} countries, {stats.newInPeriod} users)
+              </span>
+            </h3>
+            {stats.countries.length === 0 ? (
+              <p style={{ color: '#94A3B8', fontSize: 13 }}>No data for this period.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {stats.countries.map(({ pais_residencia, count }) => {
+                  const pct = Math.round((count / maxCountry) * 100);
+                  return (
+                    <div key={pais_residencia ?? 'unknown'}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600, color: '#334155' }}>{pais_residencia || 'Unknown'}</span>
+                        <span style={{ color: '#64748B' }}>{count} user{count !== 1 ? 's' : ''}</span>
+                      </div>
+                      <div style={{ background: '#F1F5F9', borderRadius: 99, height: 8, overflow: 'hidden' }}>
+                        <div style={{
+                          width: `${pct}%`, height: '100%', borderRadius: 99,
+                          background: 'linear-gradient(90deg,#6366F1,#8B5CF6)',
+                          transition: 'width 0.4s ease',
+                        }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ label, value, icon, color, note }: {
+  label: string; value: number; icon: string; color: string; note: string;
+}) {
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+      padding: '16px', textAlign: 'center',
+    }}>
+      <div style={{ fontSize: 28, marginBottom: 6 }}>{icon}</div>
+      <div style={{ fontSize: 32, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginTop: 4 }}>{label}</div>
+      <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>{note}</div>
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function AdminPanel() {
@@ -287,19 +464,18 @@ export default function AdminPanel() {
         display: 'flex',
         padding: '0 20px',
       }}>
-        {(['missions', 'builder'] as Tab[]).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              padding: '14px 20px',
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 14, fontWeight: tab === t ? 700 : 400,
-              color: tab === t ? '#6366F1' : '#64748B',
-              borderBottom: tab === t ? '2px solid #6366F1' : '2px solid transparent',
-              textTransform: 'capitalize',
-            }}
-          >{t === 'missions' ? '🗺️ Missions' : '🏗️ City Builder'}</button>
+        {([
+          ['missions', '🗺️ Missions'],
+          ['builder',  '🏗️ City Builder'],
+          ['analytics','📊 Analytics'],
+        ] as [Tab, string][]).map(([t, label]) => (
+          <button key={t} onClick={() => setTab(t)} style={{
+            padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 14, fontWeight: tab === t ? 700 : 400,
+            color: tab === t ? '#6366F1' : '#64748B',
+            borderBottom: tab === t ? '2px solid #6366F1' : '2px solid transparent',
+            whiteSpace: 'nowrap',
+          }}>{label}</button>
         ))}
       </div>
 
@@ -398,6 +574,9 @@ export default function AdminPanel() {
             </div>
           </div>
         )}
+
+        {/* ── ANALYTICS TAB ────────────────────────────────────────────────── */}
+        {tab === 'analytics' && <AnalyticsTab />}
 
         {/* ── DANGER ZONE ──────────────────────────────────────────────────── */}
         <div style={{

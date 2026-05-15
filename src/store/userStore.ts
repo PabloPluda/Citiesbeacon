@@ -104,6 +104,9 @@ export const useUserStore = create<UserState>()((set) => ({
         .select('id, username, pais_residencia, avatar_url, monedas')
         .eq('id', data.user.id)
         .single();
+      await supabase.from('perfiles_usuarios')
+        .update({ last_active: new Date().toISOString() })
+        .eq('id', data.user.id);
       set({ user: data.user, profile: profile ?? null, loading: false });
       await loadProgressFromSupabase(data.user.id);
     } catch (e) {

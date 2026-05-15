@@ -7,58 +7,38 @@ import { useAdminStore, DEFAULT_MISSION_CONFIG } from '../store/adminStore';
 const MISSION_IDS = DEFAULT_MISSION_CONFIG.map(m => m.id);
 
 export default function MissionMap() {
-  const navigate   = useNavigate();
+  const navigate            = useNavigate();
   const { getHighestLevel } = useProgressStore();
   const getEffectiveMission = useAdminStore(s => s.getEffectiveMission);
 
-  const MISSIONS = MISSION_IDS.map(id => ({
-    id,
-    ...getEffectiveMission(id),
-  }));
+  const MISSIONS = MISSION_IDS.map(id => ({ id, ...getEffectiveMission(id) }));
 
   return (
     <div style={{
       height: '100%',
       display: 'flex',
-      flexDirection: 'column',
+      alignItems: 'center',
       overflow: 'hidden',
       background: 'url(/Background_map.jpg) center/cover no-repeat #1a2a4a',
     }}>
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header style={{
-        flexShrink: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '14px 20px',
-        background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(10px)',
-      }}>
-        <img
-          src="/Logo_CHA_header.png?v=2"
-          alt="CityHero Academy"
-          style={{ height: 44, display: 'block' }}
-        />
-      </header>
-
-      {/* ── Scroll strip ───────────────────────────────────────────────────── */}
-      <div className="hide-scrollbar" style={{
-        flex: 1,
-        display: 'flex',
-        alignItems: 'center',
-        overflowX: 'auto',
-        overflowY: 'hidden',
-        scrollSnapType: 'x mandatory',
-        scrollPaddingLeft: 24,
-        WebkitOverflowScrolling: 'touch' as never,
-        paddingLeft: 24,
-        paddingTop: 0,
-        paddingBottom: 0,
-        gap: 16,
-        scrollbarWidth: 'none' as never,
-      }}>
-
+      {/* ── Horizontal scroll strip ────────────────────────────────────────── */}
+      <div
+        className="hide-scrollbar"
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          scrollSnapType: 'x mandatory',
+          scrollPaddingLeft: 24,
+          paddingLeft: 24,
+          gap: 16,
+          scrollbarWidth: 'none' as never,
+        }}
+      >
         {MISSIONS.map((mission) => {
           const highestLevel = getHighestLevel(mission.id);
           const nextLevel    = Math.min(20, Math.max(1, highestLevel + 1));
@@ -67,8 +47,6 @@ export default function MissionMap() {
             <MissionCard
               key={mission.id}
               id={mission.id}
-              title={mission.title}
-              nextLevel={nextLevel}
               onPlay={() => navigate(`/game/${mission.id}`, { state: { startLevel: nextLevel } })}
             />
           );
@@ -77,31 +55,26 @@ export default function MissionMap() {
         {/* trailing spacer so last card can fully snap */}
         <div style={{ flexShrink: 0, width: 24 }} />
       </div>
-
     </div>
   );
 }
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
-function MissionCard({
-  id, title, onPlay,
-}: {
-  id: number;
-  title: string;
-  nextLevel: number;
-  onPlay: () => void;
-}) {
+function MissionCard({ id, onPlay }: { id: number; onPlay: () => void }) {
+  // Width = 100vw - 80px (same as before), height = width * 3/2  (2:3 ratio)
+  const w = 'calc(100vw - 80px)';
+  const h = 'calc((100vw - 80px) * 1.5)';
+
   return (
     <motion.div
       whileTap={{ scale: 0.97 }}
       style={{
         flexShrink: 0,
         scrollSnapAlign: 'start',
-        // Square: same as width. We use a CSS var trick via calc.
-        width:  'calc(100vw - 80px)',
-        height: 'calc(100vw - 80px)',
-        maxHeight: 'calc(100vh - 160px)',
+        width: w,
+        height: h,
+        maxHeight: 'calc(100vh - 100px)',
         borderRadius: 28,
         overflow: 'hidden',
         position: 'relative',
@@ -112,43 +85,16 @@ function MissionCard({
         boxShadow: '0 16px 48px rgba(0,0,0,0.55)',
       }}
     >
-      {/* Bottom gradient overlay */}
+      {/* Subtle gradient just at the very bottom for the button */}
       <div style={{
         position: 'absolute',
-        inset: 0,
-        background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.15) 55%, transparent 100%)',
+        bottom: 0, left: 0, right: 0,
+        height: 100,
+        background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent)',
         pointerEvents: 'none',
       }} />
 
-      {/* Mission label + title */}
-      <div style={{
-        position: 'absolute',
-        bottom: 70,
-        left: 22,
-        right: 22,
-      }}>
-        <div style={{
-          fontFamily: 'Fredoka One, cursive',
-          fontSize: '0.72rem',
-          color: 'rgba(255,255,255,0.65)',
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          marginBottom: 6,
-        }}>
-          Mission {id}
-        </div>
-        <div style={{
-          fontFamily: 'Fredoka One, cursive',
-          fontSize: 'clamp(1.3rem,5vw,1.7rem)',
-          color: '#fff',
-          lineHeight: 1.2,
-          textShadow: '0 2px 12px rgba(0,0,0,0.5)',
-        }}>
-          {title}
-        </div>
-      </div>
-
-      {/* Play button */}
+      {/* Play button — bottom right */}
       <motion.button
         whileTap={{ scale: 0.93 }}
         onClick={onPlay}

@@ -19,7 +19,7 @@ export default function MissionMap() {
       display: 'flex',
       alignItems: 'center',
       overflow: 'hidden',
-      background: 'url(/Background_map.png) center/cover no-repeat #1a2a4a',
+      background: 'url(/background_map.jpg) center/cover no-repeat #1a2a4a',
     }}>
 
       {/* ── Horizontal scroll strip ────────────────────────────────────────── */}

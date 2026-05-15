@@ -497,11 +497,13 @@ export class CityBuilderScene extends Phaser.Scene {
 
     if (this.selectedItem) {
       const { w, d } = this.selectedItem;
-      const canP = this.canPlace(col, row, this.selectedItem);
+      const ac = col - (w - 1);
+      const ar = row - (d - 1);
+      const canP = this.canPlace(ac, ar, this.selectedItem);
       for (let dr = 0; dr < d; dr++)
         for (let dc = 0; dc < w; dc++) {
-          if (!this.inBounds(col + dc, row + dr)) continue;
-          const { x, y } = this.isoToScreen(col + dc, row + dr);
+          if (!this.inBounds(ac + dc, ar + dr)) continue;
+          const { x, y } = this.isoToScreen(ac + dc, ar + dr);
           this.hoverGfx.lineStyle(2, canP ? 0xFFFFFF : 0xFF6666, 0.85);
           this.hoverGfx.strokePoints([{ x, y: y - TILE_HH }, { x: x + TILE_HW, y }, { x, y: y + TILE_HH }, { x: x - TILE_HW, y }], true);
         }

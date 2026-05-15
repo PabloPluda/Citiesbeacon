@@ -167,9 +167,8 @@ export class CityBuilderScene extends Phaser.Scene {
           this.grid[anchorRow + dr][anchorCol + dc] = null;
       if (wasRoad) {
         this.updateRoadConnectors(anchorCol, anchorRow);
-      } else {
-        this.redrawBuildings();
       }
+      this.redrawBuildings();
       this.demolishCol  = -1;
       this.demolishRow  = -1;
       this.demolishMode = false;
@@ -359,9 +358,9 @@ export class CityBuilderScene extends Phaser.Scene {
 
   private isRoadItem(item: BuildItem): boolean {
     if (Object.values(ROAD_CONN).some(c => c.key === item.key)) return true;
-    return useAdminStore.getState().getEffectiveCats()
-      .find(c => c.label === 'Road')?.items
-      .some(i => i.key === item.key) ?? false;
+    const roadCat = useAdminStore.getState().getEffectiveCats().find(c => c.label === 'Road');
+    if (!roadCat?.items.some(i => i.key === item.key)) return false;
+    return item.label.toLowerCase().startsWith('street');
   }
 
   private roadDirsAt(col: number, row: number): string[] {
@@ -407,11 +406,10 @@ export class CityBuilderScene extends Phaser.Scene {
       [col,     row + 1],
       [col + 1, row    ],
     ];
-    let changed = false;
     for (const [c, r] of candidates) {
-      if (this.inBounds(c, r) && this.applyConnector(c, r)) changed = true;
+      if (this.inBounds(c, r)) this.applyConnector(c, r);
     }
-    if (changed) this.redrawBuildings();
+    // Caller is responsible for calling redrawBuildings() afterwards
   }
 
   private confirmPlacement() {
@@ -428,9 +426,8 @@ export class CityBuilderScene extends Phaser.Scene {
         this.grid[this.previewRow + dr][this.previewCol + dc] = { item, anchorCol: this.previewCol, anchorRow: this.previewRow };
     if (this.isRoadItem(item)) {
       this.updateRoadConnectors(this.previewCol, this.previewRow);
-    } else {
-      this.redrawBuildings();
     }
+    this.redrawBuildings();
     if (this.previewSprite) { this.previewSprite.destroy(); this.previewSprite = null; }
     this.previewGfx.clear();
     this.previewCol = -1;

@@ -107,13 +107,6 @@ export default function Landing() {
           <img src="/Logo_CHA_header.png?v=2" alt="CityHero Academy" style={{ height: 50, display: 'block' }} />
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <a
-            href={SUBSTACK_BASE}
-            target="_blank" rel="noopener noreferrer"
-            style={{ fontFamily: FF, fontSize: '0.85rem', color: '#475569', textDecoration: 'none' }}
-          >
-            Blog
-          </a>
           <button
             onClick={goPlay}
             style={{
@@ -123,7 +116,7 @@ export default function Landing() {
               cursor: 'pointer', boxShadow: '0 4px 14px rgba(22,163,74,0.35)',
             }}
           >
-            🎮 Play Free
+            Play FREE!
           </button>
         </div>
       </nav>

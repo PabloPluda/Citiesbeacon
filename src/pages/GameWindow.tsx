@@ -1290,25 +1290,27 @@ function M1TutorialOverlay({
     x: pullDx + throwDx * s,
     y: pullDy + throwDy * s - peakAbove * 4 * s * (1 - s),
   });
-  // 6 arc points at s = 1/6, 2/6, … 6/6
-  const arcPts = [1, 2, 3, 4, 5, 6].map(i => arc(i / 6));
+  // 5 arc points (s = 1/6 … 5/6) + landing point (s=1) + sink-in point (just inside bin)
+  const arcPts = [1, 2, 3, 4, 5].map(i => arc(i / 6));
+  const land   = arc(1);  // exactly at bin
+  const sink   = { x: land.x, y: land.y + 10 }; // 10px further in — natural fall
 
-  // Full throw keyframe arrays (9 points: idle → pullback → hold → 6 arc pts)
-  const KFX  = [0, pullDx, pullDx, ...arcPts.map(p => p.x)];
-  const KFY  = [0, pullDy, pullDy, ...arcPts.map(p => p.y)];
-  const KFR  = [0, -18, -18, -8, 20, 55, 95, 135, 165]; // slight rotation
-  const KFO  = [1,  1,    1,  1,  1,  1,  1,  1,  0.85];
-  // times: 0→pullback 18%, hold 28%, then arc 28-100%
-  const KFT  = [0, 0.18, 0.28, 0.417, 0.533, 0.65, 0.767, 0.883, 1.0];
-  // ease: easeOut for pullback snap, linear for physics-encoded arc
-  const KFE  = ['easeOut', 'linear', 'linear', 'linear', 'linear', 'linear', 'linear', 'linear'];
+  // 10-point keyframe: idle → pullback → hold → 5 arc pts → landing → sink+fade
+  const KFX  = [0, pullDx, pullDx, ...arcPts.map(p => p.x), land.x, sink.x];
+  const KFY  = [0, pullDy, pullDy, ...arcPts.map(p => p.y), land.y, sink.y];
+  const KFR  = [0, -18, -18, -8, 22, 60, 105, 148, 165, 170];
+  const KFO  = [1,   1,   1,  1,  1,  1,   1,   1, 0.9,   0]; // fades to 0 at last step
+  // times: pullback 18%, hold 28%, arc 28-90%, landing 90-95%, sink 95-100%
+  const KFT  = [0, 0.18, 0.28, 0.41, 0.53, 0.65, 0.77, 0.88, 0.94, 1.0];
+  // easing: snap out → physics (linear, baked into y values) → easeIn for gravity landing
+  const KFE  = ['easeOut', 'linear', 'linear', 'linear', 'linear', 'linear', 'linear', 'easeIn', 'easeIn'];
 
-  // Finger follows same path but stays at pullback after throw starts, then fades
-  const FKX  = [0, pullDx, pullDx, ...Array(6).fill(pullDx) as number[]];
-  const FKY  = [0, pullDy, pullDy, ...Array(6).fill(pullDy) as number[]];
-  const FKO  = [1,  1,     1,      0, 0, 0, 0, 0, 0]; // fades out the moment throw starts
+  // Finger: follows to pullback, snaps to 0 opacity when throw starts
+  const FKX  = [0, pullDx, pullDx, ...Array(7).fill(pullDx) as number[]];
+  const FKY  = [0, pullDy, pullDy, ...Array(7).fill(pullDy) as number[]];
+  const FKO  = [1,   1,     1,     0, 0, 0, 0, 0, 0, 0];
 
-  // 3 phases: 0=idle (1.2s), 1=throw (2.5s), 2=in-bin+pause (1.2s)
+  // 3 phases: 0=idle (1.2s), 1=throw (2.5s — ends already faded), 2=pause (1.0s)
   const [gPhase, setGPhase] = useState(0);
   useEffect(() => {
     let mounted = true;
@@ -1317,7 +1319,7 @@ function M1TutorialOverlay({
       setGPhase(0);
       setTimeout(() => { if (!mounted) return; setGPhase(1);
       setTimeout(() => { if (!mounted) return; setGPhase(2);
-      setTimeout(() => { if (mounted) cycle(); }, 1200);
+      setTimeout(() => { if (mounted) cycle(); }, 1000);
       }, 2500); }, 1200);
     };
     const t = setTimeout(cycle, 600);
@@ -1388,10 +1390,10 @@ function M1TutorialOverlay({
           gPhase === 1
             ? { x: KFX, y: KFY, rotate: KFR, opacity: KFO }
             : gPhase === 2
-            ? { x: dx, y: dy + 20, rotate: 170, opacity: 0 }
+            ? { x: sink.x, y: sink.y, rotate: 170, opacity: 0 }  // already at 0 — no visible jump
             : { x: 0, y: 0, rotate: 0, opacity: 1 }
         }
-        transition={gPhase === 1 ? throwTransition : gPhase === 2 ? { duration: 0.14 } : spring}
+        transition={gPhase === 1 ? throwTransition : gPhase === 2 ? { duration: 0 } : spring}
         style={{
           position: 'absolute',
           left: trashX - 22, top: trashY - 22,
@@ -1420,34 +1422,36 @@ function M1TutorialOverlay({
         }}
       >👆</motion.div>
 
-      {/* ── Warning — vertically centered on screen ───────────── */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.88 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.44, type: 'spring', stiffness: 220, damping: 18 }}
-        style={{
-          position: 'absolute',
-          top: '52%', left: '50%',
-          transform: 'translate(-50%, -50%)',
-          textAlign: 'center',
-          whiteSpace: 'nowrap',
-          pointerEvents: 'none',
-        }}
-      >
-        <div style={{
-          fontFamily: 'Fredoka One, cursive', fontSize: '1.18rem',
-          color: '#FDE68A',
-          background: 'rgba(0,0,0,0.68)',
-          border: '1.5px solid rgba(253,230,138,0.32)',
-          borderRadius: 20,
-          padding: '12px 26px',
-          boxShadow: '0 4px 18px rgba(0,0,0,0.5)',
-          letterSpacing: '0.01em',
-          lineHeight: 1.4,
-        }}>
+      {/* ── Warning — vertically & horizontally centered ─────── */}
+      {/* Plain div handles positioning so FM transform doesn't conflict */}
+      <div style={{
+        position: 'absolute',
+        top: '52%', left: 0, right: 0,
+        transform: 'translateY(-50%)',
+        display: 'flex', justifyContent: 'center',
+        padding: '0 20px',
+        pointerEvents: 'none',
+      }}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.88 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.44, type: 'spring', stiffness: 220, damping: 18 }}
+          style={{
+            fontFamily: 'Fredoka One, cursive', fontSize: '1.18rem',
+            color: '#FDE68A',
+            background: 'rgba(0,0,0,0.68)',
+            border: '1.5px solid rgba(253,230,138,0.32)',
+            borderRadius: 20,
+            padding: '12px 26px',
+            boxShadow: '0 4px 18px rgba(0,0,0,0.5)',
+            letterSpacing: '0.01em',
+            lineHeight: 1.4,
+            textAlign: 'center',
+          }}
+        >
           ⚠️ Keep the floor with less than 10 items!
-        </div>
-      </motion.div>
+        </motion.div>
+      </div>
 
       {/* ── Let's play button ──────────────────────────────────── */}
       <motion.div

@@ -767,17 +767,17 @@ export default function GameWindow() {
           <ChevronLeft size={24} color="var(--primary)" />
         </button>
 
-        {/* Timer — hidden for CrossingScene (2), LightsOutScene (3), CityBuilder (7) */}
+        {/* Timer — hidden for ThrowToBin (1), CrossingScene (2), LightsOutScene (3), CityBuilder (7) */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          {mId !== 2 && mId !== 3 && mId !== 7 && <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />}
+          {mId !== 1 && mId !== 2 && mId !== 3 && mId !== 7 && <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />}
           {mId === 7 && (
             <img src="/Logo_CHA_header.png?v=2" alt="CityHero Academy"
               style={{ height: 34, display: 'block', filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.45))' }} />
           )}
         </div>
 
-        {/* Scored — hidden for LightsOutScene (3) and CityBuilder (7) */}
-        {mId !== 3 && mId !== 7 && (
+        {/* Scored — hidden for ThrowToBin (1), LightsOutScene (3) and CityBuilder (7) */}
+        {mId !== 1 && mId !== 3 && mId !== 7 && (
           <div style={{
             background: 'rgba(255,255,255,0.92)', borderRadius: 20,
             padding: '6px 14px', textAlign: 'center',

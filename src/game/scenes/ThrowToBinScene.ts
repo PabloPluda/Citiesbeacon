@@ -2,16 +2,15 @@ import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
 
-const MISSION_ID = 1;
-
+const MISSION_ID     = 1;
 const TRASH_EMOJIS   = ['🥤', '🍌', '🍾', '🥫', '📦', '🗞️'];
 const MAX_PULL       = 140;
 const MAX_SPEED      = 1500;
 const GRAVITY        = 1000;
 const MAX_FLOOR_ITEMS = 10;
 const FLOOR_Y_RATIO  = 0.78;
-const SPAWN_BASE     = 4000;
-const SPAWN_MIN      = 1500;
+const SPAWN_BASE     = 5000;   // ms — 5 seconds initially
+const SPAWN_MIN      = 1500;   // ms
 
 interface ThrownItem {
   container: Phaser.GameObjects.Container;
@@ -43,10 +42,15 @@ export class ThrowToBinScene extends Phaser.Scene {
   private dragOriginX  = 0;
   private dragOriginY  = 0;
 
-  private slingshotGfx!: Phaser.GameObjects.Graphics;
-  private hudScored!:    Phaser.GameObjects.Text;
-  private hudBest!:      Phaser.GameObjects.Text;
-  private hudCoins!:     Phaser.GameObjects.Text;
+  private slingshotGfx!:      Phaser.GameObjects.Graphics;
+  private spawnBarGfx!:       Phaser.GameObjects.Graphics;
+  private floorIndicatorGfx!: Phaser.GameObjects.Graphics;
+  private floorWarningText!:  Phaser.GameObjects.Text;
+  private hudScored!:         Phaser.GameObjects.Text;
+  private hudBest!:           Phaser.GameObjects.Text;
+  private hudCoins!:          Phaser.GameObjects.Text;
+
+  private spawnTimer = 0;
 
   constructor() { super('ThrowToBinScene'); }
 
@@ -60,6 +64,7 @@ export class ThrowToBinScene extends Phaser.Scene {
     this.fallingItems  = [];
     this.binContainer  = null;
     this.floorY        = 0;
+    this.spawnTimer    = 0;
   }
 
   preload() {
@@ -68,7 +73,6 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   create() {
     EventBus.emit('current-scene-ready', this);
-    // Hide React HUD elements left over from other scenes
     EventBus.emit('game-scored-update', '');
 
     const handleRestart = () => { setTimeout(() => this.scene.restart(), 0); };
@@ -79,7 +83,6 @@ export class ThrowToBinScene extends Phaser.Scene {
     const H = this.cameras.main.height;
     this.floorY = H * FLOOR_Y_RATIO;
 
-    // Background
     if (this.textures.exists('back_trash')) {
       const bg = this.add.image(W / 2, H / 2, 'back_trash');
       bg.setScale(Math.max(W / bg.width, H / bg.height)).setDepth(-10);
@@ -89,39 +92,43 @@ export class ThrowToBinScene extends Phaser.Scene {
     this.slingshotGfx = this.add.graphics().setDepth(20);
     this.buildBin(W);
     this.buildHud(W);
+    this.buildSpawnBar();
+    this.buildFloorIndicator();
 
     this.input.on('pointerdown', this.onDown, this);
     this.input.on('pointermove', this.onMove, this);
     this.input.on('pointerup',   this.onUp,   this);
 
-    // Spawn initial 3 items
+    // Spawn 3 initial items from sides
     for (let i = 0; i < 3; i++) {
-      this.spawnFallingTrash(
-        Phaser.Math.Between(70, W - 70),
-        Phaser.Math.Between(Math.floor(H * 0.15), Math.floor(H * 0.38)),
-      );
+      this.spawnFromSide();
     }
-
-    this.scheduleNextSpawn();
   }
 
-  // ─── HUD ─────────────────────────────────────────────────────────────────────
+  // ─── HUD (top-right strip, avoids back button on top-left) ───────────────────
 
   private buildHud(W: number) {
-    const hudY = this.binRimY + this.binBodyH + 28; // below bin
+    const BACK_END = 64;  // back button ends around x=58, give 6px gap
+    const hudW     = W - BACK_END;
+    const hudCX    = BACK_END + hudW / 2;
+    const hudY     = 32;
 
-    this.add.rectangle(W / 2, hudY, W, 44, 0x000000, 0.40)
+    this.add.rectangle(hudCX, hudY, hudW, 56, 0x000000, 0.40)
       .setDepth(48).setScrollFactor(0);
 
     const style: Phaser.Types.GameObjects.Text.TextStyle = {
       fontFamily: 'Fredoka One, cursive',
-      fontSize: '21px', color: '#ffffff',
+      fontSize: '18px', color: '#ffffff',
       stroke: '#000000', strokeThickness: 3,
     };
 
-    this.hudScored = this.add.text(W * 0.18, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
-    this.hudBest   = this.add.text(W * 0.50, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
-    this.hudCoins  = this.add.text(W * 0.82, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
+    const col1 = BACK_END + hudW * 0.20;
+    const col2 = BACK_END + hudW * 0.55;
+    const col3 = BACK_END + hudW * 0.88;
+
+    this.hudScored = this.add.text(col1, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
+    this.hudBest   = this.add.text(col2, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
+    this.hudCoins  = this.add.text(col3, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
     this.updateHud();
   }
 
@@ -133,52 +140,124 @@ export class ThrowToBinScene extends Phaser.Scene {
     if (this.hudCoins?.active)  this.hudCoins.setText(`🪙 ${state.cityCoins}`);
   }
 
-  // ─── Spawn ───────────────────────────────────────────────────────────────────
+  // ─── Left vertical fill bar (5-second countdown to next spawn) ───────────────
+
+  private buildSpawnBar() {
+    this.spawnBarGfx = this.add.graphics().setDepth(49).setScrollFactor(0);
+  }
+
+  private drawSpawnBar(ratio: number) {
+    const H = this.cameras.main.height;
+    const g = this.spawnBarGfx;
+    g.clear();
+
+    const barX   = 8;
+    const barW   = 14;
+    const barTop = 68;                          // just below HUD
+    const barBot = H * FLOOR_Y_RATIO - 24;
+    const barH   = barBot - barTop;
+
+    // Background track
+    g.fillStyle(0x000000, 0.35);
+    g.fillRoundedRect(barX, barTop, barW, barH, 7);
+
+    // Fill from bottom upward
+    const fillH = ratio * barH;
+    if (fillH > 1) {
+      const col = ratio < 0.5 ? 0x22C55E : ratio < 0.8 ? 0xFFBB00 : 0xFF4444;
+      g.fillStyle(col, 0.9);
+      g.fillRoundedRect(barX, barTop + barH - fillH, barW, fillH, 7);
+    }
+
+    // Border
+    g.lineStyle(1.5, 0xFFFFFF, 0.4);
+    g.strokeRoundedRect(barX, barTop, barW, barH, 7);
+  }
+
+  // ─── Floor indicator (10 circles at bottom) ──────────────────────────────────
+
+  private buildFloorIndicator() {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+
+    this.floorIndicatorGfx = this.add.graphics().setDepth(49).setScrollFactor(0);
+
+    this.floorWarningText = this.add.text(W / 2, H * FLOOR_Y_RATIO + 52, '', {
+      fontFamily: 'Fredoka One, cursive',
+      fontSize: '16px',
+      color: '#FF5555',
+      stroke: '#000',
+      strokeThickness: 4,
+      align: 'center',
+    }).setOrigin(0.5).setDepth(50).setScrollFactor(0).setAlpha(0);
+  }
+
+  private drawFloorIndicator(count: number) {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const g = this.floorIndicatorGfx;
+    g.clear();
+
+    const R      = 9;
+    const gap    = 6;
+    const step   = R * 2 + gap;
+    const totalW = step * MAX_FLOOR_ITEMS - gap;
+    const startX = (W - totalW) / 2 + R;
+    const circY  = H * FLOOR_Y_RATIO + 28;
+
+    for (let i = 0; i < MAX_FLOOR_ITEMS; i++) {
+      const cx     = startX + i * step;
+      const filled = i < count;
+      let fillCol: number;
+      if (!filled)   fillCol = 0x333333;
+      else if (i < 5) fillCol = 0x22C55E;
+      else if (i < 7) fillCol = 0xFFBB00;
+      else if (i < 9) fillCol = 0xFF6B00;
+      else             fillCol = 0xFF2222;
+
+      g.fillStyle(fillCol, filled ? 0.95 : 0.30);
+      g.fillCircle(cx, circY, R);
+      g.lineStyle(1.5, filled ? 0xFFFFFF : 0x555555, filled ? 0.65 : 0.25);
+      g.strokeCircle(cx, circY, R);
+    }
+
+    if (this.floorWarningText?.active) {
+      if (count >= 9) {
+        this.floorWarningText.setText('⚠️ Danger! Too much trash!').setAlpha(1);
+      } else if (count >= 7) {
+        this.floorWarningText.setText('Hurry! Street is getting too dirty! 🧹').setAlpha(1);
+      } else {
+        this.floorWarningText.setAlpha(0);
+      }
+    }
+  }
+
+  // ─── Spawn from side ─────────────────────────────────────────────────────────
 
   private get spawnInterval(): number {
     return Math.max(SPAWN_MIN, SPAWN_BASE - Math.floor(this.totalScored / 5) * 200);
   }
 
-  private scheduleNextSpawn() {
-    this.time.delayedCall(this.spawnInterval, () => {
-      if (this.gameOver) return;
-      this.spawnWithHand();
-      this.scheduleNextSpawn();
-    });
-  }
-
-  private spawnWithHand() {
+  private spawnFromSide() {
+    if (this.gameOver) return;
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
-    const hx = Phaser.Math.Between(70, W - 70);
-    const hy = Phaser.Math.Between(Math.floor(H * 0.22), Math.floor(H * 0.42));
 
-    const hand = this.add.text(hx, hy, '🤚', { fontSize: '52px' })
-      .setOrigin(0.5).setAlpha(0).setDepth(30);
+    const fromLeft = Phaser.Math.Between(0, 1) === 0;
+    const startX   = fromLeft ? -30 : W + 30;
+    const startY   = H * Phaser.Math.FloatBetween(0.18, 0.48);
+    const vx       = fromLeft
+      ? Phaser.Math.Between(280, 520)
+      : -Phaser.Math.Between(280, 520);
+    const vy       = Phaser.Math.Between(-60, 100);
 
-    this.tweens.add({
-      targets: hand, alpha: 1, duration: 200, ease: 'Sine.easeOut',
-      onComplete: () => {
-        this.time.delayedCall(350, () => {
-          if (!this.gameOver) this.spawnFallingTrash(hx, hy + 20);
-          this.tweens.add({ targets: hand, alpha: 0, duration: 280, onComplete: () => hand.destroy() });
-        });
-      },
-    });
-  }
-
-  private spawnFallingTrash(fromX: number, fromY: number) {
-    if (this.gameOver) return;
     const emoji   = Phaser.Utils.Array.GetRandom(TRASH_EMOJIS) as string;
     const emojiGO = this.add.text(0, 0, emoji, { fontSize: '54px' }).setOrigin(0.5);
     const shadow  = this.add.ellipse(0, 32, 54, 14, 0x000000, 0.2);
-    const c = this.add.container(fromX, fromY, [shadow, emojiGO]);
+    const c       = this.add.container(startX, startY, [shadow, emojiGO]);
     c.setSize(64, 64).setDepth(8);
 
-    const vx     = Phaser.Math.Between(-180, 180);
-    const vy     = Phaser.Math.FloatBetween(80, 220);
-    const rotDir = vx >= 0 ? 1 : -1;
-
+    const rotDir = fromLeft ? 1 : -1;
     this.fallingItems.push({ container: c, vx, vy, rotDir, bounces: 0 });
   }
 
@@ -198,10 +277,6 @@ export class ThrowToBinScene extends Phaser.Scene {
     });
 
     this.trashItems.push(c);
-
-    if (this.trashItems.filter(t => t.active).length > MAX_FLOOR_ITEMS) {
-      this.triggerGameOver();
-    }
   }
 
   // ─── Game over ───────────────────────────────────────────────────────────────
@@ -218,7 +293,6 @@ export class ThrowToBinScene extends Phaser.Scene {
       });
     }
 
-    // Flash red
     const W = this.cameras.main.width, H = this.cameras.main.height;
     const flash = this.add.rectangle(W / 2, H / 2, W, H, 0xFF0000, 0.35).setDepth(90);
     this.tweens.add({ targets: flash, alpha: 0, duration: 600, onComplete: () => flash.destroy() });
@@ -431,8 +505,21 @@ export class ThrowToBinScene extends Phaser.Scene {
     if (this.binContainer) this.binCX = this.binContainer.x;
     if (this.gameOver) return;
 
-    const dt = delta / 1000;
     const W  = this.cameras.main.width;
+    const dt = delta / 1000;
+
+    // Spawn bar / timer
+    this.spawnTimer += delta;
+    const spawnRatio = Math.min(1, this.spawnTimer / this.spawnInterval);
+    this.drawSpawnBar(spawnRatio);
+    if (this.spawnTimer >= this.spawnInterval) {
+      this.spawnTimer = 0;
+      this.spawnFromSide();
+    }
+
+    // Floor indicator (updated every frame, cheap redraw)
+    const floorCount = this.trashItems.filter(t => t.active).length;
+    this.drawFloorIndicator(floorCount);
 
     // Thrown items (player-launched)
     for (let i = this.thrownItems.length - 1; i >= 0; i--) {
@@ -460,14 +547,14 @@ export class ThrowToBinScene extends Phaser.Scene {
         }
       }
 
-      // Missed bin → convert to bouncing/falling item when it reaches the floor
+      // Missed bin → convert to bouncing item at floor
       if (ti.vy > 0 && ti.container.y >= this.floorY) {
         this.fallingItems.push({ container: ti.container, vx: ti.vx * 0.5, vy: ti.vy, rotDir: ti.rotDir, bounces: 0 });
         this.thrownItems.splice(i, 1); continue;
       }
     }
 
-    // Falling items (newly spawned + missed throws)
+    // Falling / bouncing items
     for (let i = this.fallingItems.length - 1; i >= 0; i--) {
       const fi = this.fallingItems[i];
 
@@ -493,6 +580,11 @@ export class ThrowToBinScene extends Phaser.Scene {
           this.fallingItems.splice(i, 1); continue;
         }
       }
+    }
+
+    // Check game over (in case items piled up)
+    if (floorCount >= MAX_FLOOR_ITEMS) {
+      this.triggerGameOver();
     }
   }
 }

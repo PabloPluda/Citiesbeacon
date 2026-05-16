@@ -51,7 +51,8 @@ export class ThrowToBinScene extends Phaser.Scene {
   private hudCoins!:          Phaser.GameObjects.Text;
   // static label references not needed — created in buildHud, no updates required
 
-  private spawnTimer = 0;
+  private spawnTimer    = 0;
+  private sessionCoins  = 0;
 
   constructor() { super('ThrowToBinScene'); }
 
@@ -66,6 +67,7 @@ export class ThrowToBinScene extends Phaser.Scene {
     this.binContainer  = null;
     this.floorY        = 0;
     this.spawnTimer    = 0;
+    this.sessionCoins  = 0;
   }
 
   preload() {
@@ -395,14 +397,25 @@ export class ThrowToBinScene extends Phaser.Scene {
     if (this.gameOver) return;
     this.gameOver = true;
 
-    // Use the store action so scheduleSync() runs and the new record reaches Supabase
+    const state      = useProgressStore.getState();
+    const prevBest   = state.highScores[MISSION_ID] ?? 0;
+    const wasNewRecord = this.totalScored > prevBest;
+    const totalCoins = state.cityCoins; // already includes sessionCoins added during play
+
+    // Persist new record via action so scheduleSync() fires → Supabase
     useProgressStore.getState().updateHighScore(MISSION_ID, this.totalScored);
 
     const W = this.cameras.main.width, H = this.cameras.main.height;
     const flash = this.add.rectangle(W / 2, H / 2, W, H, 0xFF0000, 0.35).setDepth(90);
     this.tweens.add({ targets: flash, alpha: 0, duration: 600, onComplete: () => flash.destroy() });
 
-    this.time.delayedCall(700, () => EventBus.emit('game-time-up', this.totalScored));
+    this.time.delayedCall(700, () => EventBus.emit('game-over-m1', {
+      scored: this.totalScored,
+      wasNewRecord,
+      prevBest,
+      coinsEarned: this.sessionCoins,
+      totalCoins,
+    }));
   }
 
   // ─── Bin ─────────────────────────────────────────────────────────────────────
@@ -554,6 +567,7 @@ export class ThrowToBinScene extends Phaser.Scene {
   private onScored(trash: Phaser.GameObjects.Container, type: 'clean' | 'rim' = 'clean') {
     this.totalScored++;
     const coins = type === 'rim' ? 2 : 3;
+    this.sessionCoins += coins;
     useProgressStore.getState().addCityCoins(coins);
     this.updateHud();
 

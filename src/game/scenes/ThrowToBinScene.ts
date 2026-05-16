@@ -1,252 +1,284 @@
 import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
+
 const MISSION_ID = 1;
 
-const LEVELS = [
-  { trashGoal:10, spawnRate:2400, time:180 }, // L1
-  { trashGoal:11, spawnRate:2200, time:160 }, // L2
-  { trashGoal:12, spawnRate:2000, time:160 }, // L3
-  { trashGoal:13, spawnRate:1900, time:160 }, // L4
-  { trashGoal:14, spawnRate:1800, time:160 }, // L5
-  { trashGoal:14, spawnRate:1700, time:160 }, // L6
-  { trashGoal:14, spawnRate:1600, time:160 }, // L7
-  { trashGoal:14, spawnRate:1500, time:160 }, // L8
-  { trashGoal:14, spawnRate:1400, time:160 }, // L9
-  { trashGoal:14, spawnRate:1300, time:160 }, // L10
-  { trashGoal:14, spawnRate:1200, time:160 }, // L11
-  { trashGoal:14, spawnRate:1100, time:160 }, // L12
-];
-
-const TRASH_EMOJIS = ['🥤','🍌','🍾','🥫','📦','🗞️'];
-const MAX_PULL  = 140;
-const MAX_SPEED = 1500;
-const GRAVITY   = 1000;
+const TRASH_EMOJIS   = ['🥤', '🍌', '🍾', '🥫', '📦', '🗞️'];
+const MAX_PULL       = 140;
+const MAX_SPEED      = 1500;
+const GRAVITY        = 1000;
+const MAX_FLOOR_ITEMS = 10;
+const FLOOR_Y_RATIO  = 0.78;
+const SPAWN_BASE     = 4000;
+const SPAWN_MIN      = 1500;
 
 interface ThrownItem {
   container: Phaser.GameObjects.Container;
   vx: number; vy: number; rotDir: number; done: boolean;
 }
 
+interface FallingItem {
+  container: Phaser.GameObjects.Container;
+  vx: number; vy: number; rotDir: number; bounces: number;
+}
+
 export class ThrowToBinScene extends Phaser.Scene {
-  level = 1; scored = 0; timeLeft = 40;
-  done = false; tutorialActive = false;
-  coinsEarned = 0;
+  private totalScored = 0;
+  private gameOver    = false;
+  private floorY      = 0;
 
-  binCX   = 0; binRimY  = 0;
-  binHalfW = 62; binBodyH = 130;
-  binContainer: Phaser.GameObjects.Container | null = null;
+  private binCX    = 0;
+  private binRimY  = 100;
+  private binHalfW = 62;
+  private binBodyH = 130;
+  private binContainer: Phaser.GameObjects.Container | null = null;
 
-  trashItems:  Phaser.GameObjects.Container[] = [];
-  thrownItems: ThrownItem[] = [];
-  selectedTrash: Phaser.GameObjects.Container | null = null;
-  isDragging = false;
-  dragOriginX = 0; dragOriginY = 0;
+  private trashItems:   Phaser.GameObjects.Container[] = [];
+  private thrownItems:  ThrownItem[]  = [];
+  private fallingItems: FallingItem[] = [];
 
-  slingshotGfx!: Phaser.GameObjects.Graphics;
-  tommyPortrait!: Phaser.GameObjects.Container;
-  spawnEvent!: Phaser.Time.TimerEvent;
+  private selectedTrash: Phaser.GameObjects.Container | null = null;
+  private isDragging   = false;
+  private dragOriginX  = 0;
+  private dragOriginY  = 0;
+
+  private slingshotGfx!: Phaser.GameObjects.Graphics;
+  private hudScored!:    Phaser.GameObjects.Text;
+  private hudBest!:      Phaser.GameObjects.Text;
+  private hudCoins!:     Phaser.GameObjects.Text;
 
   constructor() { super('ThrowToBinScene'); }
 
-  init(data?: { level?: number }) {
-    if (data?.level !== undefined) {
-      this.level = data.level;
-    } else {
-      const reg = this.registry?.get('startLevel') as number | undefined;
-      if (reg != null) { this.registry.remove('startLevel'); this.level = reg; }
-      else { this.level = Math.min((useProgressStore.getState().highestLevel[MISSION_ID] ?? 0) + 1, 20); }
-    }
-    this.scored = 0; this.timeLeft = this.cfg.time; this.coinsEarned = 0;
-    this.done = false; this.tutorialActive = false;
-    this.isDragging = false; this.selectedTrash = null;
-    this.trashItems = []; this.thrownItems = [];
-    this.binContainer = null;
+  init() {
+    this.totalScored   = 0;
+    this.gameOver      = false;
+    this.isDragging    = false;
+    this.selectedTrash = null;
+    this.trashItems    = [];
+    this.thrownItems   = [];
+    this.fallingItems  = [];
+    this.binContainer  = null;
+    this.floorY        = 0;
   }
 
-  get cfg() { return LEVELS[Math.min(this.level - 1, LEVELS.length - 1)]; }
-
-  preload() { this.load.image('back_trash', '/back_trash.jpg'); }
+  preload() {
+    this.load.image('back_trash', '/back_trash.jpg');
+  }
 
   create() {
     EventBus.emit('current-scene-ready', this);
-    EventBus.emit('game-timer', this.timeLeft);
-    EventBus.emit('game-scored-update', `0/${this.cfg.trashGoal}`);
+    // Hide React HUD elements left over from other scenes
+    EventBus.emit('game-scored-update', '');
 
-    const handleRestart = (d: {level:number}) => { setTimeout(() => this.scene.restart(d), 0); };
+    const handleRestart = () => { setTimeout(() => this.scene.restart(), 0); };
     EventBus.on('restart-scene', handleRestart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', handleRestart));
 
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
+    this.floorY = H * FLOOR_Y_RATIO;
 
     // Background
     if (this.textures.exists('back_trash')) {
-      const bg = this.add.image(W/2, H/2, 'back_trash');
+      const bg = this.add.image(W / 2, H / 2, 'back_trash');
       bg.setScale(Math.max(W / bg.width, H / bg.height)).setDepth(-10);
     }
-    this.add.rectangle(W/2, H/2, W, H, 0x000000, 0.25).setDepth(-9);
+    this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.25).setDepth(-9);
 
-    // Slingshot draw layer
     this.slingshotGfx = this.add.graphics().setDepth(20);
-
-    // Build bin at TOP — 3% smaller per level
-    const binScale = Math.pow(0.97, this.level - 1);
-    this.buildBin(W, binScale);
-
-    // Level 7+: bin moves side to side
-    if (this.level >= 7 && this.binContainer) {
-      const moveRange = Math.min(W * 0.20, 80);
-      this.binContainer.x = W / 2 - moveRange;
-      this.tweens.add({
-        targets: this.binContainer, x: W / 2 + moveRange,
-        duration: 5000, ease: 'Sine.easeInOut', yoyo: true, repeat: -1, delay: 600
-      });
-    }
-
-
-    // Timer
-    this.time.addEvent({ delay:1000, loop:true, callback:() => {
-      if (this.done || this.tutorialActive) return;
-      this.timeLeft--;
-      EventBus.emit('game-timer', this.timeLeft);
-      if (this.timeLeft <= 0) { this.done = true; this.time.delayedCall(400, () => EventBus.emit('game-time-up', this.scored)); }
-    }});
+    this.buildBin(W);
+    this.buildHud(W);
 
     this.input.on('pointerdown', this.onDown, this);
     this.input.on('pointermove', this.onMove, this);
     this.input.on('pointerup',   this.onUp,   this);
 
-    if (this.level === 1) { this.tutorialActive = true; this.showTutorial(); }
-    else { this.tutorialActive = true; this.showPreLevelMessage(); }
+    // Spawn initial 3 items
+    for (let i = 0; i < 3; i++) {
+      this.spawnFallingTrash(
+        Phaser.Math.Between(70, W - 70),
+        Phaser.Math.Between(Math.floor(H * 0.15), Math.floor(H * 0.38)),
+      );
+    }
+
+    this.scheduleNextSpawn();
   }
 
-  buildBin(W: number, scale = 1) {
+  // ─── HUD ─────────────────────────────────────────────────────────────────────
+
+  private buildHud(W: number) {
+    const hudY = this.binRimY + this.binBodyH + 28; // below bin
+
+    this.add.rectangle(W / 2, hudY, W, 44, 0x000000, 0.40)
+      .setDepth(48).setScrollFactor(0);
+
+    const style: Phaser.Types.GameObjects.Text.TextStyle = {
+      fontFamily: 'Fredoka One, cursive',
+      fontSize: '21px', color: '#ffffff',
+      stroke: '#000000', strokeThickness: 3,
+    };
+
+    this.hudScored = this.add.text(W * 0.18, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
+    this.hudBest   = this.add.text(W * 0.50, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
+    this.hudCoins  = this.add.text(W * 0.82, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
+    this.updateHud();
+  }
+
+  private updateHud() {
+    const state = useProgressStore.getState();
+    const best  = Math.max(state.highScores[MISSION_ID] ?? 0, this.totalScored);
+    if (this.hudScored?.active) this.hudScored.setText(`🗑️ ${this.totalScored}`);
+    if (this.hudBest?.active)   this.hudBest.setText(`⭐ ${best}`);
+    if (this.hudCoins?.active)  this.hudCoins.setText(`🪙 ${state.cityCoins}`);
+  }
+
+  // ─── Spawn ───────────────────────────────────────────────────────────────────
+
+  private get spawnInterval(): number {
+    return Math.max(SPAWN_MIN, SPAWN_BASE - Math.floor(this.totalScored / 5) * 200);
+  }
+
+  private scheduleNextSpawn() {
+    this.time.delayedCall(this.spawnInterval, () => {
+      if (this.gameOver) return;
+      this.spawnWithHand();
+      this.scheduleNextSpawn();
+    });
+  }
+
+  private spawnWithHand() {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const hx = Phaser.Math.Between(70, W - 70);
+    const hy = Phaser.Math.Between(Math.floor(H * 0.22), Math.floor(H * 0.42));
+
+    const hand = this.add.text(hx, hy, '🤚', { fontSize: '52px' })
+      .setOrigin(0.5).setAlpha(0).setDepth(30);
+
+    this.tweens.add({
+      targets: hand, alpha: 1, duration: 200, ease: 'Sine.easeOut',
+      onComplete: () => {
+        this.time.delayedCall(350, () => {
+          if (!this.gameOver) this.spawnFallingTrash(hx, hy + 20);
+          this.tweens.add({ targets: hand, alpha: 0, duration: 280, onComplete: () => hand.destroy() });
+        });
+      },
+    });
+  }
+
+  private spawnFallingTrash(fromX: number, fromY: number) {
+    if (this.gameOver) return;
+    const emoji   = Phaser.Utils.Array.GetRandom(TRASH_EMOJIS) as string;
+    const emojiGO = this.add.text(0, 0, emoji, { fontSize: '54px' }).setOrigin(0.5);
+    const shadow  = this.add.ellipse(0, 32, 54, 14, 0x000000, 0.2);
+    const c = this.add.container(fromX, fromY, [shadow, emojiGO]);
+    c.setSize(64, 64).setDepth(8);
+
+    const vx     = Phaser.Math.Between(-180, 180);
+    const vy     = Phaser.Math.FloatBetween(80, 220);
+    const rotDir = vx >= 0 ? 1 : -1;
+
+    this.fallingItems.push({ container: c, vx, vy, rotDir, bounces: 0 });
+  }
+
+  private settleItem(c: Phaser.GameObjects.Container) {
+    const W  = this.cameras.main.width;
+    const sx = Phaser.Math.Clamp(c.x, 65, W - 65);
+    c.setPosition(sx, this.floorY);
+    c.setAngle(0);
+    c.setInteractive();
+    c.setData('ox', sx);
+    c.setData('oy', this.floorY);
+
+    this.tweens.add({
+      targets: c, y: this.floorY - 14,
+      duration: 900 + Phaser.Math.Between(0, 300),
+      yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    });
+
+    this.trashItems.push(c);
+
+    if (this.trashItems.filter(t => t.active).length > MAX_FLOOR_ITEMS) {
+      this.triggerGameOver();
+    }
+  }
+
+  // ─── Game over ───────────────────────────────────────────────────────────────
+
+  private triggerGameOver() {
+    if (this.gameOver) return;
+    this.gameOver = true;
+
+    const state       = useProgressStore.getState();
+    const currentBest = state.highScores[MISSION_ID] ?? 0;
+    if (this.totalScored > currentBest) {
+      useProgressStore.setState({
+        highScores: { ...state.highScores, [MISSION_ID]: this.totalScored },
+      });
+    }
+
+    // Flash red
+    const W = this.cameras.main.width, H = this.cameras.main.height;
+    const flash = this.add.rectangle(W / 2, H / 2, W, H, 0xFF0000, 0.35).setDepth(90);
+    this.tweens.add({ targets: flash, alpha: 0, duration: 600, onComplete: () => flash.destroy() });
+
+    this.time.delayedCall(700, () => EventBus.emit('game-time-up', this.totalScored));
+  }
+
+  // ─── Bin ─────────────────────────────────────────────────────────────────────
+
+  private buildBin(W: number) {
     this.binCX    = W / 2;
     this.binRimY  = 100;
-    this.binHalfW = Math.round(62 * scale);
-    this.binBodyH = Math.round(130 * scale);
+    this.binHalfW = 62;
+    this.binBodyH = 130;
 
-    // Draw relative to cx=0 (container handles world x)
-    const cx = 0;
-    const ry = this.binRimY;
-    const hw = this.binHalfW;
-    const bh = this.binBodyH;
-    const bw = hw * 2;
-    const s  = scale;
-
+    const cx = 0, ry = this.binRimY, hw = this.binHalfW, bh = this.binBodyH, bw = hw * 2;
     const g = this.add.graphics();
 
     g.fillStyle(0x000000, 0.15);
-    g.fillEllipse(cx, ry + bh + 10*s, bw + 16*s, 16*s);
-
+    g.fillEllipse(cx, ry + bh + 10, bw + 16, 16);
     g.fillStyle(0x16A34A);
-    g.fillRoundedRect(cx - hw, ry + 10*s, bw, bh, { tl:4*s, tr:4*s, bl:14*s, br:14*s });
-
+    g.fillRoundedRect(cx - hw, ry + 10, bw, bh, { tl: 4, tr: 4, bl: 14, br: 14 });
     g.fillStyle(0xFFFFFF, 0.1);
-    g.fillRoundedRect(cx - hw + 8*s, ry + 18*s, 22*s, bh - 24*s, 6*s);
-
+    g.fillRoundedRect(cx - hw + 8, ry + 18, 22, bh - 24, 6);
     g.lineStyle(1.5, 0x000000, 0.1);
-    for (let rx = cx - hw + 32*s; rx < cx + hw - 10*s; rx += 26*s) {
-      g.beginPath(); g.moveTo(rx, ry + 14*s); g.lineTo(rx, ry + bh - 6*s); g.strokePath();
+    for (let rx = cx - hw + 32; rx < cx + hw - 10; rx += 26) {
+      g.beginPath(); g.moveTo(rx, ry + 14); g.lineTo(rx, ry + bh - 6); g.strokePath();
     }
-
     g.fillStyle(0xFFFFFF, 0.88);
-    g.fillCircle(cx, ry + bh * 0.52, 26*s);
+    g.fillCircle(cx, ry + bh * 0.52, 26);
     g.fillStyle(0x16A34A);
     for (let i = 0; i < 3; i++) {
       const a = (i * 120 * Math.PI) / 180 - Math.PI / 2;
       g.fillTriangle(
-        cx + Math.cos(a)*18*s, ry + bh*0.52 + Math.sin(a)*18*s,
-        cx + Math.cos(a+0.9)*10*s, ry + bh*0.52 + Math.sin(a+0.9)*10*s,
-        cx + Math.cos(a-0.9)*10*s, ry + bh*0.52 + Math.sin(a-0.9)*10*s
+        cx + Math.cos(a) * 18,       ry + bh * 0.52 + Math.sin(a) * 18,
+        cx + Math.cos(a + 0.9) * 10, ry + bh * 0.52 + Math.sin(a + 0.9) * 10,
+        cx + Math.cos(a - 0.9) * 10, ry + bh * 0.52 + Math.sin(a - 0.9) * 10,
       );
     }
-
     g.fillStyle(0x22C55E);
-    g.fillEllipse(cx, ry + 8*s, bw + 10*s, 30*s);
+    g.fillEllipse(cx, ry + 8, bw + 10, 30);
     g.fillStyle(0x16A34A);
-    g.fillEllipse(cx, ry + 6*s, bw, 19*s);
+    g.fillEllipse(cx, ry + 6, bw, 19);
     g.fillStyle(0x052E16);
-    g.fillEllipse(cx, ry + 4*s, bw - 20*s, 12*s);
-
+    g.fillEllipse(cx, ry + 4, bw - 20, 12);
     g.fillStyle(0x15803D);
-    g.fillRoundedRect(cx - 22*s, ry - 14*s, 44*s, 18*s, 7*s);
+    g.fillRoundedRect(cx - 22, ry - 14, 44, 18, 7);
     g.fillStyle(0x22C55E);
-    g.fillRoundedRect(cx - 18*s, ry - 11*s, 36*s, 11*s, 5*s);
-
+    g.fillRoundedRect(cx - 18, ry - 11, 36, 11, 5);
     g.fillStyle(0xFFFFFF, 0.35);
-    g.fillTriangle(cx, ry + 38*s, cx - 10*s, ry + 25*s, cx + 10*s, ry + 25*s);
+    g.fillTriangle(cx, ry + 38, cx - 10, ry + 25, cx + 10, ry + 25);
 
     this.binContainer = this.add.container(W / 2, 0, [g]);
     this.binContainer.setDepth(10);
   }
 
-  makePortrait(mood: number): Phaser.GameObjects.Container {
-    const g = this.make.graphics({x:0,y:0} as any);
-    g.fillStyle(0xFFFFFF, 0.95); g.fillCircle(26,26,26);
-    g.lineStyle(3,0x374151); g.strokeCircle(26,26,26);
-    g.fillStyle(0xFCD34D); g.fillCircle(26,20,16);
-    g.fillStyle(0x000000); g.fillCircle(20,17,2.5); g.fillCircle(32,17,2.5);
-    g.lineStyle(2.5, 0x000000);
-    if (mood===0) { g.beginPath(); g.arc(26,22,6,0.2,Math.PI-0.2,false); g.strokePath(); }
-    else if (mood===1) { g.fillStyle(0xFF3333); g.fillEllipse(26,24,10,9); }
-    else { g.beginPath(); g.arc(26,28,6,Math.PI+0.2,2*Math.PI-0.2,false); g.strokePath(); }
-    const key = `port_${mood}_${Date.now()}`;
-    g.generateTexture(key,52,52); g.destroy();
-    return this.add.container(0,0,[this.add.image(0,0,key).setOrigin(0.5)]);
-  }
+  // ─── Input ───────────────────────────────────────────────────────────────────
 
-  setMood(mood: number) {
-    if (!this.tommyPortrait?.active) return;
-    const g = this.make.graphics({x:0,y:0} as any);
-    g.fillStyle(0xFFFFFF,0.95); g.fillCircle(26,26,26);
-    g.lineStyle(3,0x374151); g.strokeCircle(26,26,26);
-    g.fillStyle(0xFCD34D); g.fillCircle(26,20,16);
-    g.fillStyle(0x000000); g.fillCircle(20,17,2.5); g.fillCircle(32,17,2.5);
-    g.lineStyle(2.5, 0x000000);
-    if (mood===0) { g.beginPath(); g.arc(26,22,6,0.2,Math.PI-0.2,false); g.strokePath(); }
-    else if (mood===1) { g.fillStyle(0xFF3333); g.fillEllipse(26,24,10,9); }
-    else { g.beginPath(); g.arc(26,28,6,Math.PI+0.2,2*Math.PI-0.2,false); g.strokePath(); }
-    const key = `pm_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-    g.generateTexture(key,52,52); g.destroy();
-    this.tommyPortrait.removeAll(true);
-    this.tommyPortrait.add(this.add.image(0,0,key).setOrigin(0.5));
-  }
-
-  startSpawning() {
-    for (let i = 0; i < 3; i++) this.spawnTrash();
-    this.spawnEvent = this.time.addEvent({ delay: this.cfg.spawnRate, loop:true, callback: this.ensureMinTrash, callbackScope: this });
-  }
-
-  spawnTrash() {
-    if (this.done) return;
-    const W = this.cameras.main.width;
-    const H = this.cameras.main.height;
-    const emoji = Phaser.Utils.Array.GetRandom(TRASH_EMOJIS);
-    const emojiGO = this.add.text(0, 0, emoji, { fontSize: '54px' }).setOrigin(0.5);
-    const shadow  = this.add.ellipse(0, 32, 54, 14, 0x000000, 0.2);
-
-    const x = Phaser.Math.Between(65, W - 65);
-    const y = Phaser.Math.Between(Math.floor(H * 0.52), Math.floor(H * 0.82));
-
-    const c = this.add.container(x, y, [shadow, emojiGO]);
-    c.setSize(64, 64).setInteractive().setDepth(8);
-    c.setData('ox', x); c.setData('oy', y);
-
-    this.tweens.add({ targets: c, y: y - 14, duration: 900 + Phaser.Math.Between(0,300), yoyo:true, repeat:-1, ease:'Sine.easeInOut' });
-    this.tweens.add({ targets: shadow, scaleX:0.7, alpha:0.12, duration:900, yoyo:true, repeat:-1, ease:'Sine.easeInOut' });
-
-    this.trashItems.push(c);
-  }
-
-  ensureMinTrash() {
-    if (this.done || this.tutorialActive) return;
-    if (this.trashItems.filter(t => t.active).length < 3) this.spawnTrash();
-  }
-
-  onDown(pointer: Phaser.Input.Pointer) {
-    if (this.done || this.tutorialActive) return;
+  private onDown(pointer: Phaser.Input.Pointer) {
+    if (this.gameOver) return;
     let best: Phaser.GameObjects.Container | null = null;
     let bestD = 85;
     for (const item of this.trashItems) {
@@ -254,68 +286,62 @@ export class ThrowToBinScene extends Phaser.Scene {
       const d = Phaser.Math.Distance.Between(pointer.x, pointer.y, item.x, item.y);
       if (d < bestD) { bestD = d; best = item; }
     }
-    if (best) {
-      this.selectedTrash = best;
-      this.isDragging = true;
-      this.dragOriginX = best.x;
-      this.dragOriginY = best.y;
-      this.tweens.killTweensOf(best);
-      best.setDepth(22);
-      this.tweens.add({ targets: best, scaleX:1.1, scaleY:1.1, duration:80 });
-    }
+    if (!best) return;
+    this.selectedTrash = best;
+    this.isDragging    = true;
+    this.dragOriginX   = best.x;
+    this.dragOriginY   = best.y;
+    this.tweens.killTweensOf(best);
+    best.setDepth(22);
+    this.tweens.add({ targets: best, scaleX: 1.1, scaleY: 1.1, duration: 80 });
   }
 
-  onMove(pointer: Phaser.Input.Pointer) {
+  private onMove(pointer: Phaser.Input.Pointer) {
     if (!this.isDragging || !this.selectedTrash) return;
-
     const ox = this.dragOriginX, oy = this.dragOriginY;
     const rawDx = pointer.x - ox, rawDy = pointer.y - oy;
-    const rawDist = Math.sqrt(rawDx*rawDx + rawDy*rawDy) || 1;
+    const rawDist = Math.sqrt(rawDx * rawDx + rawDy * rawDy) || 1;
     const clampD  = Math.min(rawDist, MAX_PULL);
     const nx = rawDx / rawDist, ny = rawDy / rawDist;
 
-    // Clamp item to max pull radius
     this.selectedTrash.x = ox + nx * clampD;
     this.selectedTrash.y = oy + ny * clampD;
 
     const power = clampD / MAX_PULL;
-
     this.slingshotGfx.clear();
 
-    // Fork points (perpendicular to pull)
-    const px = -ny, py = nx;
-    const fd = 20;
-    const f1x = ox + px*fd, f1y = oy + py*fd;
-    const f2x = ox - px*fd, f2y = oy - py*fd;
-    const cx  = ox + nx*clampD, cy = oy + ny*clampD;
+    const px = -ny, py = nx, fd = 20;
+    const f1x = ox + px * fd, f1y = oy + py * fd;
+    const f2x = ox - px * fd, f2y = oy - py * fd;
+    const cx  = ox + nx * clampD, cy = oy + ny * clampD;
 
-    // Rubber bands
     this.slingshotGfx.lineStyle(5, 0xFFAA00, 0.9);
-    this.slingshotGfx.beginPath(); this.slingshotGfx.moveTo(f1x,f1y); this.slingshotGfx.lineTo(cx,cy); this.slingshotGfx.strokePath();
-    this.slingshotGfx.beginPath(); this.slingshotGfx.moveTo(f2x,f2y); this.slingshotGfx.lineTo(cx,cy); this.slingshotGfx.strokePath();
-    this.slingshotGfx.fillStyle(0xFFAA00); this.slingshotGfx.fillCircle(f1x,f1y,7); this.slingshotGfx.fillCircle(f2x,f2y,7);
+    this.slingshotGfx.beginPath(); this.slingshotGfx.moveTo(f1x, f1y); this.slingshotGfx.lineTo(cx, cy); this.slingshotGfx.strokePath();
+    this.slingshotGfx.beginPath(); this.slingshotGfx.moveTo(f2x, f2y); this.slingshotGfx.lineTo(cx, cy); this.slingshotGfx.strokePath();
+    this.slingshotGfx.fillStyle(0xFFAA00);
+    this.slingshotGfx.fillCircle(f1x, f1y, 7);
+    this.slingshotGfx.fillCircle(f2x, f2y, 7);
 
-    // Trajectory prediction
-    const lvx = -nx * power * MAX_SPEED, lvy = -ny * power * MAX_SPEED;
-    let sx=ox, sy=oy, svx=lvx, svy=lvy;
+    // Trajectory dots
+    let sx = ox, sy = oy, svx = -nx * power * MAX_SPEED, svy = -ny * power * MAX_SPEED;
     const dt = 0.06;
-    for (let s=1; s<=10; s++) {
-      svy += GRAVITY*dt; sx += svx*dt; sy += svy*dt;
-      this.slingshotGfx.fillStyle(0xFFFFFF, Math.max(0,0.8-s*0.07));
-      this.slingshotGfx.fillCircle(sx, sy, Math.max(2, 5.5-s*0.35));
+    for (let s = 1; s <= 10; s++) {
+      svy += GRAVITY * dt; sx += svx * dt; sy += svy * dt;
+      this.slingshotGfx.fillStyle(0xFFFFFF, Math.max(0, 0.8 - s * 0.07));
+      this.slingshotGfx.fillCircle(sx, sy, Math.max(2, 5.5 - s * 0.35));
     }
 
-    // Power bar (right of origin)
+    // Power bar
     const bx = ox + 55, barH = 100, by = oy;
     this.slingshotGfx.fillStyle(0x333333, 0.8);
-    this.slingshotGfx.fillRoundedRect(bx-9, by-barH/2, 18, barH, 9);
-    const fillH = power * barH;
+    this.slingshotGfx.fillRoundedRect(bx - 9, by - barH / 2, 18, barH, 9);
+    const fillH   = power * barH;
     const fillCol = power < 0.4 ? 0x22C55E : power < 0.75 ? 0xFFBB00 : 0xFF4444;
     this.slingshotGfx.fillStyle(fillCol, 0.95);
-    this.slingshotGfx.fillRoundedRect(bx-7, by+barH/2-fillH, 14, fillH, 7);
+    this.slingshotGfx.fillRoundedRect(bx - 7, by + barH / 2 - fillH, 14, fillH, 7);
   }
 
-  onUp(pointer: Phaser.Input.Pointer) {
+  private onUp(pointer: Phaser.Input.Pointer) {
     this.slingshotGfx.clear();
     if (!this.isDragging || !this.selectedTrash) return;
     this.isDragging = false;
@@ -324,265 +350,148 @@ export class ThrowToBinScene extends Phaser.Scene {
 
     const ox = this.dragOriginX, oy = this.dragOriginY;
     const dx = pointer.x - ox, dy = pointer.y - oy;
-    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-    // Too weak = snap back
     if (dist < 18) {
-      this.tweens.add({ targets: trash, x:ox, y:oy, scaleX:1, scaleY:1, duration:200, ease:'Back.easeOut',
-        onComplete: () => this.tweens.add({ targets:trash, y:oy-14, duration:900, yoyo:true, repeat:-1, ease:'Sine.easeInOut' })
+      this.tweens.add({
+        targets: trash, x: ox, y: oy, scaleX: 1, scaleY: 1, duration: 200, ease: 'Back.easeOut',
+        onComplete: () => this.tweens.add({ targets: trash, y: oy - 14, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }),
       });
       return;
     }
 
-    const power = Math.min(dist / MAX_PULL, 1.0);
-    const nx = dx/dist, ny = dy/dist;
-    // Launch opposite of pull
+    const power  = Math.min(dist / MAX_PULL, 1.0);
+    const nx = dx / dist, ny = dy / dist;
     const vx = -nx * power * MAX_SPEED;
     const vy = -ny * power * MAX_SPEED;
-    const rotDir = dx > 0 ? 1 : -1;
 
     this.trashItems = this.trashItems.filter(t => t !== trash);
     trash.setDepth(22);
-
-    this.thrownItems.push({ container: trash, vx, vy, rotDir, done: false });
+    this.thrownItems.push({ container: trash, vx, vy, rotDir: dx > 0 ? 1 : -1, done: false });
   }
 
-  onScored(trash: Phaser.GameObjects.Container, type: 'clean' | 'rim' = 'clean') {
-    this.scored++;
+  // ─── Scoring ─────────────────────────────────────────────────────────────────
+
+  private onScored(trash: Phaser.GameObjects.Container, type: 'clean' | 'rim' = 'clean') {
+    this.totalScored++;
     const coins = type === 'rim' ? 2 : 3;
-    this.coinsEarned += coins;
-    EventBus.emit('game-scored-update', `${this.scored}/${this.cfg.trashGoal}`);
-    this.tweens.add({ targets:trash, scaleX:0, scaleY:0, alpha:0, y:this.binRimY+40, duration:200, ease:'Quad.easeIn', onComplete:()=>trash.destroy() });
+    useProgressStore.getState().addCityCoins(coins);
+    this.updateHud();
+
+    this.tweens.add({
+      targets: trash, scaleX: 0, scaleY: 0, alpha: 0, y: this.binRimY + 40,
+      duration: 200, ease: 'Quad.easeIn', onComplete: () => trash.destroy(),
+    });
     this.showGreat(trash.x, trash.y - 20);
     this.showCoinPopup(trash.x + 30, trash.y - 40, coins);
-    this.ensureMinTrash();
-    if (this.scored >= this.cfg.trashGoal) {
-      this.done = true;
-      this.time.delayedCall(600, () => EventBus.emit('game-level-complete', { level: this.level, coinsEarned: this.coinsEarned }));
-    }
   }
 
-  rimBounceAndScore(ti: ThrownItem) {
+  private rimBounceAndScore(ti: ThrownItem) {
     ti.done = true;
-    const trash = ti.container;
+    const trash    = ti.container;
     const sideSign = trash.x > this.binCX ? 1 : -1;
     this.tweens.add({
       targets: trash,
-      x: trash.x - sideSign * 14,
-      y: trash.y - 30,
+      x: trash.x - sideSign * 14, y: trash.y - 30,
       angle: (trash.angle as number) + sideSign * 25,
-      duration: 190,
-      ease: 'Quad.easeOut',
+      duration: 190, ease: 'Quad.easeOut',
       onComplete: () => {
         this.tweens.add({
-          targets: trash,
-          x: this.binCX,
-          y: this.binRimY + 22,
-          duration: 260,
-          ease: 'Quad.easeIn',
-          onComplete: () => this.onScored(trash, 'rim')
+          targets: trash, x: this.binCX, y: this.binRimY + 22,
+          duration: 260, ease: 'Quad.easeIn',
+          onComplete: () => this.onScored(trash, 'rim'),
         });
-      }
+      },
     });
   }
 
-  showCoinPopup(x: number, y: number, coins: number) {
+  private showCoinPopup(x: number, y: number, coins: number) {
     const t = this.add.text(x, y, `+${coins} 🪙`, {
       fontFamily: 'Fredoka One, sans-serif', fontSize: '26px',
-      color: '#FFD700', stroke: '#000', strokeThickness: 4
+      color: '#FFD700', stroke: '#000', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(27);
     this.tweens.add({ targets: t, y: y - 55, alpha: 0, duration: 900, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
   }
 
-  onMissed(trash: Phaser.GameObjects.Container) {
-    this.tweens.add({ targets:trash, y:trash.y+200, alpha:0, duration:350, ease:'Quad.easeIn', onComplete:()=>trash.destroy() });
-    const t = this.add.text(trash.x, trash.y-10, 'Miss!', { fontFamily:'Fredoka One, sans-serif', fontSize:'24px', color:'#FF6B6B', stroke:'#000', strokeThickness:4 }).setOrigin(0.5).setDepth(25);
-    this.tweens.add({ targets:t, y:t.y-60, alpha:0, duration:800, ease:'Quad.easeOut', onComplete:()=>t.destroy() });
-    this.ensureMinTrash();
-  }
-
-  showGreat(x: number, y: number) {
-    const words = ['Great!','Nice!','Perfect!','Awesome!'];
-    const t = this.add.text(x, y, Phaser.Utils.Array.GetRandom(words), {
-      fontFamily:'Fredoka One, sans-serif', fontSize:'32px', color:'#22C55E', stroke:'#000', strokeThickness:5
+  private showGreat(x: number, y: number) {
+    const words = ['Great!', 'Nice!', 'Perfect!', 'Awesome!'];
+    const t = this.add.text(x, y, Phaser.Utils.Array.GetRandom(words) as string, {
+      fontFamily: 'Fredoka One, sans-serif', fontSize: '32px',
+      color: '#22C55E', stroke: '#000', strokeThickness: 5,
     }).setOrigin(0.5).setDepth(26).setScale(0.3);
-    this.tweens.add({ targets:t, scale:1.1, duration:180, ease:'Back.easeOut', onComplete:() =>
-      this.tweens.add({ targets:t, y:y-70, alpha:0, duration:700, onComplete:()=>t.destroy() })
+    this.tweens.add({
+      targets: t, scale: 1.1, duration: 180, ease: 'Back.easeOut',
+      onComplete: () => this.tweens.add({ targets: t, y: y - 70, alpha: 0, duration: 700, onComplete: () => t.destroy() }),
     });
   }
 
-  showTutorial() {
-    const W = this.cameras.main.width, H = this.cameras.main.height;
-
-    // Soft dark overlay (behind animation)
-    const ov = this.add.rectangle(W/2, H/2, W, H, 0x000000, 0.60).setDepth(40);
-
-    // Demo positions
-    const originX = W / 2;
-    const originY = H * 0.62;
-    const pullX = originX;
-    const pullY = originY + 90;
-    const targetBinX = W / 2;
-    const targetBinY = this.binRimY + 48;
-
-    const demoTrash = this.add.text(originX, originY, '🥤', { fontSize: '52px' })
-      .setOrigin(0.5).setDepth(42);
-    const bandGfx = this.add.graphics().setDepth(41);
-    const fingerGfx = this.add.graphics().setDepth(43);
-
-    const drawFinger = (x: number, y: number, alpha: number) => {
-      if (!fingerGfx.active) return;
-      fingerGfx.clear();
-      if (alpha <= 0) return;
-      fingerGfx.fillStyle(0xFFFFFF, alpha * 0.92);
-      fingerGfx.fillCircle(x, y, 22);
-      fingerGfx.lineStyle(3, 0x222222, alpha);
-      fingerGfx.strokeCircle(x, y, 22);
-      fingerGfx.fillStyle(0x444444, alpha * 0.35);
-      fingerGfx.fillCircle(x, y, 9);
-    };
-
-    const drawBands = (cx: number, cy: number) => {
-      if (!bandGfx.active) return;
-      bandGfx.clear();
-      const fd = 18;
-      bandGfx.lineStyle(4.5, 0xFFAA00, 0.92);
-      bandGfx.beginPath(); bandGfx.moveTo(originX - fd, originY); bandGfx.lineTo(cx, cy); bandGfx.strokePath();
-      bandGfx.beginPath(); bandGfx.moveTo(originX + fd, originY); bandGfx.lineTo(cx, cy); bandGfx.strokePath();
-      bandGfx.fillStyle(0xFFAA00, 1);
-      bandGfx.fillCircle(originX - fd, originY, 7);
-      bandGfx.fillCircle(originX + fd, originY, 7);
-    };
-
-    let animating = true;
-
-    const runAnim = () => {
-      if (!animating) return;
-      demoTrash.setPosition(originX, originY).setAlpha(1).setScale(1).setAngle(0);
-      bandGfx.clear(); fingerGfx.clear();
-
-      // Phase 1: finger appears
-      const p1 = { a: 0 };
-      this.tweens.add({
-        targets: p1, a: 1, duration: 450, ease: 'Sine.easeOut',
-        onUpdate: () => drawFinger(originX, originY, p1.a),
-        onComplete: () => {
-          if (!animating) return;
-          // Phase 2: pull straight DOWN
-          const p2 = { x: originX, y: originY };
-          this.tweens.add({
-            targets: p2, x: pullX, y: pullY,
-            duration: 900, ease: 'Sine.easeInOut',
-            onUpdate: () => {
-              if (!animating) return;
-              demoTrash.setPosition(p2.x, p2.y);
-              drawFinger(p2.x, p2.y, 1);
-              drawBands(p2.x, p2.y);
-            },
-            onComplete: () => {
-              if (!animating) return;
-              this.time.delayedCall(300, () => {
-                if (!animating) return;
-                // Phase 3: finger lifts
-                const p3 = { a: 1 };
-                this.tweens.add({
-                  targets: p3, a: 0, duration: 180,
-                  onUpdate: () => drawFinger(pullX, pullY, p3.a),
-                  onComplete: () => {
-                    if (!animating) return;
-                    bandGfx.clear(); fingerGfx.clear();
-                    // Phase 4: SINGLE smooth flight to bin
-                    this.tweens.add({
-                      targets: demoTrash,
-                      x: targetBinX, y: targetBinY,
-                      duration: 1000, ease: 'Quad.easeIn',
-                      onUpdate: () => { demoTrash.angle += 4; },
-                      onComplete: () => {
-                        if (!animating) return;
-                        this.tweens.add({
-                          targets: demoTrash, scaleX: 0, scaleY: 0, alpha: 0,
-                          duration: 200, ease: 'Quad.easeIn',
-                          onComplete: () => {
-                            if (!animating) return;
-                            this.time.delayedCall(900, runAnim);
-                          }
-                        });
-                      }
-                    });
-                  }
-                });
-              });
-            }
-          });
-        }
-      });
-    };
-
-    this.time.delayedCall(500, runAnim);
-
-    // Emit event so React can show the HTML overlay (crisp text, native emoji)
-    EventBus.emit('show-tutorial');
-
-    const onDone = () => {
-      animating = false;
-      [ov, demoTrash, bandGfx, fingerGfx].forEach(o => { if (o && o.active) { this.tweens.killTweensOf(o); o.destroy(); } });
-      this.tutorialActive = false;
-      this.startSpawning();
-    };
-    EventBus.once('tutorial-done', onDone);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('tutorial-done', onDone));
-  }
-
-  showPreLevelMessage() {
-    // Emit to React — HTML overlay handles UI so text is crisp (no Phaser canvas pixelation)
-    EventBus.emit('show-pre-level');
-    const onDone = () => {
-      this.tutorialActive = false;
-      this.startSpawning();
-    };
-    EventBus.once('pre-level-done', onDone);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('pre-level-done', onDone));
-  }
+  // ─── Update ──────────────────────────────────────────────────────────────────
 
   update(_time: number, delta: number) {
     if (this.binContainer) this.binCX = this.binContainer.x;
-    const dt = delta / 1000;
-    const H  = this.cameras.main.height;
+    if (this.gameOver) return;
 
+    const dt = delta / 1000;
+    const W  = this.cameras.main.width;
+
+    // Thrown items (player-launched)
     for (let i = this.thrownItems.length - 1; i >= 0; i--) {
       const ti = this.thrownItems[i];
-      if (ti.done) { this.thrownItems.splice(i,1); continue; }
+      if (ti.done) { this.thrownItems.splice(i, 1); continue; }
 
-      // Physics step
       ti.vy += GRAVITY * dt;
       ti.container.x += ti.vx * dt;
       ti.container.y += ti.vy * dt;
       ti.container.angle += ti.rotDir * 4;
 
-      // Hit detection: must be DESCENDING (vy>0) and inside bin mouth
+      // Side-wall bounce
+      if (ti.container.x < 30)      { ti.container.x = 30;      ti.vx =  Math.abs(ti.vx) * 0.75; }
+      if (ti.container.x > W - 30)  { ti.container.x = W - 30;  ti.vx = -Math.abs(ti.vx) * 0.75; }
+
+      // Bin hit — only when descending
       if (ti.vy > 0) {
         const dx = Math.abs(ti.container.x - this.binCX);
         const dy = ti.container.y - this.binRimY;
-        // Rim bounce: near the edge of the opening
         if (dx >= this.binHalfW - 20 && dx < this.binHalfW + 8 && dy >= -8 && dy < 22) {
-          this.rimBounceAndScore(ti);
-          this.thrownItems.splice(i, 1);
-          continue;
+          this.rimBounceAndScore(ti); this.thrownItems.splice(i, 1); continue;
         }
-        // Clean shot: clear through the center
         if (dx < this.binHalfW - 20 && dy >= -4 && dy < 28) {
-          ti.done = true;
-          this.onScored(ti.container, 'clean');
-          this.thrownItems.splice(i,1);
-          continue;
+          ti.done = true; this.onScored(ti.container, 'clean'); this.thrownItems.splice(i, 1); continue;
         }
       }
 
-      // Out of screen = missed
-      if (ti.container.y > H + 120 || ti.container.x < -150 || ti.container.x > this.cameras.main.width + 150) {
-        ti.done = true;
-        this.onMissed(ti.container);
-        this.thrownItems.splice(i,1);
+      // Missed bin → convert to bouncing/falling item when it reaches the floor
+      if (ti.vy > 0 && ti.container.y >= this.floorY) {
+        this.fallingItems.push({ container: ti.container, vx: ti.vx * 0.5, vy: ti.vy, rotDir: ti.rotDir, bounces: 0 });
+        this.thrownItems.splice(i, 1); continue;
+      }
+    }
+
+    // Falling items (newly spawned + missed throws)
+    for (let i = this.fallingItems.length - 1; i >= 0; i--) {
+      const fi = this.fallingItems[i];
+
+      fi.vy += GRAVITY * dt;
+      fi.vx *= (1 - Math.min(0.8 * dt, 0.4));
+      fi.container.x += fi.vx * dt;
+      fi.container.y += fi.vy * dt;
+      fi.container.angle += fi.rotDir * 3;
+
+      // Side-wall bounce
+      if (fi.container.x < 30)     { fi.container.x = 30;     fi.vx =  Math.abs(fi.vx) * 0.6; }
+      if (fi.container.x > W - 30) { fi.container.x = W - 30; fi.vx = -Math.abs(fi.vx) * 0.6; }
+
+      // Floor bounce → settle
+      if (fi.container.y >= this.floorY && fi.vy > 0) {
+        fi.vy = -fi.vy * 0.35;
+        fi.vx *= 0.7;
+        fi.container.y = this.floorY;
+        fi.bounces++;
+
+        if (Math.abs(fi.vy) < 80 || fi.bounces >= 4) {
+          this.settleItem(fi.container);
+          this.fallingItems.splice(i, 1); continue;
+        }
       }
     }
   }

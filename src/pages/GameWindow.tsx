@@ -249,6 +249,7 @@ export default function GameWindow() {
 
   // Mission 1 (ThrowToBin) tutorial + game-over overlays
   const [m1Tutorial, setM1Tutorial] = useState(false);
+  const [m1TutorialPos, setM1TutorialPos] = useState<{ binX: number; binY: number; trashX: number; trashY: number } | null>(null);
   const m1TutorialDoneRef = useRef(false);
   const [m1Over, setM1Over] = useState(false);
   const [m1Data, setM1Data] = useState<{
@@ -351,11 +352,11 @@ export default function GameWindow() {
     const onM1Over = (data: typeof m1Data) => { setM1Data(data); setM1Over(true); };
     EventBus.on('game-over-m1', onM1Over);
 
-    const onM1Tutorial = () => {
+    const onM1Tutorial = (pos?: { binX: number; binY: number; trashX: number; trashY: number }) => {
       if (m1TutorialDoneRef.current) {
-        // Already seen (retry path) — skip straight to game
         EventBus.emit('m1-tutorial-done');
       } else {
+        if (pos) setM1TutorialPos(pos);
         setM1Tutorial(true);
       }
     };
@@ -773,6 +774,7 @@ export default function GameWindow() {
       {m1Tutorial && (
         <M1TutorialOverlay
           heroName={heroName}
+          pos={m1TutorialPos}
           onStart={() => {
             m1TutorialDoneRef.current = true;
             setM1Tutorial(false);
@@ -1255,7 +1257,28 @@ function M1GameOverOverlay({
 }
 
 // ─── Mission 1 Tutorial Overlay ───────────────────────────────────────────────
-function M1TutorialOverlay({ heroName, onStart }: { heroName: string; onStart: () => void }) {
+function M1TutorialOverlay({
+  heroName, pos, onStart,
+}: {
+  heroName: string;
+  pos: { binX: number; binY: number; trashX: number; trashY: number } | null;
+  onStart: () => void;
+}) {
+  // Use real game coords if available, otherwise fall back to viewport percentages
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  const trashX = pos?.trashX ?? W * 0.28;
+  const trashY = pos?.trashY ?? H * 0.76;
+  const binX   = pos?.binX   ?? W * 0.50;
+  const binY   = pos?.binY   ?? 230;
+
+  // Pull-back offset: opposite direction from trash→bin, short drag
+  const tBx = binX - trashX;   // vector toward bin
+  const tBy = binY - trashY;
+  const mag  = Math.sqrt(tBx * tBx + tBy * tBy) || 1;
+  const pullDx = -(tBx / mag) * 58;
+  const pullDy = -(tBy / mag) * 58;
+
   // Gesture phases: 0=idle, 1=pull back, 2=throw, 3=landed+pause
   const [gPhase, setGPhase] = useState(0);
 
@@ -1268,29 +1291,28 @@ function M1TutorialOverlay({ heroName, onStart }: { heroName: string; onStart: (
       setTimeout(() => { if (!mounted) return; setGPhase(2);
       setTimeout(() => { if (!mounted) return; setGPhase(3);
       setTimeout(() => { if (mounted) cycle(); }, 1100);
-      }, 500); }, 900); }, 700);
+      }, 500); }, 950); }, 800);
     };
-    const t = setTimeout(cycle, 300);
+    const t = setTimeout(cycle, 500);
     return () => { mounted = false; clearTimeout(t); };
-  }, []);
+  }, []); // eslint-disable-line
 
-  // Trash position relative to its resting spot (left side of demo)
-  const trashPos = [
-    { x: 0,   y: 0,   rotate: 0,   opacity: 1 },  // 0 idle
-    { x: -48, y: 28,  rotate: -22, opacity: 1 },   // 1 pulled back
-    { x: 130, y: -55, rotate: 55,  opacity: 1 },   // 2 flying
-    { x: 130, y: -30, rotate: 90,  opacity: 0 },   // 3 in bin
+  // Offsets relative to trash starting position (used with framer-motion x/y)
+  const trashAnim = [
+    { x: 0,           y: 0,           rotate: 0,   opacity: 1 },
+    { x: pullDx,      y: pullDy,      rotate: -20, opacity: 1 },
+    { x: binX-trashX, y: binY-trashY, rotate: 50,  opacity: 0.9 },
+    { x: binX-trashX, y: binY-trashY, rotate: 80,  opacity: 0 },
   ][gPhase];
 
-  // Finger mirrors trash, disappears on throw
-  const fingerPos = [
-    { x: 0,   y: 0,  opacity: 0.95 },
-    { x: -48, y: 28, opacity: 0.95 },
-    { x: -48, y: 28, opacity: 0 },
-    { x: 0,   y: 0,  opacity: 0 },
+  const fingerAnim = [
+    { x: 0,      y: 0,      opacity: 1 },
+    { x: pullDx, y: pullDy, opacity: 1 },
+    { x: pullDx, y: pullDy, opacity: 0 },
+    { x: 0,      y: 0,      opacity: 0 },
   ][gPhase];
 
-  const spring = { type: 'spring' as const, stiffness: 260, damping: 22 };
+  const spring = { type: 'spring' as const, stiffness: 240, damping: 22 };
   const fast   = { type: 'tween' as const, duration: 0.28, ease: [0.4, 0, 1, 1] as [number,number,number,number] };
 
   return (
@@ -1298,104 +1320,123 @@ function M1TutorialOverlay({ heroName, onStart }: { heroName: string; onStart: (
       initial={{ opacity: 0 }} animate={{ opacity: 1 }}
       style={{
         position: 'absolute', inset: 0, zIndex: 85,
-        background: 'rgba(0,0,0,0.88)',
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        padding: '0 28px',
+        background: 'rgba(0,0,0,0.72)',
+        pointerEvents: 'auto',
       }}
     >
-      {/* Message */}
+      {/* ── Top message card ──────────────────────────────────── */}
       <motion.div
-        initial={{ y: -18, opacity: 0 }}
+        initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.15 }}
-        style={{ textAlign: 'center', marginBottom: 38 }}
+        transition={{ delay: 0.18 }}
+        style={{
+          position: 'absolute',
+          top: 12, left: 14, right: 14,
+          background: 'rgba(0,10,24,0.82)',
+          border: '1.5px solid rgba(255,255,255,0.10)',
+          borderRadius: 22,
+          padding: '16px 20px 14px',
+          textAlign: 'center',
+        }}
       >
-        <div style={{ fontSize: '2.4rem', marginBottom: 10 }}>🗑️</div>
         <div style={{
-          fontFamily: 'Fredoka One, cursive', fontSize: '1.65rem',
-          color: '#4ADE80', marginBottom: 14,
-          textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+          fontFamily: 'Fredoka One, cursive', fontSize: '1.55rem',
+          color: '#4ADE80', marginBottom: 8,
+          textShadow: '0 2px 8px rgba(0,0,0,0.6)',
         }}>
-          Hi{heroName ? `, ${heroName}` : ''}!
+          Hi, {heroName || 'Hero'}! 👋
         </div>
         <div style={{
-          fontFamily: 'Fredoka One, cursive', fontSize: '1.05rem',
-          color: 'rgba(255,255,255,0.88)', lineHeight: 1.6,
-          maxWidth: 290,
+          fontFamily: 'Fredoka One, cursive', fontSize: '1.0rem',
+          color: 'rgba(255,255,255,0.92)', lineHeight: 1.55,
         }}>
-          People are throwing trash on the floor.<br />
-          Let's teach them how to do it right!<br />
-          <span style={{ color: '#FDE68A' }}>The trash must go in the bin.</span><br />
-          It's not that hard!
+          Please help us throw the trash to the bin!<br />
+          <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.88rem' }}>
+            People shouldn't throw it on the floor — it's not that hard!
+          </span>
         </div>
       </motion.div>
 
-      {/* Gesture demo */}
+      {/* ── Animated ghost trash item (shows slingshot gesture) ─ */}
+      {/* Glow ring at trash position (phases 0 & 1) */}
       <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.35 }}
+        animate={{ opacity: gPhase <= 1 ? 0.5 : 0, scale: gPhase === 0 ? 1.12 : 1 }}
+        transition={{ duration: 0.3 }}
         style={{
-          position: 'relative', width: 260, height: 110,
-          marginBottom: 44,
+          position: 'absolute',
+          left: trashX - 30, top: trashY - 30,
+          width: 60, height: 60,
+          borderRadius: '50%',
+          border: '2.5px solid #4ADE80',
+          boxShadow: '0 0 12px rgba(74,222,128,0.6)',
+          pointerEvents: 'none',
         }}
-      >
-        {/* Bin (static, right side) */}
-        <div style={{
-          position: 'absolute', right: 8, top: '50%',
-          marginTop: -28, fontSize: '3.2rem', lineHeight: 1,
-          filter: 'drop-shadow(0 0 12px rgba(74,222,128,0.5))',
-        }}>♻️</div>
+      />
 
-        {/* Arrow hint */}
-        <div style={{
-          position: 'absolute', left: '50%', top: '50%',
-          marginLeft: -10, marginTop: -12,
-          color: 'rgba(255,255,255,0.22)', fontSize: '1.4rem',
-        }}>→</div>
+      {/* Ghost trash SVG (animated) */}
+      <motion.img
+        src="/trash/banana_peel.svg"
+        animate={trashAnim}
+        transition={gPhase === 2 ? fast : spring}
+        style={{
+          position: 'absolute',
+          left: trashX - 22, top: trashY - 22,
+          width: 44, height: 44,
+          pointerEvents: 'none',
+          filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.7))',
+        }}
+      />
 
-        {/* Trash item (animated) */}
-        <motion.div
-          animate={trashPos}
-          transition={gPhase === 2 ? fast : spring}
-          style={{
-            position: 'absolute', left: 52, top: '50%',
-            marginTop: -22, fontSize: '2.8rem', lineHeight: 1,
-            userSelect: 'none',
-          }}
-        >🗑️</motion.div>
+      {/* Finger emoji (follows trash, vanishes on throw) */}
+      <motion.div
+        animate={fingerAnim}
+        transition={gPhase === 2 ? { duration: 0.08 } : spring}
+        style={{
+          position: 'absolute',
+          left: trashX - 12, top: trashY + 4,
+          fontSize: '2rem', lineHeight: 1,
+          pointerEvents: 'none',
+          filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.8))',
+        }}
+      >👆</motion.div>
 
-        {/* Finger cursor (follows trash, vanishes on release) */}
-        <motion.div
-          animate={fingerPos}
-          transition={gPhase === 2 ? { duration: 0.08 } : spring}
-          style={{
-            position: 'absolute', left: 62, top: '50%',
-            marginTop: 10, fontSize: '1.9rem', lineHeight: 1,
-            userSelect: 'none',
-          }}
-        >👆</motion.div>
-      </motion.div>
-
-      {/* Let's play button */}
-      <motion.button
-        initial={{ y: 18, opacity: 0 }}
+      {/* ── Bottom: warning + button ───────────────────────────── */}
+      <motion.div
+        initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.55 }}
-        whileTap={{ scale: 0.93 }}
-        onClick={onStart}
+        transition={{ delay: 0.38 }}
         style={{
-          fontFamily: 'Fredoka One, cursive', fontSize: '1.45rem',
-          background: 'linear-gradient(135deg,#22C55E,#15803D)',
-          border: 'none', borderRadius: 99,
-          padding: '16px 52px', color: '#fff', cursor: 'pointer',
-          boxShadow: '0 6px 0 #14532D, 0 8px 28px rgba(21,128,61,0.5)',
-          letterSpacing: '0.03em',
+          position: 'absolute',
+          bottom: 40, left: 16, right: 16,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', gap: 14,
         }}
       >
-        Let's play!
-      </motion.button>
+        <div style={{
+          fontFamily: 'Fredoka One, cursive', fontSize: '0.95rem',
+          color: 'rgba(255,255,255,0.78)',
+          background: 'rgba(0,0,0,0.55)',
+          border: '1.5px solid rgba(255,255,255,0.12)',
+          borderRadius: 14, padding: '9px 20px',
+          textAlign: 'center',
+        }}>
+          ⚠️ Keep the floor with less than 10 items!
+        </div>
+        <motion.button
+          whileTap={{ scale: 0.93 }}
+          onClick={onStart}
+          style={{
+            fontFamily: 'Fredoka One, cursive', fontSize: '1.45rem',
+            background: 'linear-gradient(135deg,#22C55E,#15803D)',
+            border: 'none', borderRadius: 99,
+            padding: '15px 56px', color: '#fff', cursor: 'pointer',
+            boxShadow: '0 6px 0 #14532D, 0 8px 28px rgba(21,128,61,0.5)',
+            letterSpacing: '0.03em',
+          }}
+        >
+          Let's play!
+        </motion.button>
+      </motion.div>
     </motion.div>
   );
 }

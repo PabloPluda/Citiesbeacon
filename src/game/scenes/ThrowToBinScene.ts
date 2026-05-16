@@ -114,13 +114,20 @@ export class ThrowToBinScene extends Phaser.Scene {
     this.input.on('pointermove', this.onMove, this);
     this.input.on('pointerup',   this.onUp,   this);
 
+    // Spawn items so the real game is visible under the tutorial overlay
+    for (let i = 0; i < 3; i++) this.spawnFromSide();
+
     // Notify React to show tutorial (or skip it if already seen this session)
-    EventBus.emit('show-m1-tutorial');
+    EventBus.emit('show-m1-tutorial', {
+      binX:    W * 0.5,
+      binY:    this.binRimY + this.binBodyH * 0.25,
+      trashX:  W * 0.28,
+      trashY:  H * FLOOR_Y_RATIO,
+    });
   }
 
   private startGame() {
     this.gameStarted = true;
-    for (let i = 0; i < 3; i++) this.spawnFromSide();
   }
 
   // ─── HUD (top-right strip, avoids back button on top-left) ───────────────────
@@ -139,10 +146,10 @@ export class ThrowToBinScene extends Phaser.Scene {
     // Generate icon textures for the value row
     this.generateHudIcons();
 
-    // Order: Coins | Score | Record  (coins leftmost so number never clips right edge)
+    // Order: Coins | Score | Record
     const col1 = BACK_END + hudW * 0.14;
-    const col2 = BACK_END + hudW * 0.47;
-    const col3 = BACK_END + hudW * 0.79;
+    const col2 = BACK_END + hudW * 0.52;   // moved right, away from coins
+    const col3 = BACK_END + hudW * 0.83;
     const labelY = 17;
     const valueY = 53;
 
@@ -150,7 +157,7 @@ export class ThrowToBinScene extends Phaser.Scene {
     const mkLabel = (x: number, text: string, color: string) =>
       this.add.text(x, labelY, text, {
         fontFamily: 'Fredoka One, cursive',
-        fontSize: '14px',
+        fontSize: '18px',
         color,
         stroke: '#000000',
         strokeThickness: 2,

@@ -28,7 +28,7 @@ export class ThrowToBinScene extends Phaser.Scene {
   private floorY      = 0;
 
   private binCX    = 0;
-  private binRimY  = 100;
+  private binRimY  = 165;
   private binHalfW = 62;
   private binBodyH = 130;
   private binContainer: Phaser.GameObjects.Container | null = null;
@@ -127,9 +127,9 @@ export class ThrowToBinScene extends Phaser.Scene {
     // Generate icon textures for the value row
     this.generateHudIcons();
 
-    const col1 = BACK_END + hudW * 0.20;
-    const col2 = BACK_END + hudW * 0.55;
-    const col3 = BACK_END + hudW * 0.87;
+    const col1 = BACK_END + hudW * 0.16;
+    const col2 = BACK_END + hudW * 0.50;
+    const col3 = BACK_END + hudW * 0.82;
     const labelY = 17;
     const valueY = 53;
 
@@ -422,7 +422,7 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   private buildBin(W: number) {
     this.binCX    = W / 2;
-    this.binRimY  = 100;
+    this.binRimY  = 165;
     this.binHalfW = 62;
     this.binBodyH = 130;
 

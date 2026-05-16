@@ -49,6 +49,7 @@ export class ThrowToBinScene extends Phaser.Scene {
   private hudScored!:         Phaser.GameObjects.Text;
   private hudBest!:           Phaser.GameObjects.Text;
   private hudCoins!:          Phaser.GameObjects.Text;
+  // static label references not needed — created in buildHud, no updates required
 
   private spawnTimer = 0;
 
@@ -108,36 +109,61 @@ export class ThrowToBinScene extends Phaser.Scene {
   // ─── HUD (top-right strip, avoids back button on top-left) ───────────────────
 
   private buildHud(W: number) {
-    const BACK_END = 64;  // back button ends around x=58, give 6px gap
+    const BACK_END = 64;   // back button ends ~x=58
     const hudW     = W - BACK_END;
     const hudCX    = BACK_END + hudW / 2;
-    const hudY     = 32;
+    const stripH   = 72;
 
-    this.add.rectangle(hudCX, hudY, hudW, 56, 0x000000, 0.40)
+    // Background + subtle separator line at bottom
+    this.add.rectangle(hudCX, stripH / 2, hudW, stripH, 0x000000, 0.52)
       .setDepth(48).setScrollFactor(0);
+    this.add.rectangle(hudCX, stripH, hudW, 1, 0xFFFFFF, 0.08)
+      .setDepth(49).setScrollFactor(0);
 
-    const style: Phaser.Types.GameObjects.Text.TextStyle = {
+    const labelStyle: Phaser.Types.GameObjects.Text.TextStyle = {
       fontFamily: 'Fredoka One, cursive',
-      fontSize: '18px', color: '#ffffff',
-      stroke: '#000000', strokeThickness: 3,
+      fontSize: '11px',
+      color: '#AAAAAA',
+      stroke: '#000000',
+      strokeThickness: 2,
+    };
+    const valueStyle: Phaser.Types.GameObjects.Text.TextStyle = {
+      fontFamily: 'Fredoka One, cursive',
+      fontSize: '22px',
+      color: '#FFFFFF',
+      stroke: '#000000',
+      strokeThickness: 3,
     };
 
     const col1 = BACK_END + hudW * 0.20;
     const col2 = BACK_END + hudW * 0.55;
-    const col3 = BACK_END + hudW * 0.88;
+    const col3 = BACK_END + hudW * 0.87;
+    const labelY = 18;
+    const valueY = 48;
 
-    this.hudScored = this.add.text(col1, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
-    this.hudBest   = this.add.text(col2, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
-    this.hudCoins  = this.add.text(col3, hudY, '', style).setOrigin(0.5).setDepth(50).setScrollFactor(0);
+    const mkLabel = (x: number, text: string) =>
+      this.add.text(x, labelY, text, labelStyle)
+        .setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+
+    mkLabel(col1, 'Score:');
+    mkLabel(col2, 'My Record:');
+    mkLabel(col3, 'CityCoins:');
+
+    this.hudScored = this.add.text(col1, valueY, '', valueStyle)
+      .setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+    this.hudBest   = this.add.text(col2, valueY, '', valueStyle)
+      .setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+    this.hudCoins  = this.add.text(col3, valueY, '', valueStyle)
+      .setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
     this.updateHud();
   }
 
   private updateHud() {
     const state = useProgressStore.getState();
     const best  = Math.max(state.highScores[MISSION_ID] ?? 0, this.totalScored);
-    if (this.hudScored?.active) this.hudScored.setText(`🗑️ ${this.totalScored}`);
-    if (this.hudBest?.active)   this.hudBest.setText(`⭐ ${best}`);
-    if (this.hudCoins?.active)  this.hudCoins.setText(`🪙 ${state.cityCoins}`);
+    if (this.hudScored?.active) this.hudScored.setText(`${this.totalScored}`);
+    if (this.hudBest?.active)   this.hudBest.setText(`${best}`);
+    if (this.hudCoins?.active)  this.hudCoins.setText(`${state.cityCoins}`);
   }
 
   // ─── Left vertical fill bar (5-second countdown to next spawn) ───────────────
@@ -147,31 +173,40 @@ export class ThrowToBinScene extends Phaser.Scene {
   }
 
   private drawSpawnBar(ratio: number) {
-    const H = this.cameras.main.height;
-    const g = this.spawnBarGfx;
+    const H  = this.cameras.main.height;
+    const g  = this.spawnBarGfx;
     g.clear();
 
-    const barX   = 8;
-    const barW   = 14;
-    const barTop = 68;                          // just below HUD
-    const barBot = H * FLOOR_Y_RATIO - 24;
+    const barX = 8;
+    const barW = 12;
+    // 1/3 of original height, in lower-middle of play area
+    const barTop = H * 0.50;
+    const barBot = H * 0.73;
     const barH   = barBot - barTop;
+    const R      = 6;
+
+    // Drop shadow
+    g.fillStyle(0x000000, 0.20);
+    g.fillRoundedRect(barX - 1, barTop + 2, barW + 2, barH, R);
 
     // Background track
-    g.fillStyle(0x000000, 0.35);
-    g.fillRoundedRect(barX, barTop, barW, barH, 7);
+    g.fillStyle(0x0A0A0A, 0.60);
+    g.fillRoundedRect(barX, barTop, barW, barH, R);
 
     // Fill from bottom upward
     const fillH = ratio * barH;
-    if (fillH > 1) {
+    if (fillH > 2) {
       const col = ratio < 0.5 ? 0x22C55E : ratio < 0.8 ? 0xFFBB00 : 0xFF4444;
-      g.fillStyle(col, 0.9);
-      g.fillRoundedRect(barX, barTop + barH - fillH, barW, fillH, 7);
+      g.fillStyle(col, 0.92);
+      g.fillRoundedRect(barX, barTop + barH - fillH, barW, fillH, R);
+      // Left-edge highlight strip for depth
+      g.fillStyle(0xFFFFFF, 0.20);
+      g.fillRoundedRect(barX + 2, barTop + barH - fillH, 3, fillH, 2);
     }
 
     // Border
-    g.lineStyle(1.5, 0xFFFFFF, 0.4);
-    g.strokeRoundedRect(barX, barTop, barW, barH, 7);
+    g.lineStyle(1.5, 0xFFFFFF, 0.28);
+    g.strokeRoundedRect(barX, barTop, barW, barH, R);
   }
 
   // ─── Floor indicator (10 circles at bottom) ──────────────────────────────────
@@ -182,14 +217,14 @@ export class ThrowToBinScene extends Phaser.Scene {
 
     this.floorIndicatorGfx = this.add.graphics().setDepth(49).setScrollFactor(0);
 
-    this.floorWarningText = this.add.text(W / 2, H * FLOOR_Y_RATIO + 52, '', {
+    this.floorWarningText = this.add.text(W / 2, H * FLOOR_Y_RATIO + 58, '', {
       fontFamily: 'Fredoka One, cursive',
-      fontSize: '16px',
+      fontSize: '15px',
       color: '#FF5555',
-      stroke: '#000',
+      stroke: '#000000',
       strokeThickness: 4,
       align: 'center',
-    }).setOrigin(0.5).setDepth(50).setScrollFactor(0).setAlpha(0);
+    }).setOrigin(0.5).setDepth(50).setScrollFactor(0).setAlpha(0).setResolution(2);
   }
 
   private drawFloorIndicator(count: number) {
@@ -198,34 +233,50 @@ export class ThrowToBinScene extends Phaser.Scene {
     const g = this.floorIndicatorGfx;
     g.clear();
 
-    const R      = 9;
-    const gap    = 6;
+    const R      = 11;
+    const gap    = 7;
     const step   = R * 2 + gap;
     const totalW = step * MAX_FLOOR_ITEMS - gap;
     const startX = (W - totalW) / 2 + R;
-    const circY  = H * FLOOR_Y_RATIO + 28;
+    const circY  = H * FLOOR_Y_RATIO + 34;
 
     for (let i = 0; i < MAX_FLOOR_ITEMS; i++) {
       const cx     = startX + i * step;
       const filled = i < count;
-      let fillCol: number;
-      if (!filled)   fillCol = 0x333333;
-      else if (i < 5) fillCol = 0x22C55E;
-      else if (i < 7) fillCol = 0xFFBB00;
-      else if (i < 9) fillCol = 0xFF6B00;
-      else             fillCol = 0xFF2222;
 
-      g.fillStyle(fillCol, filled ? 0.95 : 0.30);
+      let fillCol: number;
+      if (!filled)    fillCol = 0x1C1C1C;
+      else if (i < 5) fillCol = 0x16A34A;  // deep green
+      else if (i < 7) fillCol = 0xCA8A04;  // deep amber
+      else if (i < 9) fillCol = 0xC2410C;  // deep orange
+      else             fillCol = 0xDC2626;  // deep red
+
+      // Drop shadow (filled only)
+      if (filled) {
+        g.fillStyle(0x000000, 0.30);
+        g.fillCircle(cx + 1, circY + 1, R);
+      }
+
+      // Main circle
+      g.fillStyle(fillCol, filled ? 1 : 0.28);
       g.fillCircle(cx, circY, R);
-      g.lineStyle(1.5, filled ? 0xFFFFFF : 0x555555, filled ? 0.65 : 0.25);
+
+      // Inner highlight (top-left gloss)
+      if (filled) {
+        g.fillStyle(0xFFFFFF, 0.22);
+        g.fillCircle(cx - 3, circY - 4, R * 0.40);
+      }
+
+      // Border
+      g.lineStyle(filled ? 1.5 : 1, filled ? 0xFFFFFF : 0x444444, filled ? 0.45 : 0.18);
       g.strokeCircle(cx, circY, R);
     }
 
     if (this.floorWarningText?.active) {
       if (count >= 9) {
-        this.floorWarningText.setText('⚠️ Danger! Too much trash!').setAlpha(1);
+        this.floorWarningText.setText('Danger! Way too much trash!').setAlpha(1);
       } else if (count >= 7) {
-        this.floorWarningText.setText('Hurry! Street is getting too dirty! 🧹').setAlpha(1);
+        this.floorWarningText.setText('Hurry! Street getting dirty!').setAlpha(1);
       } else {
         this.floorWarningText.setAlpha(0);
       }
@@ -262,16 +313,20 @@ export class ThrowToBinScene extends Phaser.Scene {
   }
 
   private settleItem(c: Phaser.GameObjects.Container) {
-    const W  = this.cameras.main.width;
-    const sx = Phaser.Math.Clamp(c.x, 65, W - 65);
-    c.setPosition(sx, this.floorY);
+    const W       = this.cameras.main.width;
+    const sx      = Phaser.Math.Clamp(c.x, 65, W - 65);
+    // floorY is the lowest point; items can sit up to 38px above it
+    const yOff    = Phaser.Math.Between(0, 38);
+    const settleY = this.floorY - yOff;
+
+    c.setPosition(sx, settleY);
     c.setAngle(0);
     c.setInteractive();
     c.setData('ox', sx);
-    c.setData('oy', this.floorY);
+    c.setData('oy', settleY);
 
     this.tweens.add({
-      targets: c, y: this.floorY - 14,
+      targets: c, y: settleY - 14,
       duration: 900 + Phaser.Math.Between(0, 300),
       yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });

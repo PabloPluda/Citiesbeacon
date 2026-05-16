@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Landing from './pages/Landing';
-import Onboarding from './pages/Onboarding';
 import MissionMap from './pages/MissionMap';
 import GameWindow from './pages/GameWindow';
 import Profile from './pages/Profile';

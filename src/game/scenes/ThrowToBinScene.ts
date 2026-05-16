@@ -175,7 +175,7 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   private generateHudIcons() {
     if (!this.textures.exists('hud-bin')) {
-      const g = this.make.graphics({ x: 0, y: 0, add: false });
+      const g = this.make.graphics({ x: 0, y: 0 });
       g.fillStyle(0x15803D); g.fillRoundedRect(9, 1, 8, 5, 2.5);  // handle
       g.fillStyle(0x16A34A); g.fillRoundedRect(2, 4, 22, 5, 2.5);  // lid
       g.fillStyle(0x15803D); g.fillRoundedRect(3, 9, 20, 17, { tl: 0, tr: 0, bl: 4, br: 4 });  // body
@@ -186,7 +186,7 @@ export class ThrowToBinScene extends Phaser.Scene {
       g.destroy();
     }
     if (!this.textures.exists('hud-star')) {
-      const g = this.make.graphics({ x: 0, y: 0, add: false });
+      const g = this.make.graphics({ x: 0, y: 0 });
       g.fillStyle(0xFFD700);
       const cx = 13, cy = 13, R = 11, r = 4.5, pts = 5;
       g.beginPath();
@@ -203,7 +203,7 @@ export class ThrowToBinScene extends Phaser.Scene {
       g.destroy();
     }
     if (!this.textures.exists('hud-coin')) {
-      const g = this.make.graphics({ x: 0, y: 0, add: false });
+      const g = this.make.graphics({ x: 0, y: 0 });
       g.fillStyle(0xFFD700); g.fillCircle(13, 13, 12);
       g.lineStyle(2, 0xC49A00); g.strokeCircle(13, 13, 12);
       g.lineStyle(1.5, 0xC49A00, 0.45); g.strokeCircle(13, 13, 8);

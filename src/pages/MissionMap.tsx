@@ -4,7 +4,8 @@ import { motion } from 'framer-motion';
 import { useProgressStore } from '../store/progressStore';
 import { useAdminStore, DEFAULT_MISSION_CONFIG } from '../store/adminStore';
 
-const MISSION_IDS = DEFAULT_MISSION_CONFIG.map(m => m.id);
+// Mission 4 (Water Saver) hidden until ready
+const MISSION_IDS = DEFAULT_MISSION_CONFIG.map(m => m.id).filter(id => id !== 4);
 
 export default function MissionMap() {
   const navigate            = useNavigate();

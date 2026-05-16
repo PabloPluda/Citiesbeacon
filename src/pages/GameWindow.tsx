@@ -247,7 +247,9 @@ export default function GameWindow() {
   const [cbDemolish, setCbDemolish] = useState(false);
   const [cbDemolishLabel, setCbDemolishLabel] = useState<string | null>(null);
 
-  // Mission 1 (ThrowToBin) game-over overlay
+  // Mission 1 (ThrowToBin) tutorial + game-over overlays
+  const [m1Tutorial, setM1Tutorial] = useState(false);
+  const m1TutorialDoneRef = useRef(false);
   const [m1Over, setM1Over] = useState(false);
   const [m1Data, setM1Data] = useState<{
     scored: number; wasNewRecord: boolean; prevBest: number;
@@ -349,6 +351,16 @@ export default function GameWindow() {
     const onM1Over = (data: typeof m1Data) => { setM1Data(data); setM1Over(true); };
     EventBus.on('game-over-m1', onM1Over);
 
+    const onM1Tutorial = () => {
+      if (m1TutorialDoneRef.current) {
+        // Already seen (retry path) — skip straight to game
+        EventBus.emit('m1-tutorial-done');
+      } else {
+        setM1Tutorial(true);
+      }
+    };
+    EventBus.on('show-m1-tutorial', onM1Tutorial);
+
     return () => {
       EventBus.off('game-timer', onTimer);
       EventBus.off('game-scored-update', onScored);
@@ -368,6 +380,7 @@ export default function GameWindow() {
       EventBus.off('citybuilder-demolish-preview', onDemolishPrev);
       EventBus.off('citybuilder-demolish-done',    onDemolishDone);
       EventBus.off('game-over-m1', onM1Over);
+      EventBus.off('show-m1-tutorial', onM1Tutorial);
       if (gameRef.current) {
         gameRef.current.destroy(true);
         gameRef.current = null;
@@ -754,6 +767,18 @@ export default function GameWindow() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ─ Mission 1 tutorial ───────────────────────────────────────────── */}
+      {m1Tutorial && (
+        <M1TutorialOverlay
+          heroName={heroName}
+          onStart={() => {
+            m1TutorialDoneRef.current = true;
+            setM1Tutorial(false);
+            EventBus.emit('m1-tutorial-done');
+          }}
+        />
       )}
 
       {/* ─ Mission 1 game-over overlay ───────────────────────────────────── */}
@@ -1225,6 +1250,152 @@ function M1GameOverOverlay({
           )}
         </AnimatePresence>
       </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Mission 1 Tutorial Overlay ───────────────────────────────────────────────
+function M1TutorialOverlay({ heroName, onStart }: { heroName: string; onStart: () => void }) {
+  // Gesture phases: 0=idle, 1=pull back, 2=throw, 3=landed+pause
+  const [gPhase, setGPhase] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    const cycle = () => {
+      if (!mounted) return;
+      setGPhase(0);
+      setTimeout(() => { if (!mounted) return; setGPhase(1);
+      setTimeout(() => { if (!mounted) return; setGPhase(2);
+      setTimeout(() => { if (!mounted) return; setGPhase(3);
+      setTimeout(() => { if (mounted) cycle(); }, 1100);
+      }, 500); }, 900); }, 700);
+    };
+    const t = setTimeout(cycle, 300);
+    return () => { mounted = false; clearTimeout(t); };
+  }, []);
+
+  // Trash position relative to its resting spot (left side of demo)
+  const trashPos = [
+    { x: 0,   y: 0,   rotate: 0,   opacity: 1 },  // 0 idle
+    { x: -48, y: 28,  rotate: -22, opacity: 1 },   // 1 pulled back
+    { x: 130, y: -55, rotate: 55,  opacity: 1 },   // 2 flying
+    { x: 130, y: -30, rotate: 90,  opacity: 0 },   // 3 in bin
+  ][gPhase];
+
+  // Finger mirrors trash, disappears on throw
+  const fingerPos = [
+    { x: 0,   y: 0,  opacity: 0.95 },
+    { x: -48, y: 28, opacity: 0.95 },
+    { x: -48, y: 28, opacity: 0 },
+    { x: 0,   y: 0,  opacity: 0 },
+  ][gPhase];
+
+  const spring = { type: 'spring' as const, stiffness: 260, damping: 22 };
+  const fast   = { type: 'tween' as const, duration: 0.28, ease: [0.4, 0, 1, 1] as [number,number,number,number] };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+      style={{
+        position: 'absolute', inset: 0, zIndex: 85,
+        background: 'rgba(0,0,0,0.88)',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        padding: '0 28px',
+      }}
+    >
+      {/* Message */}
+      <motion.div
+        initial={{ y: -18, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.15 }}
+        style={{ textAlign: 'center', marginBottom: 38 }}
+      >
+        <div style={{ fontSize: '2.4rem', marginBottom: 10 }}>🗑️</div>
+        <div style={{
+          fontFamily: 'Fredoka One, cursive', fontSize: '1.65rem',
+          color: '#4ADE80', marginBottom: 14,
+          textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+        }}>
+          Hi{heroName ? `, ${heroName}` : ''}!
+        </div>
+        <div style={{
+          fontFamily: 'Fredoka One, cursive', fontSize: '1.05rem',
+          color: 'rgba(255,255,255,0.88)', lineHeight: 1.6,
+          maxWidth: 290,
+        }}>
+          People are throwing trash on the floor.<br />
+          Let's teach them how to do it right!<br />
+          <span style={{ color: '#FDE68A' }}>The trash must go in the bin.</span><br />
+          It's not that hard!
+        </div>
+      </motion.div>
+
+      {/* Gesture demo */}
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ delay: 0.35 }}
+        style={{
+          position: 'relative', width: 260, height: 110,
+          marginBottom: 44,
+        }}
+      >
+        {/* Bin (static, right side) */}
+        <div style={{
+          position: 'absolute', right: 8, top: '50%',
+          marginTop: -28, fontSize: '3.2rem', lineHeight: 1,
+          filter: 'drop-shadow(0 0 12px rgba(74,222,128,0.5))',
+        }}>♻️</div>
+
+        {/* Arrow hint */}
+        <div style={{
+          position: 'absolute', left: '50%', top: '50%',
+          marginLeft: -10, marginTop: -12,
+          color: 'rgba(255,255,255,0.22)', fontSize: '1.4rem',
+        }}>→</div>
+
+        {/* Trash item (animated) */}
+        <motion.div
+          animate={trashPos}
+          transition={gPhase === 2 ? fast : spring}
+          style={{
+            position: 'absolute', left: 52, top: '50%',
+            marginTop: -22, fontSize: '2.8rem', lineHeight: 1,
+            userSelect: 'none',
+          }}
+        >🗑️</motion.div>
+
+        {/* Finger cursor (follows trash, vanishes on release) */}
+        <motion.div
+          animate={fingerPos}
+          transition={gPhase === 2 ? { duration: 0.08 } : spring}
+          style={{
+            position: 'absolute', left: 62, top: '50%',
+            marginTop: 10, fontSize: '1.9rem', lineHeight: 1,
+            userSelect: 'none',
+          }}
+        >👆</motion.div>
+      </motion.div>
+
+      {/* Let's play button */}
+      <motion.button
+        initial={{ y: 18, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.55 }}
+        whileTap={{ scale: 0.93 }}
+        onClick={onStart}
+        style={{
+          fontFamily: 'Fredoka One, cursive', fontSize: '1.45rem',
+          background: 'linear-gradient(135deg,#22C55E,#15803D)',
+          border: 'none', borderRadius: 99,
+          padding: '16px 52px', color: '#fff', cursor: 'pointer',
+          boxShadow: '0 6px 0 #14532D, 0 8px 28px rgba(21,128,61,0.5)',
+          letterSpacing: '0.03em',
+        }}
+      >
+        Let's play!
+      </motion.button>
     </motion.div>
   );
 }

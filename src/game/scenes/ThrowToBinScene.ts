@@ -53,6 +53,7 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   private spawnTimer    = 0;
   private sessionCoins  = 0;
+  private gameStarted   = false;
 
   constructor() { super('ThrowToBinScene'); }
 
@@ -68,6 +69,7 @@ export class ThrowToBinScene extends Phaser.Scene {
     this.floorY        = 0;
     this.spawnTimer    = 0;
     this.sessionCoins  = 0;
+    this.gameStarted   = false;
   }
 
   preload() {
@@ -83,7 +85,14 @@ export class ThrowToBinScene extends Phaser.Scene {
 
     const handleRestart = () => { setTimeout(() => this.scene.restart(), 0); };
     EventBus.on('restart-scene', handleRestart);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', handleRestart));
+
+    const handleTutorialDone = () => { this.startGame(); };
+    EventBus.on('m1-tutorial-done', handleTutorialDone);
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      EventBus.off('restart-scene', handleRestart);
+      EventBus.off('m1-tutorial-done', handleTutorialDone);
+    });
 
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
@@ -105,10 +114,13 @@ export class ThrowToBinScene extends Phaser.Scene {
     this.input.on('pointermove', this.onMove, this);
     this.input.on('pointerup',   this.onUp,   this);
 
-    // Spawn 3 initial items from sides
-    for (let i = 0; i < 3; i++) {
-      this.spawnFromSide();
-    }
+    // Notify React to show tutorial (or skip it if already seen this session)
+    EventBus.emit('show-m1-tutorial');
+  }
+
+  private startGame() {
+    this.gameStarted = true;
+    for (let i = 0; i < 3; i++) this.spawnFromSide();
   }
 
   // ─── HUD (top-right strip, avoids back button on top-left) ───────────────────
@@ -623,7 +635,7 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   update(_time: number, delta: number) {
     if (this.binContainer) this.binCX = this.binContainer.x;
-    if (this.gameOver) return;
+    if (this.gameOver || !this.gameStarted) return;
 
     const W  = this.cameras.main.width;
     const dt = delta / 1000;

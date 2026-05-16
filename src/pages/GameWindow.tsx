@@ -1264,7 +1264,6 @@ function M1TutorialOverlay({
   pos: { binX: number; binY: number; trashX: number; trashY: number } | null;
   onStart: () => void;
 }) {
-  // Use real game coords if available, otherwise fall back to viewport percentages
   const W = window.innerWidth;
   const H = window.innerHeight;
   const trashX = pos?.trashX ?? W * 0.28;
@@ -1272,14 +1271,18 @@ function M1TutorialOverlay({
   const binX   = pos?.binX   ?? W * 0.50;
   const binY   = pos?.binY   ?? 230;
 
-  // Pull-back offset: opposite direction from trash→bin, short drag
-  const tBx = binX - trashX;   // vector toward bin
-  const tBy = binY - trashY;
-  const mag  = Math.sqrt(tBx * tBx + tBy * tBy) || 1;
-  const pullDx = -(tBx / mag) * 58;
-  const pullDy = -(tBy / mag) * 58;
+  // dx/dy = vector from trash to bin
+  const dx = binX - trashX;
+  const dy = binY - trashY;
+  const mag = Math.sqrt(dx * dx + dy * dy) || 1;
+  // Pull-back direction = opposite of trash→bin, 58px
+  const pullDx = -(dx / mag) * 58;
+  const pullDy = -(dy / mag) * 58;
+  // Arc peak: slightly past bin horizontally, 90px above bin vertically
+  const peakX  = dx * 1.06;
+  const peakY  = dy - 90;
 
-  // Gesture phases: 0=idle, 1=pull back, 2=throw, 3=landed+pause
+  // 5 phases: 0=idle, 1=pullback, 2=arc-peak, 3=fall-into-bin, 4=in-bin(fade)+pause
   const [gPhase, setGPhase] = useState(0);
 
   useEffect(() => {
@@ -1290,138 +1293,158 @@ function M1TutorialOverlay({
       setTimeout(() => { if (!mounted) return; setGPhase(1);
       setTimeout(() => { if (!mounted) return; setGPhase(2);
       setTimeout(() => { if (!mounted) return; setGPhase(3);
-      setTimeout(() => { if (mounted) cycle(); }, 1100);
-      }, 500); }, 950); }, 800);
+      setTimeout(() => { if (!mounted) return; setGPhase(4);
+      setTimeout(() => { if (mounted) cycle(); }, 1050);
+      }, 320); }, 430); }, 900); }, 820);
     };
     const t = setTimeout(cycle, 500);
     return () => { mounted = false; clearTimeout(t); };
   }, []); // eslint-disable-line
 
-  // Offsets relative to trash starting position (used with framer-motion x/y)
   const trashAnim = [
-    { x: 0,           y: 0,           rotate: 0,   opacity: 1 },
-    { x: pullDx,      y: pullDy,      rotate: -20, opacity: 1 },
-    { x: binX-trashX, y: binY-trashY, rotate: 50,  opacity: 0.9 },
-    { x: binX-trashX, y: binY-trashY, rotate: 80,  opacity: 0 },
+    { x: 0,       y: 0,         rotate: 0,   opacity: 1 },   // 0 idle
+    { x: pullDx,  y: pullDy,    rotate: -18, opacity: 1 },   // 1 pullback
+    { x: peakX,   y: peakY,     rotate: 85,  opacity: 1 },   // 2 arc peak (above & past bin)
+    { x: dx,      y: dy + 10,   rotate: 155, opacity: 0.85 },// 3 falling into bin
+    { x: dx,      y: dy + 22,   rotate: 175, opacity: 0 },   // 4 inside bin, fades out
   ][gPhase];
 
   const fingerAnim = [
-    { x: 0,      y: 0,      opacity: 1 },
-    { x: pullDx, y: pullDy, opacity: 1 },
-    { x: pullDx, y: pullDy, opacity: 0 },
-    { x: 0,      y: 0,      opacity: 0 },
+    { x: 0,      y: 0,      opacity: 1 },  // 0 idle
+    { x: pullDx, y: pullDy, opacity: 1 },  // 1 holding trash back
+    { x: pullDx, y: pullDy, opacity: 0 },  // 2 lifts off as trash launches
+    { x: 0,      y: 0,      opacity: 0 },  // 3 hidden
+    { x: 0,      y: 0,      opacity: 0 },  // 4 hidden
   ][gPhase];
 
-  const spring = { type: 'spring' as const, stiffness: 240, damping: 22 };
-  const fast   = { type: 'tween' as const, duration: 0.28, ease: [0.4, 0, 1, 1] as [number,number,number,number] };
+  const spring   = { type: 'spring' as const, stiffness: 220, damping: 22 };
+  const launch   = { type: 'tween' as const, duration: 0.43,
+                     ease: [0.15, 0, 0.55, 1] as [number,number,number,number] };  // fast snap, slows at peak
+  const fallGrav = { type: 'tween' as const, duration: 0.3,
+                     ease: [0.4, 0, 1, 1] as [number,number,number,number] };      // gravity pull-in
+  const fadeOut  = { duration: 0.18 };
+
+  const trashTransition =
+    gPhase === 2 ? launch :
+    gPhase === 3 ? fallGrav :
+    gPhase === 4 ? fadeOut : spring;
 
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }}
       style={{
         position: 'absolute', inset: 0, zIndex: 85,
-        background: 'rgba(0,0,0,0.72)',
+        background: 'rgba(0,0,0,0.70)',
         pointerEvents: 'auto',
       }}
     >
       {/* ── Top message card ──────────────────────────────────── */}
       <motion.div
-        initial={{ y: -20, opacity: 0 }}
+        initial={{ y: -18, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.18 }}
+        transition={{ delay: 0.16 }}
         style={{
           position: 'absolute',
           top: 12, left: 14, right: 14,
-          background: 'rgba(0,10,24,0.82)',
+          background: 'rgba(0,10,24,0.84)',
           border: '1.5px solid rgba(255,255,255,0.10)',
           borderRadius: 22,
-          padding: '16px 20px 14px',
+          padding: '14px 20px 12px',
           textAlign: 'center',
         }}
       >
         <div style={{
-          fontFamily: 'Fredoka One, cursive', fontSize: '1.55rem',
-          color: '#4ADE80', marginBottom: 8,
+          fontFamily: 'Fredoka One, cursive', fontSize: '1.6rem',
+          color: '#4ADE80', marginBottom: 6,
           textShadow: '0 2px 8px rgba(0,0,0,0.6)',
         }}>
           Hi, {heroName || 'Hero'}! 👋
         </div>
         <div style={{
           fontFamily: 'Fredoka One, cursive', fontSize: '1.0rem',
-          color: 'rgba(255,255,255,0.92)', lineHeight: 1.55,
+          color: 'rgba(255,255,255,0.90)', lineHeight: 1.5,
         }}>
-          Please help us throw the trash to the bin!<br />
-          <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.88rem' }}>
-            People shouldn't throw it on the floor — it's not that hard!
-          </span>
+          Thanks for helping keep the streets clean of trash!
         </div>
       </motion.div>
 
-      {/* ── Animated ghost trash item (shows slingshot gesture) ─ */}
-      {/* Glow ring at trash position (phases 0 & 1) */}
+      {/* ── Glow ring at trash resting position (phases 0 & 1) ── */}
       <motion.div
-        animate={{ opacity: gPhase <= 1 ? 0.5 : 0, scale: gPhase === 0 ? 1.12 : 1 }}
-        transition={{ duration: 0.3 }}
+        animate={{ opacity: gPhase <= 1 ? 0.55 : 0 }}
+        transition={{ duration: 0.25 }}
         style={{
           position: 'absolute',
-          left: trashX - 30, top: trashY - 30,
-          width: 60, height: 60,
+          left: trashX - 32, top: trashY - 32,
+          width: 64, height: 64,
           borderRadius: '50%',
           border: '2.5px solid #4ADE80',
-          boxShadow: '0 0 12px rgba(74,222,128,0.6)',
+          boxShadow: '0 0 14px rgba(74,222,128,0.65)',
           pointerEvents: 'none',
         }}
       />
 
-      {/* Ghost trash SVG (animated) */}
+      {/* ── Ghost trash SVG — parabolic arc animation ──────────── */}
       <motion.img
         src="/trash/banana_peel.svg"
         animate={trashAnim}
-        transition={gPhase === 2 ? fast : spring}
+        transition={trashTransition}
         style={{
           position: 'absolute',
           left: trashX - 22, top: trashY - 22,
           width: 44, height: 44,
           pointerEvents: 'none',
-          filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.7))',
+          filter: 'drop-shadow(0 3px 8px rgba(0,0,0,0.75))',
         }}
       />
 
-      {/* Finger emoji (follows trash, vanishes on throw) */}
+      {/* ── Finger — follows trash, vanishes at launch ──────────── */}
       <motion.div
         animate={fingerAnim}
-        transition={gPhase === 2 ? { duration: 0.08 } : spring}
+        transition={gPhase === 2 ? { duration: 0.07 } : spring}
         style={{
           position: 'absolute',
-          left: trashX - 12, top: trashY + 4,
-          fontSize: '2rem', lineHeight: 1,
+          left: trashX - 10, top: trashY + 6,
+          fontSize: '2.1rem', lineHeight: 1,
           pointerEvents: 'none',
           filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.8))',
         }}
       >👆</motion.div>
 
-      {/* ── Bottom: warning + button ───────────────────────────── */}
+      {/* ── Warning — more centered, bigger, prominent ─────────── */}
       <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.38 }}
+        initial={{ opacity: 0, scale: 0.88 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.42, type: 'spring', stiffness: 220, damping: 18 }}
         style={{
           position: 'absolute',
-          bottom: 40, left: 16, right: 16,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', gap: 14,
+          bottom: 130,
+          left: 20, right: 20,
+          textAlign: 'center',
         }}
       >
         <div style={{
-          fontFamily: 'Fredoka One, cursive', fontSize: '0.95rem',
-          color: 'rgba(255,255,255,0.78)',
-          background: 'rgba(0,0,0,0.55)',
-          border: '1.5px solid rgba(255,255,255,0.12)',
-          borderRadius: 14, padding: '9px 20px',
-          textAlign: 'center',
+          display: 'inline-block',
+          fontFamily: 'Fredoka One, cursive', fontSize: '1.15rem',
+          color: '#FDE68A',
+          background: 'rgba(0,0,0,0.62)',
+          border: '1.5px solid rgba(253,230,138,0.30)',
+          borderRadius: 20,
+          padding: '11px 24px',
+          boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
+          letterSpacing: '0.01em',
+          lineHeight: 1.4,
         }}>
           ⚠️ Keep the floor with less than 10 items!
         </div>
+      </motion.div>
+
+      {/* ── Let's play button ──────────────────────────────────── */}
+      <motion.div
+        initial={{ y: 18, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.52 }}
+        style={{ position: 'absolute', bottom: 44, left: 20, right: 20, textAlign: 'center' }}
+      >
         <motion.button
           whileTap={{ scale: 0.93 }}
           onClick={onStart}

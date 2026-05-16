@@ -127,9 +127,10 @@ export class ThrowToBinScene extends Phaser.Scene {
     // Generate icon textures for the value row
     this.generateHudIcons();
 
-    const col1 = BACK_END + hudW * 0.16;
-    const col2 = BACK_END + hudW * 0.50;
-    const col3 = BACK_END + hudW * 0.82;
+    // Order: Coins | Score | Record  (coins leftmost so number never clips right edge)
+    const col1 = BACK_END + hudW * 0.14;
+    const col2 = BACK_END + hudW * 0.47;
+    const col3 = BACK_END + hudW * 0.79;
     const labelY = 17;
     const valueY = 53;
 
@@ -143,11 +144,11 @@ export class ThrowToBinScene extends Phaser.Scene {
         strokeThickness: 2,
       }).setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
 
-    mkLabel(col1, 'Score:', '#86EFAC');
-    mkLabel(col2, 'My Record:', '#FDE68A');
-    mkLabel(col3, 'CityCoins:', '#93C5FD');
+    mkLabel(col1, 'Coins:', '#93C5FD');
+    mkLabel(col2, 'Score:', '#86EFAC');
+    mkLabel(col3, 'Record:', '#FDE68A');
 
-    // Value row: icon (16px left of col centre) + number (8px right of col centre)
+    // Value row: icon (left of col centre) + number (right of col centre)
     const iconSize = 24;
     const iconOffX = 14;
     const valStyle: Phaser.Types.GameObjects.Text.TextStyle = {
@@ -158,18 +159,18 @@ export class ThrowToBinScene extends Phaser.Scene {
       strokeThickness: 3,
     };
 
-    this.add.image(col1 - iconOffX, valueY, 'hud-bin')
+    this.add.image(col1 - iconOffX, valueY, 'hud-coin')
       .setDisplaySize(iconSize, iconSize).setDepth(50).setScrollFactor(0);
-    this.add.image(col2 - iconOffX, valueY, 'hud-star')
+    this.add.image(col2 - iconOffX, valueY, 'hud-bin')
       .setDisplaySize(iconSize, iconSize).setDepth(50).setScrollFactor(0);
-    this.add.image(col3 - iconOffX, valueY, 'hud-coin')
+    this.add.image(col3 - iconOffX, valueY, 'hud-star')
       .setDisplaySize(iconSize, iconSize).setDepth(50).setScrollFactor(0);
 
-    this.hudScored = this.add.text(col1 + iconOffX - 10, valueY, '', valStyle)
+    this.hudCoins  = this.add.text(col1 + iconOffX - 10, valueY, '', valStyle)
       .setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
-    this.hudBest   = this.add.text(col2 + iconOffX - 10, valueY, '', valStyle)
+    this.hudScored = this.add.text(col2 + iconOffX - 10, valueY, '', valStyle)
       .setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
-    this.hudCoins  = this.add.text(col3 + iconOffX - 10, valueY, '', valStyle)
+    this.hudBest   = this.add.text(col3 + iconOffX - 10, valueY, '', valStyle)
       .setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
 
     this.updateHud();

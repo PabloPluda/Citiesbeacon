@@ -1055,31 +1055,59 @@ function M1GameOverOverlay({
   onRetry: () => void;
   onMap: () => void;
 }) {
-  const { scored, wasNewRecord, prevBest, coinsEarned, totalCoins } = data;
+  const { scored, wasNewRecord, coinsEarned, totalCoins } = data;
   const coinsBeforeGame = totalCoins - coinsEarned;
 
-  let emoji: string, title: string, titleColor: string, message: string, cardBg: string, cardBorder: string;
+  // 0 = title only | 1 = + earned appears | 2 = counter running | 3 = buttons appear
+  const [phase, setPhase] = useState(0);
+  const [displayCoins, setDisplayCoins] = useState(coinsBeforeGame);
 
+  // Phase progression timers
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase(1), 600);
+    return () => clearTimeout(t1);
+  }, []);
+
+  useEffect(() => {
+    if (phase !== 1) return;
+    const t2 = setTimeout(() => setPhase(2), 1000);
+    return () => clearTimeout(t2);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 2) return;
+    const duration = 900;
+    const start = coinsBeforeGame;
+    const end = totalCoins;
+    const startTime = Date.now();
+    const raf = { id: 0 };
+    const tick = () => {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplayCoins(Math.round(start + (end - start) * eased));
+      if (t < 1) { raf.id = requestAnimationFrame(tick); }
+    };
+    raf.id = requestAnimationFrame(tick);
+    const t3 = setTimeout(() => setPhase(3), duration + 1000);
+    return () => { cancelAnimationFrame(raf.id); clearTimeout(t3); };
+  }, [phase, coinsBeforeGame, totalCoins]);
+
+  let emoji: string, title: string, titleColor: string, message: string, cardBg: string, cardBorder: string;
   if (wasNewRecord) {
-    emoji      = '🏆';
-    title      = 'Congratulations!!';
-    titleColor = '#F59E0B';
-    message    = "You broke your own record! Great work keeping the park clean! 🌟";
-    cardBg     = 'linear-gradient(160deg,#1C1200 0%,#2D1E00 60%,#1A1200 100%)';
+    emoji = '🏆'; title = 'Congratulations!!'; titleColor = '#F59E0B';
+    message = "You broke your own record! Great work keeping the city clean! 🌟";
+    cardBg = 'linear-gradient(160deg,#1C1200 0%,#2D1E00 60%,#1A1200 100%)';
     cardBorder = '2.5px solid #F59E0B';
   } else if (scored >= 5) {
-    emoji      = '🌿';
-    title      = 'Well done!';
-    titleColor = '#22C55E';
-    message    = "Thanks to you the park is cleaner than before. Try again and let's keep it clean together!";
-    cardBg     = 'linear-gradient(160deg,#071225 0%,#0D2210 60%,#071225 100%)';
+    emoji = '🌿'; title = 'Well done!'; titleColor = '#22C55E';
+    message = "Thanks to you the city is cleaner! Try again to beat your record!";
+    cardBg = 'linear-gradient(160deg,#071225 0%,#0D2210 60%,#071225 100%)';
     cardBorder = '2.5px solid #22C55E';
   } else {
-    emoji      = '😅';
-    title      = 'Nice try!';
-    titleColor = '#FB923C';
-    message    = "But we can do better! Every piece of trash counts 🌱";
-    cardBg     = 'linear-gradient(160deg,#1A0E00 0%,#251200 60%,#1A0E00 100%)';
+    emoji = '😅'; title = 'Nice try!'; titleColor = '#FB923C';
+    message = "We can do better! Every piece of trash counts 🌱";
+    cardBg = 'linear-gradient(160deg,#1A0E00 0%,#251200 60%,#1A0E00 100%)';
     cardBorder = '2.5px solid #FB923C';
   }
 
@@ -1102,7 +1130,7 @@ function M1GameOverOverlay({
       <motion.div
         initial={{ scale: 0.82, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.1, type: 'spring', stiffness: 260, damping: 20 }}
+        transition={{ delay: 0.08, type: 'spring', stiffness: 260, damping: 20 }}
         style={{
           background: cardBg, border: cardBorder, borderRadius: 28,
           width: 'min(340px, calc(100vw - 40px))',
@@ -1110,78 +1138,92 @@ function M1GameOverOverlay({
           boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
         }}
       >
-        {/* Emoji */}
-        <div style={{ fontSize: '3.2rem', lineHeight: 1, marginBottom: 10 }}>
+        {/* Emoji + Title + Message */}
+        <div style={{ fontSize: '3rem', lineHeight: 1, marginBottom: 8 }}>
           {emoji}{wasNewRecord ? ' 🎉' : ''}
         </div>
-
-        {/* Title */}
         <div style={{
           fontFamily: 'Fredoka One, cursive', fontSize: '2rem',
-          color: titleColor, marginBottom: 10,
+          color: titleColor, marginBottom: 8,
           textShadow: '0 2px 10px rgba(0,0,0,0.5)',
         }}>{title}</div>
-
-        {/* Message */}
         <div style={{
           fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
-          color: 'rgba(255,255,255,0.85)', lineHeight: 1.5, marginBottom: 18,
+          color: 'rgba(255,255,255,0.82)', lineHeight: 1.45, marginBottom: 22,
         }}>{message}</div>
 
-        {/* Record badge */}
-        {wasNewRecord && (
-          <div style={{
-            background: 'rgba(245,158,11,0.18)', border: '1.5px solid rgba(245,158,11,0.5)',
-            borderRadius: 14, padding: '8px 16px', marginBottom: 16,
-          }}>
-            <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '1.05rem', color: '#FDE68A' }}>
-              ⭐ New record: {scored} items!
-            </div>
-            {prevBest > 0 && (
-              <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
-                Previous best: {prevBest}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Phase 1: coins earned — big pop-in */}
+        <AnimatePresence>
+          {phase >= 1 && (
+            <motion.div
+              key="earned"
+              initial={{ scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 10, marginBottom: 20,
+              }}
+            >
+              <span style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '3.8rem', lineHeight: 1,
+                color: '#4ADE80',
+                textShadow: '0 0 24px rgba(74,222,128,0.6), 0 3px 0 #14532D',
+                letterSpacing: '-0.02em',
+              }}>+{coinsEarned}</span>
+              <span style={{ fontSize: '2.8rem', lineHeight: 1 }}>🪙</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Coins */}
-        <div style={{
-          background: 'rgba(255,215,0,0.10)', border: '1.5px solid rgba(255,215,0,0.35)',
-          borderRadius: 14, padding: '10px 16px', marginBottom: 22,
-        }}>
-          <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', marginBottom: 5 }}>
-            CityCoins
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            <span style={{ fontFamily: 'Fredoka One, cursive', fontSize: '1.25rem', color: 'rgba(255,215,0,0.65)' }}>
-              🪙 {coinsBeforeGame}
-            </span>
-            <span style={{ fontFamily: 'Fredoka One, cursive', fontSize: '1.1rem', color: '#4ADE80' }}>
-              +{coinsEarned}
-            </span>
-            <span style={{ fontFamily: 'Fredoka One, cursive', fontSize: '0.85rem', color: 'rgba(255,255,255,0.35)' }}>→</span>
-            <span style={{ fontFamily: 'Fredoka One, cursive', fontSize: '1.4rem', color: '#FFD700' }}>
-              {totalCoins} 🪙
-            </span>
-          </div>
-        </div>
+        {/* Phase 2: total coins counter */}
+        <AnimatePresence>
+          {phase >= 2 && (
+            <motion.div
+              key="total"
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 240, damping: 20 }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 8, marginBottom: 24,
+              }}
+            >
+              <span style={{ fontSize: '2rem', lineHeight: 1 }}>🪙</span>
+              <span style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '3rem', lineHeight: 1,
+                color: '#FFD700',
+                textShadow: '0 0 20px rgba(255,215,0,0.5), 0 3px 0 #92400E',
+              }}>{displayCoins}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Buttons */}
-        <div style={{ display: 'flex', gap: 12 }}>
-          <button onClick={onMap} style={{
-            flex: 1, fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
-            background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(255,255,255,0.2)',
-            borderRadius: 20, padding: '13px 8px', color: 'rgba(255,255,255,0.8)', cursor: 'pointer',
-          }}>🗺️ Map</button>
-          <button onClick={onRetry} style={{
-            flex: 2, fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
-            background: btnColor, border: 'none',
-            borderRadius: 20, padding: '13px 8px',
-            color: '#fff', cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
-          }}>🔄 Try Again</button>
-        </div>
+        {/* Phase 3: buttons */}
+        <AnimatePresence>
+          {phase >= 3 && (
+            <motion.div
+              key="buttons"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+              style={{ display: 'flex', gap: 12 }}
+            >
+              <button onClick={onMap} style={{
+                flex: 1, fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+                background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(255,255,255,0.2)',
+                borderRadius: 20, padding: '13px 8px', color: 'rgba(255,255,255,0.8)', cursor: 'pointer',
+              }}>🗺️ Map</button>
+              <button onClick={onRetry} style={{
+                flex: 2, fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+                background: btnColor, border: 'none',
+                borderRadius: 20, padding: '13px 8px',
+                color: '#fff', cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+              }}>🔄 Play Again</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </motion.div>
   );

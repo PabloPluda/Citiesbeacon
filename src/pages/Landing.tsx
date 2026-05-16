@@ -77,7 +77,7 @@ function AppBadge({ platform, large, comingSoon }: { platform: 'App Store' | 'Go
 
 export default function Landing() {
   const navigate = useNavigate();
-  const goPlay   = () => navigate('/play');
+  const goPlay   = () => navigate('/login');
 
   const [posts, setPosts]       = useState<SubstackPost[] | null>(null);
   const [postsErr, setPostsErr] = useState(false);

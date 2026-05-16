@@ -38,8 +38,8 @@ export default function App() {
         {/* Public landing page */}
         <Route path="/" element={<Landing />} />
 
-        {/* Game onboarding */}
-        <Route path="/play" element={<Onboarding />} />
+        {/* /play redirects to login (kept for old bookmarks) */}
+        <Route path="/play" element={<Navigate to="/login" replace />} />
 
         {/* Protected app shell — with bottom nav */}
         <Route element={<AuthGuard><Layout /></AuthGuard>}>

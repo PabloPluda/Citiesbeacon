@@ -12,6 +12,7 @@ export const DEFAULT_MISSION_CONFIG = [
   { id: 4, title: 'Water saver',                     icon: '💧' },
   { id: 5, title: 'Not my dog, still my job',        icon: '🐕' },
   { id: 6, title: 'Biking my city',                  icon: '🚲' },
+  { id: 8, title: 'Recycling challenge',             icon: '♻️' },
   { id: 7, title: 'City Builder',                    icon: '🏙️' },
 ];
 

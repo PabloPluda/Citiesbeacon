@@ -13,6 +13,7 @@ import { WaterSaverScene } from '../game/scenes/WaterSaverScene';
 import { NotMyDogScene } from '../game/scenes/NotMyDogScene';
 import { BikingScene } from '../game/scenes/BikingScene';
 import { CityBuilderScene } from '../game/scenes/CityBuilderScene';
+import { RecyclingScene } from '../game/scenes/RecyclingScene';
 import { CATS as DEFAULT_CATS } from '../game/cityBuilderData';
 import type { BuildItem } from '../game/cityBuilderData';
 import { useAdminStore } from '../store/adminStore';
@@ -26,6 +27,7 @@ const SCENE_MAP: Record<number, any> = {
   5: NotMyDogScene,
   6: BikingScene,
   7: CityBuilderScene,
+  8: RecyclingScene,
 };
 
 // ─── Circular countdown timer ─────────────────────────────────────────────────
@@ -67,6 +69,7 @@ const MISSION_MSG: Record<number, string> = {
   5: 'Firulai is home safe! 🐕🏠',
   6: 'Using the bike is the best choice for short trips! You got exercise AND the air is cleaner thanks to you — keep it up! 🌿',
   7: 'Your city is growing! Keep earning CityCoins to build more. 🏙️',
+  8: 'Great sorting! Recycling keeps our city clean and healthy! ♻️',
 };
 
 function WellDoneOverlay({
@@ -259,6 +262,13 @@ export default function GameWindow() {
     coinsEarned: number; totalCoins: number;
   } | null>(null);
 
+  // Mission 8 (Recycling) game-over overlay
+  const [m8Over, setM8Over] = useState(false);
+  const [m8Data, setM8Data] = useState<{
+    scored: number; wasNewRecord: boolean; prevBest: number;
+    coinsEarned: number; totalCoins: number;
+  } | null>(null);
+
   // Dog game overlays
   const [showDogTutorial, setShowDogTutorial] = useState(false);
   const [showDogPreLevel, setShowDogPreLevel] = useState(false);
@@ -354,6 +364,9 @@ export default function GameWindow() {
     const onM1Over = (data: typeof m1Data) => { setM1Data(data); setM1Over(true); };
     EventBus.on('game-over-m1', onM1Over);
 
+    const onM8Over = (data: typeof m8Data) => { setM8Data(data); setM8Over(true); };
+    EventBus.on('game-over-recycling', onM8Over);
+
     const onM1Tutorial = (pos?: { binX: number; binY: number; trashX: number; trashY: number }) => {
       if (m1TutorialDoneRef.current) {
         EventBus.emit('m1-tutorial-done');
@@ -383,6 +396,7 @@ export default function GameWindow() {
       EventBus.off('citybuilder-demolish-preview', onDemolishPrev);
       EventBus.off('citybuilder-demolish-done',    onDemolishDone);
       EventBus.off('game-over-m1', onM1Over);
+      EventBus.off('game-over-recycling', onM8Over);
       EventBus.off('show-m1-tutorial', onM1Tutorial);
       if (gameRef.current) {
         gameRef.current.destroy(true);
@@ -797,6 +811,18 @@ export default function GameWindow() {
         />
       )}
 
+      {/* ─ Mission 8 (Recycling) game-over overlay ───────────────────────── */}
+      {m8Over && m8Data && (
+        <M8GameOverOverlay
+          data={m8Data}
+          onRetry={() => {
+            setM8Over(false); setM8Data(null);
+            EventBus.emit('restart-scene', { level: 1 });
+          }}
+          onMap={() => navigate('/map')}
+        />
+      )}
+
       {/* ─ HUD ─────────────────────────────────────────────────────────────── */}
       <div style={{
         position: 'absolute', top: 0, left: 0, width: '100%',
@@ -819,17 +845,17 @@ export default function GameWindow() {
           <ChevronLeft size={24} color="var(--primary)" />
         </button>
 
-        {/* Timer — hidden for ThrowToBin (1), CrossingScene (2), LightsOutScene (3), CityBuilder (7) */}
+        {/* Timer — hidden for ThrowToBin (1), CrossingScene (2), LightsOutScene (3), CityBuilder (7), Recycling (8) */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          {mId !== 1 && mId !== 2 && mId !== 3 && mId !== 7 && <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />}
+          {mId !== 1 && mId !== 2 && mId !== 3 && mId !== 7 && mId !== 8 && <TimerRing timeLeft={timeLeft} maxTime={maxTimeLeft} />}
           {mId === 7 && (
             <img src="/Logo_CHA_header.png?v=2" alt="CityHero Academy"
               style={{ height: 34, display: 'block', filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.45))' }} />
           )}
         </div>
 
-        {/* Scored — hidden for ThrowToBin (1), LightsOutScene (3) and CityBuilder (7) */}
-        {mId !== 1 && mId !== 3 && mId !== 7 && (
+        {/* Scored — hidden for ThrowToBin (1), LightsOutScene (3), CityBuilder (7), Recycling (8) */}
+        {mId !== 1 && mId !== 3 && mId !== 7 && mId !== 8 && (
           <div style={{
             background: 'rgba(255,255,255,0.92)', borderRadius: 20,
             padding: '6px 14px', textAlign: 'center',
@@ -1250,6 +1276,173 @@ function M1GameOverOverlay({
                 color: '#fff', cursor: 'pointer',
                 boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
               }}>🔄 Play Again</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Mission 8 (Recycling) game-over overlay ─────────────────────────────────
+
+function M8GameOverOverlay({
+  data, onRetry, onMap,
+}: {
+  data: { scored: number; wasNewRecord: boolean; prevBest: number; coinsEarned: number; totalCoins: number };
+  onRetry: () => void;
+  onMap: () => void;
+}) {
+  const { scored, wasNewRecord, coinsEarned, totalCoins } = data;
+  const coinsBeforeGame = totalCoins - coinsEarned;
+
+  const [phase, setPhase] = useState(0);
+  const [displayCoins, setDisplayCoins] = useState(coinsBeforeGame);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase(1), 600);
+    return () => clearTimeout(t1);
+  }, []);
+
+  useEffect(() => {
+    if (phase !== 1) return;
+    const t2 = setTimeout(() => setPhase(2), 1000);
+    return () => clearTimeout(t2);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 2) return;
+    const duration = 900;
+    const start = coinsBeforeGame, end = totalCoins;
+    const startTime = Date.now();
+    const raf = { id: 0 };
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - startTime) / duration);
+      setDisplayCoins(Math.round(start + (end - start) * (1 - Math.pow(1 - t, 3))));
+      if (t < 1) { raf.id = requestAnimationFrame(tick); }
+    };
+    raf.id = requestAnimationFrame(tick);
+    const t3 = setTimeout(() => setPhase(3), duration + 1000);
+    return () => { cancelAnimationFrame(raf.id); clearTimeout(t3); };
+  }, [phase, coinsBeforeGame, totalCoins]);
+
+  let emoji: string, title: string, titleColor: string, message: string, cardBg: string, cardBorder: string;
+  if (wasNewRecord) {
+    emoji = '🏆'; title = 'New Record!'; titleColor = '#F59E0B';
+    message = 'Amazing recycling skills! You beat your own record! 🌟';
+    cardBg = 'linear-gradient(160deg,#1C1200 0%,#2D1E00 60%,#1A1200 100%)';
+    cardBorder = '2.5px solid #F59E0B';
+  } else if (scored >= 8) {
+    emoji = '♻️'; title = 'Great job!'; titleColor = '#22C55E';
+    message = 'The city is cleaner thanks to your recycling! Keep it up!';
+    cardBg = 'linear-gradient(160deg,#071225 0%,#0D2210 60%,#071225 100%)';
+    cardBorder = '2.5px solid #22C55E';
+  } else {
+    emoji = '😅'; title = 'Nice try!'; titleColor = '#FB923C';
+    message = 'Every piece sorted right helps our city! Try again 🌱';
+    cardBg = 'linear-gradient(160deg,#1A0E00 0%,#251200 60%,#1A0E00 100%)';
+    cardBorder = '2.5px solid #FB923C';
+  }
+
+  const btnColor = titleColor === '#22C55E'
+    ? 'linear-gradient(135deg,#22C55E,#15803D)'
+    : titleColor === '#F59E0B'
+    ? 'linear-gradient(135deg,#F59E0B,#B45309)'
+    : 'linear-gradient(135deg,#FB923C,#C2410C)';
+
+  return (
+    <motion.div
+      key="m8-gameover"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+      style={{
+        position: 'absolute', inset: 0, zIndex: 80,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(4,10,20,0.88)',
+      }}
+    >
+      <motion.div
+        initial={{ scale: 0.82, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ delay: 0.08, type: 'spring', stiffness: 260, damping: 20 }}
+        style={{
+          background: cardBg, border: cardBorder, borderRadius: 28,
+          width: 'min(340px, calc(100vw - 40px))',
+          padding: '28px 24px 24px', textAlign: 'center',
+          boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+        }}
+      >
+        <div style={{ fontSize: '3rem', lineHeight: 1, marginBottom: 8 }}>
+          {emoji}{wasNewRecord ? ' 🎉' : ''}
+        </div>
+        <div style={{
+          fontFamily: 'Fredoka One, cursive', fontSize: '2rem',
+          color: titleColor, marginBottom: 8, textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+        }}>{title}</div>
+        <div style={{
+          fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+          color: 'rgba(255,255,255,0.82)', lineHeight: 1.45, marginBottom: 12,
+        }}>{message}</div>
+        <div style={{
+          fontFamily: 'Fredoka One, cursive', fontSize: '0.85rem',
+          color: 'rgba(255,255,255,0.5)', marginBottom: 18,
+        }}>Sorted correctly: {scored}</div>
+
+        <AnimatePresence>
+          {phase >= 1 && (
+            <motion.div
+              key="earned"
+              initial={{ scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 20 }}
+            >
+              <span style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '3.8rem', lineHeight: 1,
+                color: '#4ADE80', textShadow: '0 0 24px rgba(74,222,128,0.6), 0 3px 0 #14532D',
+              }}>+{coinsEarned}</span>
+              <span style={{ fontSize: '2.8rem', lineHeight: 1 }}>🪙</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {phase >= 2 && (
+            <motion.div
+              key="total"
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 240, damping: 20 }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 24 }}
+            >
+              <span style={{ fontSize: '2rem', lineHeight: 1 }}>🪙</span>
+              <span style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '3rem', lineHeight: 1,
+                color: '#FFD700', textShadow: '0 0 20px rgba(255,215,0,0.5), 0 3px 0 #92400E',
+              }}>{displayCoins}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {phase >= 3 && (
+            <motion.div
+              key="buttons"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+              style={{ display: 'flex', gap: 12 }}
+            >
+              <button onClick={onMap} style={{
+                flex: 1, fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+                background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(255,255,255,0.2)',
+                borderRadius: 20, padding: '13px 8px', color: 'rgba(255,255,255,0.8)', cursor: 'pointer',
+              }}>🗺️ Map</button>
+              <button onClick={onRetry} style={{
+                flex: 2, fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+                background: btnColor, border: 'none',
+                borderRadius: 20, padding: '13px 8px', color: '#fff', cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+              }}>♻️ Play Again</button>
             </motion.div>
           )}
         </AnimatePresence>

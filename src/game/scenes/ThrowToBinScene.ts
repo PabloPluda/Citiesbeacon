@@ -2,8 +2,8 @@ import Phaser from 'phaser';
 import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
 
-const MISSION_ID     = 1;
-const TRASH_EMOJIS   = ['🥤', '🍌', '🍾', '🥫', '📦', '🗞️'];
+const MISSION_ID  = 1;
+const TRASH_KEYS  = ['paper_ball', 'newspaper', 'banana_peel', 'watermelon_rind', 'fish_bone', 'bottle'];
 const MAX_PULL       = 140;
 const MAX_SPEED      = 1500;
 const GRAVITY        = 1000;
@@ -69,7 +69,10 @@ export class ThrowToBinScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image('back_trash', '/back_trash.jpg');
+    this.load.image('back_trash', '/trash/Background_trash.jpg');
+    for (const key of TRASH_KEYS) {
+      this.load.svg(key, `/trash/${key}.svg`, { width: 64, height: 64 });
+    }
   }
 
   create() {
@@ -109,25 +112,43 @@ export class ThrowToBinScene extends Phaser.Scene {
   // ─── HUD (top-right strip, avoids back button on top-left) ───────────────────
 
   private buildHud(W: number) {
-    const BACK_END = 64;   // back button ends ~x=58
+    const BACK_END = 64;
     const hudW     = W - BACK_END;
     const hudCX    = BACK_END + hudW / 2;
-    const stripH   = 72;
+    const stripH   = 78;
 
-    // Background + subtle separator line at bottom
     this.add.rectangle(hudCX, stripH / 2, hudW, stripH, 0x000000, 0.52)
       .setDepth(48).setScrollFactor(0);
-    this.add.rectangle(hudCX, stripH, hudW, 1, 0xFFFFFF, 0.08)
+    this.add.rectangle(hudCX, stripH, hudW, 1.5, 0xFFFFFF, 0.10)
       .setDepth(49).setScrollFactor(0);
 
-    const labelStyle: Phaser.Types.GameObjects.Text.TextStyle = {
-      fontFamily: 'Fredoka One, cursive',
-      fontSize: '11px',
-      color: '#AAAAAA',
-      stroke: '#000000',
-      strokeThickness: 2,
-    };
-    const valueStyle: Phaser.Types.GameObjects.Text.TextStyle = {
+    // Generate icon textures for the value row
+    this.generateHudIcons();
+
+    const col1 = BACK_END + hudW * 0.20;
+    const col2 = BACK_END + hudW * 0.55;
+    const col3 = BACK_END + hudW * 0.87;
+    const labelY = 17;
+    const valueY = 53;
+
+    // Fun, colourful labels for kids — each column gets its own colour
+    const mkLabel = (x: number, text: string, color: string) =>
+      this.add.text(x, labelY, text, {
+        fontFamily: 'Fredoka One, cursive',
+        fontSize: '14px',
+        color,
+        stroke: '#000000',
+        strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+
+    mkLabel(col1, 'Score:', '#86EFAC');
+    mkLabel(col2, 'My Record:', '#FDE68A');
+    mkLabel(col3, 'CityCoins:', '#93C5FD');
+
+    // Value row: icon (16px left of col centre) + number (8px right of col centre)
+    const iconSize = 24;
+    const iconOffX = 14;
+    const valStyle: Phaser.Types.GameObjects.Text.TextStyle = {
       fontFamily: 'Fredoka One, cursive',
       fontSize: '22px',
       color: '#FFFFFF',
@@ -135,27 +156,61 @@ export class ThrowToBinScene extends Phaser.Scene {
       strokeThickness: 3,
     };
 
-    const col1 = BACK_END + hudW * 0.20;
-    const col2 = BACK_END + hudW * 0.55;
-    const col3 = BACK_END + hudW * 0.87;
-    const labelY = 18;
-    const valueY = 48;
+    this.add.image(col1 - iconOffX, valueY, 'hud-bin')
+      .setDisplaySize(iconSize, iconSize).setDepth(50).setScrollFactor(0);
+    this.add.image(col2 - iconOffX, valueY, 'hud-star')
+      .setDisplaySize(iconSize, iconSize).setDepth(50).setScrollFactor(0);
+    this.add.image(col3 - iconOffX, valueY, 'hud-coin')
+      .setDisplaySize(iconSize, iconSize).setDepth(50).setScrollFactor(0);
 
-    const mkLabel = (x: number, text: string) =>
-      this.add.text(x, labelY, text, labelStyle)
-        .setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+    this.hudScored = this.add.text(col1 + iconOffX - 10, valueY, '', valStyle)
+      .setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+    this.hudBest   = this.add.text(col2 + iconOffX - 10, valueY, '', valStyle)
+      .setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+    this.hudCoins  = this.add.text(col3 + iconOffX - 10, valueY, '', valStyle)
+      .setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
 
-    mkLabel(col1, 'Score:');
-    mkLabel(col2, 'My Record:');
-    mkLabel(col3, 'CityCoins:');
-
-    this.hudScored = this.add.text(col1, valueY, '', valueStyle)
-      .setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
-    this.hudBest   = this.add.text(col2, valueY, '', valueStyle)
-      .setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
-    this.hudCoins  = this.add.text(col3, valueY, '', valueStyle)
-      .setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
     this.updateHud();
+  }
+
+  private generateHudIcons() {
+    if (!this.textures.exists('hud-bin')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false });
+      g.fillStyle(0x15803D); g.fillRoundedRect(9, 1, 8, 5, 2.5);  // handle
+      g.fillStyle(0x16A34A); g.fillRoundedRect(2, 4, 22, 5, 2.5);  // lid
+      g.fillStyle(0x15803D); g.fillRoundedRect(3, 9, 20, 17, { tl: 0, tr: 0, bl: 4, br: 4 });  // body
+      g.fillStyle(0xFFFFFF, 0.22); g.fillRect(7, 11, 3, 13);   // rib 1
+      g.fillStyle(0xFFFFFF, 0.22); g.fillRect(12, 11, 3, 13);  // rib 2
+      g.fillStyle(0xFFFFFF, 0.22); g.fillRect(17, 11, 3, 13);  // rib 3
+      g.generateTexture('hud-bin', 26, 28);
+      g.destroy();
+    }
+    if (!this.textures.exists('hud-star')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false });
+      g.fillStyle(0xFFD700);
+      const cx = 13, cy = 13, R = 11, r = 4.5, pts = 5;
+      g.beginPath();
+      for (let i = 0; i < pts * 2; i++) {
+        const a = (i * Math.PI / pts) - Math.PI / 2;
+        const rad = i % 2 === 0 ? R : r;
+        if (i === 0) g.moveTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+        else g.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+      }
+      g.closePath(); g.fillPath();
+      g.lineStyle(1.5, 0xC49A00); g.strokePath();
+      g.fillStyle(0xFFFFFF, 0.28); g.fillCircle(10, 9, 3);
+      g.generateTexture('hud-star', 26, 26);
+      g.destroy();
+    }
+    if (!this.textures.exists('hud-coin')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false });
+      g.fillStyle(0xFFD700); g.fillCircle(13, 13, 12);
+      g.lineStyle(2, 0xC49A00); g.strokeCircle(13, 13, 12);
+      g.lineStyle(1.5, 0xC49A00, 0.45); g.strokeCircle(13, 13, 8);
+      g.fillStyle(0xFFFFFF, 0.30); g.fillCircle(9, 9, 4.5);
+      g.generateTexture('hud-coin', 26, 26);
+      g.destroy();
+    }
   }
 
   private updateHud() {
@@ -302,10 +357,10 @@ export class ThrowToBinScene extends Phaser.Scene {
       : -Phaser.Math.Between(280, 520);
     const vy       = Phaser.Math.Between(-60, 100);
 
-    const emoji   = Phaser.Utils.Array.GetRandom(TRASH_EMOJIS) as string;
-    const emojiGO = this.add.text(0, 0, emoji, { fontSize: '54px' }).setOrigin(0.5);
-    const shadow  = this.add.ellipse(0, 32, 54, 14, 0x000000, 0.2);
-    const c       = this.add.container(startX, startY, [shadow, emojiGO]);
+    const key     = Phaser.Utils.Array.GetRandom(TRASH_KEYS) as string;
+    const trashGO = this.add.image(0, 0, key).setOrigin(0.5).setDisplaySize(54, 54);
+    const shadow  = this.add.ellipse(0, 30, 54, 14, 0x000000, 0.2);
+    const c       = this.add.container(startX, startY, [shadow, trashGO]);
     c.setSize(64, 64).setDepth(8);
 
     const rotDir = fromLeft ? 1 : -1;
@@ -340,13 +395,8 @@ export class ThrowToBinScene extends Phaser.Scene {
     if (this.gameOver) return;
     this.gameOver = true;
 
-    const state       = useProgressStore.getState();
-    const currentBest = state.highScores[MISSION_ID] ?? 0;
-    if (this.totalScored > currentBest) {
-      useProgressStore.setState({
-        highScores: { ...state.highScores, [MISSION_ID]: this.totalScored },
-      });
-    }
+    // Use the store action so scheduleSync() runs and the new record reaches Supabase
+    useProgressStore.getState().updateHighScore(MISSION_ID, this.totalScored);
 
     const W = this.cameras.main.width, H = this.cameras.main.height;
     const flash = this.add.rectangle(W / 2, H / 2, W, H, 0xFF0000, 0.35).setDepth(90);

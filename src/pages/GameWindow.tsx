@@ -16,6 +16,7 @@ import { CityBuilderScene } from '../game/scenes/CityBuilderScene';
 import { CATS as DEFAULT_CATS } from '../game/cityBuilderData';
 import type { BuildItem } from '../game/cityBuilderData';
 import { useAdminStore } from '../store/adminStore';
+import { useUserStore } from '../store/userStore';
 
 const SCENE_MAP: Record<number, any> = {
   1: ThrowToBinScene,
@@ -228,7 +229,8 @@ export default function GameWindow() {
   const [maxTimeLeft, setMaxTimeLeft] = useState(50); // tracks the starting time for ring
   const [phase, setPhase] = useState<Phase>('playing');
   const [levelCoins, setLevelCoins] = useState(0);
-  const [heroName] = useState(() => localStorage.getItem('cityhero-hero-name') || '');
+  const profile  = useUserStore(s => s.profile);
+  const heroName = profile?.username || localStorage.getItem('cityhero-hero-name') || '';
   const [showTutorial, setShowTutorial] = useState(false);
   const [showPreLevel, setShowPreLevel] = useState(false);
   const [showCrossingPenalty, setShowCrossingPenalty] = useState(false);
@@ -1271,20 +1273,43 @@ function M1TutorialOverlay({
   const binX   = pos?.binX   ?? W * 0.50;
   const binY   = pos?.binY   ?? 230;
 
-  // dx/dy = vector from trash to bin
-  const dx = binX - trashX;
-  const dy = binY - trashY;
+  // Pull-back: short drag opposite to the trash→bin direction
+  const dx  = binX - trashX;
+  const dy  = binY - trashY;
   const mag = Math.sqrt(dx * dx + dy * dy) || 1;
-  // Pull-back direction = opposite of trash→bin, 58px
-  const pullDx = -(dx / mag) * 58;
-  const pullDy = -(dy / mag) * 58;
-  // Arc peak: slightly past bin horizontally, 90px above bin vertically
-  const peakX  = dx * 1.06;
-  const peakY  = dy - 90;
+  const pullDx = -(dx / mag) * 55;
+  const pullDy = -(dy / mag) * 55;
 
-  // 5 phases: 0=idle, 1=pullback, 2=arc-peak, 3=fall-into-bin, 4=in-bin(fade)+pause
+  // Parabolic arc: sample 6 points from pullback to bin
+  // y(s) = pullDy + throwDy*s  −  peakAbove * 4 * s * (1-s)
+  // peakAbove shifts the arc above the straight pullback→bin line
+  const throwDx  = dx - pullDx;
+  const throwDy  = (dy + 12) - pullDy;
+  const peakAbove = 280;
+  const arc = (s: number) => ({
+    x: pullDx + throwDx * s,
+    y: pullDy + throwDy * s - peakAbove * 4 * s * (1 - s),
+  });
+  // 6 arc points at s = 1/6, 2/6, … 6/6
+  const arcPts = [1, 2, 3, 4, 5, 6].map(i => arc(i / 6));
+
+  // Full throw keyframe arrays (9 points: idle → pullback → hold → 6 arc pts)
+  const KFX  = [0, pullDx, pullDx, ...arcPts.map(p => p.x)];
+  const KFY  = [0, pullDy, pullDy, ...arcPts.map(p => p.y)];
+  const KFR  = [0, -18, -18, -8, 20, 55, 95, 135, 165]; // slight rotation
+  const KFO  = [1,  1,    1,  1,  1,  1,  1,  1,  0.85];
+  // times: 0→pullback 18%, hold 28%, then arc 28-100%
+  const KFT  = [0, 0.18, 0.28, 0.417, 0.533, 0.65, 0.767, 0.883, 1.0];
+  // ease: easeOut for pullback snap, linear for physics-encoded arc
+  const KFE  = ['easeOut', 'linear', 'linear', 'linear', 'linear', 'linear', 'linear', 'linear'];
+
+  // Finger follows same path but stays at pullback after throw starts, then fades
+  const FKX  = [0, pullDx, pullDx, ...Array(6).fill(pullDx) as number[]];
+  const FKY  = [0, pullDy, pullDy, ...Array(6).fill(pullDy) as number[]];
+  const FKO  = [1,  1,     1,      0, 0, 0, 0, 0, 0]; // fades out the moment throw starts
+
+  // 3 phases: 0=idle (1.2s), 1=throw (2.5s), 2=in-bin+pause (1.2s)
   const [gPhase, setGPhase] = useState(0);
-
   useEffect(() => {
     let mounted = true;
     const cycle = () => {
@@ -1292,42 +1317,15 @@ function M1TutorialOverlay({
       setGPhase(0);
       setTimeout(() => { if (!mounted) return; setGPhase(1);
       setTimeout(() => { if (!mounted) return; setGPhase(2);
-      setTimeout(() => { if (!mounted) return; setGPhase(3);
-      setTimeout(() => { if (!mounted) return; setGPhase(4);
-      setTimeout(() => { if (mounted) cycle(); }, 1050);
-      }, 320); }, 430); }, 900); }, 820);
+      setTimeout(() => { if (mounted) cycle(); }, 1200);
+      }, 2500); }, 1200);
     };
-    const t = setTimeout(cycle, 500);
+    const t = setTimeout(cycle, 600);
     return () => { mounted = false; clearTimeout(t); };
   }, []); // eslint-disable-line
 
-  const trashAnim = [
-    { x: 0,       y: 0,         rotate: 0,   opacity: 1 },   // 0 idle
-    { x: pullDx,  y: pullDy,    rotate: -18, opacity: 1 },   // 1 pullback
-    { x: peakX,   y: peakY,     rotate: 85,  opacity: 1 },   // 2 arc peak (above & past bin)
-    { x: dx,      y: dy + 10,   rotate: 155, opacity: 0.85 },// 3 falling into bin
-    { x: dx,      y: dy + 22,   rotate: 175, opacity: 0 },   // 4 inside bin, fades out
-  ][gPhase];
-
-  const fingerAnim = [
-    { x: 0,      y: 0,      opacity: 1 },  // 0 idle
-    { x: pullDx, y: pullDy, opacity: 1 },  // 1 holding trash back
-    { x: pullDx, y: pullDy, opacity: 0 },  // 2 lifts off as trash launches
-    { x: 0,      y: 0,      opacity: 0 },  // 3 hidden
-    { x: 0,      y: 0,      opacity: 0 },  // 4 hidden
-  ][gPhase];
-
-  const spring   = { type: 'spring' as const, stiffness: 220, damping: 22 };
-  const launch   = { type: 'tween' as const, duration: 0.43,
-                     ease: [0.15, 0, 0.55, 1] as [number,number,number,number] };  // fast snap, slows at peak
-  const fallGrav = { type: 'tween' as const, duration: 0.3,
-                     ease: [0.4, 0, 1, 1] as [number,number,number,number] };      // gravity pull-in
-  const fadeOut  = { duration: 0.18 };
-
-  const trashTransition =
-    gPhase === 2 ? launch :
-    gPhase === 3 ? fallGrav :
-    gPhase === 4 ? fadeOut : spring;
+  const throwTransition = { duration: 2.5, times: KFT, ease: KFE as any };
+  const spring = { type: 'spring' as const, stiffness: 200, damping: 22 };
 
   return (
     <motion.div
@@ -1342,11 +1340,11 @@ function M1TutorialOverlay({
       <motion.div
         initial={{ y: -18, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.16 }}
+        transition={{ delay: 0.15 }}
         style={{
           position: 'absolute',
           top: 12, left: 14, right: 14,
-          background: 'rgba(0,10,24,0.84)',
+          background: 'rgba(0,10,24,0.85)',
           border: '1.5px solid rgba(255,255,255,0.10)',
           borderRadius: 22,
           padding: '14px 20px 12px',
@@ -1354,7 +1352,7 @@ function M1TutorialOverlay({
         }}
       >
         <div style={{
-          fontFamily: 'Fredoka One, cursive', fontSize: '1.6rem',
+          fontFamily: 'Fredoka One, cursive', fontSize: '1.65rem',
           color: '#4ADE80', marginBottom: 6,
           textShadow: '0 2px 8px rgba(0,0,0,0.6)',
         }}>
@@ -1368,10 +1366,10 @@ function M1TutorialOverlay({
         </div>
       </motion.div>
 
-      {/* ── Glow ring at trash resting position (phases 0 & 1) ── */}
+      {/* ── Glow ring at idle trash position (phase 0 only) ───── */}
       <motion.div
-        animate={{ opacity: gPhase <= 1 ? 0.55 : 0 }}
-        transition={{ duration: 0.25 }}
+        animate={{ opacity: gPhase === 0 ? 0.55 : 0 }}
+        transition={{ duration: 0.22 }}
         style={{
           position: 'absolute',
           left: trashX - 32, top: trashY - 32,
@@ -1383,11 +1381,17 @@ function M1TutorialOverlay({
         }}
       />
 
-      {/* ── Ghost trash SVG — parabolic arc animation ──────────── */}
+      {/* ── Ghost trash SVG — full parabolic arc ──────────────── */}
       <motion.img
         src="/trash/banana_peel.svg"
-        animate={trashAnim}
-        transition={trashTransition}
+        animate={
+          gPhase === 1
+            ? { x: KFX, y: KFY, rotate: KFR, opacity: KFO }
+            : gPhase === 2
+            ? { x: dx, y: dy + 20, rotate: 170, opacity: 0 }
+            : { x: 0, y: 0, rotate: 0, opacity: 1 }
+        }
+        transition={gPhase === 1 ? throwTransition : gPhase === 2 ? { duration: 0.14 } : spring}
         style={{
           position: 'absolute',
           left: trashX - 22, top: trashY - 22,
@@ -1397,40 +1401,47 @@ function M1TutorialOverlay({
         }}
       />
 
-      {/* ── Finger — follows trash, vanishes at launch ──────────── */}
+      {/* ── Finger — holds trash, snaps off at launch ─────────── */}
       <motion.div
-        animate={fingerAnim}
-        transition={gPhase === 2 ? { duration: 0.07 } : spring}
+        animate={
+          gPhase === 1
+            ? { x: FKX, y: FKY, opacity: FKO }
+            : gPhase === 2
+            ? { x: 0, y: 0, opacity: 0 }
+            : { x: 0, y: 0, opacity: 1 }
+        }
+        transition={gPhase === 1 ? throwTransition : gPhase === 2 ? { duration: 0 } : spring}
         style={{
           position: 'absolute',
-          left: trashX - 10, top: trashY + 6,
+          left: trashX - 10, top: trashY + 8,
           fontSize: '2.1rem', lineHeight: 1,
           pointerEvents: 'none',
           filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.8))',
         }}
       >👆</motion.div>
 
-      {/* ── Warning — more centered, bigger, prominent ─────────── */}
+      {/* ── Warning — vertically centered on screen ───────────── */}
       <motion.div
         initial={{ opacity: 0, scale: 0.88 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.42, type: 'spring', stiffness: 220, damping: 18 }}
+        transition={{ delay: 0.44, type: 'spring', stiffness: 220, damping: 18 }}
         style={{
           position: 'absolute',
-          bottom: 130,
-          left: 20, right: 20,
+          top: '52%', left: '50%',
+          transform: 'translate(-50%, -50%)',
           textAlign: 'center',
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
         }}
       >
         <div style={{
-          display: 'inline-block',
-          fontFamily: 'Fredoka One, cursive', fontSize: '1.15rem',
+          fontFamily: 'Fredoka One, cursive', fontSize: '1.18rem',
           color: '#FDE68A',
-          background: 'rgba(0,0,0,0.62)',
-          border: '1.5px solid rgba(253,230,138,0.30)',
+          background: 'rgba(0,0,0,0.68)',
+          border: '1.5px solid rgba(253,230,138,0.32)',
           borderRadius: 20,
-          padding: '11px 24px',
-          boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
+          padding: '12px 26px',
+          boxShadow: '0 4px 18px rgba(0,0,0,0.5)',
           letterSpacing: '0.01em',
           lineHeight: 1.4,
         }}>

@@ -19,8 +19,8 @@ interface CatObj {
   active: boolean;
 }
 interface LevelConfig {
-  roomsW:   number; // columns of rooms (≈ 2:3 ratio with roomsH)
-  roomsH:   number; // rows of rooms
+  roomsW:   number; // ≈ 2:3 ratio with roomsH — whole maze fits on screen
+  roomsH:   number;
   numCats:  number;
   hasDoors: boolean;
   coins:    number;
@@ -28,9 +28,7 @@ interface LevelConfig {
   time:     number;
 }
 
-// ─── Level table (2:3 width:height ratio) ─────────────────────────────────────
-// gridW = roomsW*2+1, gridH = roomsH*2+1
-// tileSize is computed dynamically in create() to fill the available screen area
+// ─── Level table ──────────────────────────────────────────────────────────────
 const LEVELS: LevelConfig[] = [
   { roomsW: 3, roomsH:  5, numCats: 0, hasDoors: false, coins: 50, dogDelay: 600, time:  80 }, // L1
   { roomsW: 4, roomsH:  6, numCats: 0, hasDoors: false, coins: 50, dogDelay: 560, time:  90 }, // L2
@@ -46,20 +44,27 @@ function getLevelConfig(level: number): LevelConfig {
   return LEVELS[Math.min(level - 1, LEVELS.length - 1)];
 }
 
-// ─── DFS perfect maze generator ───────────────────────────────────────────────
-// Produces a number[][] grid where 0 = path, 1 = wall.
-// Room (rx, ry) maps to tile (rx*2+1, ry*2+1).
-// Passage between adjacent rooms is the tile between them.
-function generateDFSMaze(roomsW: number, roomsH: number): number[][] {
+// ─── Maze Generator (Maximum-Distance algorithm) ───────────────────────────────
+//
+// 1. DFS builds a perfect spanning-tree maze from room (0,0) = tile (1,1).
+// 2. Force-open a second exit from tile (1,1) to guarantee two branching paths.
+// 3. Remove ~10% of internal passage walls → creates loops, shortcuts, false paths.
+// 4. BFS Flood Fill from (1,1) computes real step-count to every tile.
+// 5. Owner placed at the ROOM TILE requiring the most real steps.
+// 6. Owner's tile is dead-ended: all passages except the single entry are closed.
+//
+function generateMaze(roomsW: number, roomsH: number): { grid: number[][]; ownerTile: TilePos } {
   const gridW = roomsW * 2 + 1;
   const gridH = roomsH * 2 + 1;
-  const grid  = Array.from({ length: gridH }, () => new Array(gridW).fill(1));
-  const vis   = Array.from({ length: roomsH }, () => new Array(roomsW).fill(false));
+
+  // ── 1. DFS perfect maze from room (0,0) ───────────────────────────────────
+  const grid = Array.from({ length: gridH }, () => new Array(gridW).fill(1));
+  const vis  = Array.from({ length: roomsH }, () => new Array(roomsW).fill(false));
 
   function dfs(rx: number, ry: number) {
     vis[ry][rx] = true;
     grid[ry * 2 + 1][rx * 2 + 1] = 0;
-    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    const dirs: [number, number][] = [[1,0],[-1,0],[0,1],[0,-1]];
     for (let i = dirs.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
@@ -67,13 +72,103 @@ function generateDFSMaze(roomsW: number, roomsH: number): number[][] {
     for (const [dx, dy] of dirs) {
       const nx = rx + dx, ny = ry + dy;
       if (nx < 0 || nx >= roomsW || ny < 0 || ny >= roomsH || vis[ny][nx]) continue;
-      grid[ry * 2 + 1 + dy][rx * 2 + 1 + dx] = 0; // carve passage tile
+      grid[ry * 2 + 1 + dy][rx * 2 + 1 + dx] = 0; // carve passage
       dfs(nx, ny);
     }
   }
-
   dfs(0, 0);
-  return grid;
+
+  // ── 2. Guarantee two exits from start tile (1,1) ─────────────────────────
+  // Room (0,0) is a corner with only east (2,1) and south (1,2) as possible exits.
+  // DFS may only have carved one; force-open the other to create two parallel paths.
+  const startExits: [number, number][] = [];
+  if (gridW > 2) startExits.push([2, 1]); // east
+  if (gridH > 2) startExits.push([1, 2]); // south
+  const openAtStart = startExits.filter(([tx, ty]) => grid[ty][tx] === 0).length;
+  if (openAtStart < 2) {
+    for (const [tx, ty] of startExits) {
+      if (grid[ty][tx] === 1) { grid[ty][tx] = 0; break; }
+    }
+  }
+
+  // ── 3. Remove ~10% of internal passage walls to create loops ─────────────
+  // An internal wall is a passage tile (exactly one coord even) currently = 1,
+  // with passable tiles on both of its two sides.
+  const internalWalls: [number, number][] = [];
+  for (let ty = 1; ty < gridH - 1; ty++) {
+    for (let tx = 1; tx < gridW - 1; tx++) {
+      if (grid[ty][tx] !== 1) continue;
+      const isPassageTile = (tx % 2 === 0) !== (ty % 2 === 0);
+      if (!isPassageTile) continue;
+      const [r1x, r1y, r2x, r2y] = tx % 2 === 0
+        ? [tx - 1, ty, tx + 1, ty]   // horizontal: rooms left & right
+        : [tx, ty - 1, tx, ty + 1];  // vertical:   rooms above & below
+      if (r1x < 0 || r1y < 0 || r2x >= gridW || r2y >= gridH) continue;
+      if (grid[r1y][r1x] === 0 && grid[r2y][r2x] === 0) {
+        internalWalls.push([tx, ty]);
+      }
+    }
+  }
+  for (let i = internalWalls.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [internalWalls[i], internalWalls[j]] = [internalWalls[j], internalWalls[i]];
+  }
+  const toRemove = Math.max(1, Math.round(internalWalls.length * 0.10));
+  for (let i = 0; i < toRemove; i++) {
+    const [tx, ty] = internalWalls[i];
+    grid[ty][tx] = 0;
+  }
+
+  // ── 4. BFS Flood Fill from (1,1) — exact step count to every tile ─────────
+  const dist: number[][] = Array.from({ length: gridH }, () => new Array(gridW).fill(-1));
+  dist[1][1] = 0;
+  const bfsQ: [number, number][] = [[1, 1]];
+  let head = 0;
+  while (head < bfsQ.length) {
+    const [tx, ty] = bfsQ[head++];
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number, number][]) {
+      const nx = tx + dx, ny = ty + dy;
+      if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH) continue;
+      if (grid[ny][nx] !== 0 || dist[ny][nx] !== -1) continue;
+      dist[ny][nx] = dist[ty][tx] + 1;
+      bfsQ.push([nx, ny]);
+    }
+  }
+
+  // ── 5. Owner = room tile with maximum real distance from start ────────────
+  let maxDist = -1;
+  let ownerTile: TilePos = { tx: gridW - 2, ty: gridH - 2 };
+  for (let ty = 1; ty < gridH; ty += 2) {      // only room tiles (both coords odd)
+    for (let tx = 1; tx < gridW; tx += 2) {
+      if (tx === 1 && ty === 1) continue;        // skip start
+      if (dist[ty][tx] > maxDist) {
+        maxDist = dist[ty][tx];
+        ownerTile = { tx, ty };
+      }
+    }
+  }
+
+  // ── 6. Dead-end the owner tile (keep only one entry passage) ─────────────
+  const { tx: ownTx, ty: ownTy } = ownerTile;
+  const adjPassages = (
+    [[ownTx + 1, ownTy], [ownTx - 1, ownTy], [ownTx, ownTy + 1], [ownTx, ownTy - 1]] as [number,number][]
+  ).filter(([px, py]) =>
+    px > 0 && px < gridW - 1 && py > 0 && py < gridH - 1 && grid[py][px] === 0
+  );
+
+  if (adjPassages.length > 1) {
+    // Shuffle and keep first as the single entry; block the rest
+    for (let i = adjPassages.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [adjPassages[i], adjPassages[j]] = [adjPassages[j], adjPassages[i]];
+    }
+    for (let i = 1; i < adjPassages.length; i++) {
+      const [px, py] = adjPassages[i];
+      grid[py][px] = 1;
+    }
+  }
+
+  return { grid, ownerTile };
 }
 
 const FUN_MESSAGES = [
@@ -104,6 +199,7 @@ export class NotMyDogScene extends Phaser.Scene {
   private grid: number[][] = [];
   private gridW = 0;
   private gridH = 0;
+  private ownerTile: TilePos = { tx: 1, ty: 1 }; // set by generateMaze()
 
   // Computed in create() to fit the whole maze on screen
   private tileSize = 32;
@@ -153,6 +249,7 @@ export class NotMyDogScene extends Phaser.Scene {
 
     this.playerPos = { tx: 1, ty: 1 };
     this.dogPos    = { tx: 1, ty: 1 };
+    this.ownerTile = { tx: this.gridW - 2, ty: this.gridH - 2 }; // placeholder until create()
     this.playerAtGoal   = false;
     this.isPlayerMoving = false;
     this.isDogMoving    = false;
@@ -180,7 +277,7 @@ export class NotMyDogScene extends Phaser.Scene {
     EventBus.on('restart-scene', handleRestart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', handleRestart));
 
-    // ── Compute tile size to fit entire maze on screen ─────
+    // ── Compute tile size so entire maze fits on screen ────
     const HUD_H       = 72;
     const CTRL_H      = 44;
     const BOTTOM_SAFE = 56;
@@ -202,18 +299,20 @@ export class NotMyDogScene extends Phaser.Scene {
     bgGfx.fillStyle(0x1A3A0A);
     bgGfx.fillRect(0, 0, SW, SH);
 
-    // Generate maze
-    this.grid = generateDFSMaze(this.cfg.roomsW, this.cfg.roomsH);
+    // ── Generate maze (Maximum Distance algorithm) ────────
+    const result = generateMaze(this.cfg.roomsW, this.cfg.roomsH);
+    this.grid      = result.grid;
+    this.ownerTile = result.ownerTile;
 
-    // Place door
+    // Door placement (before drawing — modifies grid)
     if (this.cfg.hasDoors) this.placeDoor();
 
-    // Draw maze (world = screen, no camera scrolling)
+    // Draw maze
     this.mazeGfx = this.add.graphics().setDepth(2);
     this.drawMaze();
 
-    // Goal tile highlight
-    const gTx = this.gridW - 2, gTy = this.gridH - 2;
+    // Goal highlight at owner tile
+    const { tx: gTx, ty: gTy } = this.ownerTile;
     const goalGfx = this.add.graphics().setDepth(1);
     goalGfx.fillStyle(0xFFD700, 0.35);
     goalGfx.fillRect(
@@ -275,7 +374,6 @@ export class NotMyDogScene extends Phaser.Scene {
   }
 
   // ── Screen coordinate helpers ─────────────────────────────
-  // Converts tile index to screen pixel center
   private wx(tx: number) { return this.offsetX + tx * this.tileSize + this.tileSize / 2; }
   private wy(ty: number) { return this.offsetY + ty * this.tileSize + this.tileSize / 2; }
 
@@ -286,9 +384,7 @@ export class NotMyDogScene extends Phaser.Scene {
   // ── Maze drawing ──────────────────────────────────────────
   private drawMaze() {
     const g  = this.mazeGfx;
-    const ox = this.offsetX;
-    const oy = this.offsetY;
-    const ts = this.tileSize;
+    const ox = this.offsetX, oy = this.offsetY, ts = this.tileSize;
     g.clear();
     for (let ty = 0; ty < this.gridH; ty++) {
       for (let tx = 0; tx < this.gridW; tx++) {
@@ -296,7 +392,7 @@ export class NotMyDogScene extends Phaser.Scene {
         g.fillRect(ox + tx * ts, oy + ty * ts, ts, ts);
       }
     }
-    // Closed door: red fill over the blocked passage tile
+    // Closed door: red overlay on blocked passage tile
     if (this.door && !this.door.open) {
       const { tx, ty } = this.door.doorTile;
       const pad = Math.max(2, Math.floor(ts * 0.08));
@@ -340,13 +436,14 @@ export class NotMyDogScene extends Phaser.Scene {
         return;
       }
 
-      this.grid[pass.ty][pass.tx] = 0; // undo
+      this.grid[pass.ty][pass.tx] = 0; // undo and try next
     }
   }
 
   // ── BFS helpers (tile space) ──────────────────────────────
+  // Path from start (1,1) to the owner tile (maximum-distance cell)
   private mainPathTiles(): Set<string> {
-    const goalKey = `${this.gridW - 2},${this.gridH - 2}`;
+    const goalKey = `${this.ownerTile.tx},${this.ownerTile.ty}`;
     const prev = new Map<string, string>([['1,1', '']]);
     const queue: TilePos[] = [{ tx: 1, ty: 1 }];
     while (queue.length) {
@@ -433,15 +530,15 @@ export class NotMyDogScene extends Phaser.Scene {
     return null;
   }
 
-  // ── Cat placement ─────────────────────────────────────────
+  // ── Cat placement (on room tiles, away from start/owner) ──
   private placeCats(fs: number) {
     if (this.cfg.numCats === 0) return;
     const pool: TilePos[] = [];
     for (let ty = 1; ty < this.gridH; ty += 2) {
       for (let tx = 1; tx < this.gridW; tx += 2) {
-        if (!(tx === 1 && ty === 1) && !(tx === this.gridW - 2 && ty === this.gridH - 2)) {
-          pool.push({ tx, ty });
-        }
+        if (tx === 1 && ty === 1) continue;
+        if (tx === this.ownerTile.tx && ty === this.ownerTile.ty) continue;
+        pool.push({ tx, ty });
       }
     }
     pool.sort(() => Math.random() - 0.5);
@@ -521,8 +618,8 @@ export class NotMyDogScene extends Phaser.Scene {
     this.ownerBubble?.destroy();
     this.ownerBubbleBg?.destroy();
 
-    const ownerScreenX = this.wx(this.gridW - 2);
-    const ownerScreenY = this.wy(this.gridH - 2);
+    const ownerX = this.wx(this.ownerTile.tx);
+    const ownerY = this.wy(this.ownerTile.ty);
     const fontSize = Math.min(14, Math.max(10, Math.round(this.tileSize * 0.5)));
     const maxTxtW  = Math.min(150, Math.max(80, this.gridW * this.tileSize * 0.55));
     const pad = 8, tailH = 8, radius = 8;
@@ -531,13 +628,13 @@ export class NotMyDogScene extends Phaser.Scene {
       fontFamily: '"Fredoka One", Arial, sans-serif',
       fontSize: `${fontSize}px`, wordWrap: { width: maxTxtW },
     }).setVisible(false);
-    const bw = Math.ceil(probe.width)  + pad * 2;
+    const bw = Math.ceil(probe.width) + pad * 2;
     const bh = Math.ceil(probe.height) + pad * 2;
     probe.destroy();
 
-    const bRight  = Math.min(this.cameras.main.width - 5, ownerScreenX + Math.floor(bw * 0.35));
+    const bRight  = Math.min(this.cameras.main.width - 5, ownerX + Math.floor(bw * 0.35));
     const bLeft   = Math.max(5, bRight - bw);
-    const bBottom = ownerScreenY - Math.round(this.tileSize * 0.55);
+    const bBottom = ownerY - Math.round(this.tileSize * 0.55);
     const bTop    = bBottom - bh;
     const tailX   = bLeft + bw - Math.round(bw * 0.28);
 
@@ -586,7 +683,7 @@ export class NotMyDogScene extends Phaser.Scene {
 
   private onPlayerCell() {
     const { tx, ty } = this.playerPos;
-    if (tx === this.gridW - 2 && ty === this.gridH - 2) this.playerAtGoal = true;
+    if (tx === this.ownerTile.tx && ty === this.ownerTile.ty) this.playerAtGoal = true;
 
     if (this.door && !this.door.open && this.door.keyTile.tx === tx && this.door.keyTile.ty === ty) {
       this.door.open = true;
@@ -599,7 +696,7 @@ export class NotMyDogScene extends Phaser.Scene {
     }
   }
 
-  // ── Dog AI ────────────────────────────────────────────────
+  // ── Dog AI (BFS toward player, then toward owner once player arrives) ───────
   private startDogTimer() {
     this.time.addEvent({ delay: this.cfg.dogDelay, loop: true, callback: this.advanceDog, callbackScope: this });
   }
@@ -609,8 +706,7 @@ export class NotMyDogScene extends Phaser.Scene {
     if (this.time.now < this.dogDistractedUntil) return;
 
     if (this.playerAtGoal) {
-      const goal = { tx: this.gridW - 2, ty: this.gridH - 2 };
-      const next = this.bfsNextStep(this.dogPos, goal);
+      const next = this.bfsNextStep(this.dogPos, this.ownerTile);
       if (!next) return;
       this.isDogMoving = true;
       this.tweens.add({
@@ -624,7 +720,6 @@ export class NotMyDogScene extends Phaser.Scene {
 
     const dist = this.bfsDistance(this.dogPos, this.playerPos);
     if (dist <= 1) return;
-
     if (dist > 20) {
       EventBus.emit('show-dog-message', "Stay close to Firulai — go call him! 🐾");
       return;
@@ -644,7 +739,7 @@ export class NotMyDogScene extends Phaser.Scene {
   private onDogCell() {
     const { tx, ty } = this.dogPos;
 
-    if (tx === this.gridW - 2 && ty === this.gridH - 2 && !this.done) {
+    if (tx === this.ownerTile.tx && ty === this.ownerTile.ty && !this.done) {
       this.done = true;
       const state = useProgressStore.getState();
       const isNew = this.level > (state.highestLevel[MISSION_ID] ?? 0);
@@ -659,16 +754,12 @@ export class NotMyDogScene extends Phaser.Scene {
       this.tweens.add({
         targets: [this.playerSprite, this.dogSprite, this.ownerSprite],
         y: '-=6', yoyo: true, repeat: 2, duration: 180,
-        onComplete: () => EventBus.emit('show-dog-complete', {
-          level: this.level,
-          coins: this.cfg.coins,
-          totalCoins,
-        })
+        onComplete: () => EventBus.emit('show-dog-complete', { level: this.level, coins: this.cfg.coins, totalCoins })
       });
       return;
     }
 
-    // Cat encounter — distract dog when adjacent (≤ 2 tiles = neighbouring room)
+    // Cat encounter (distract dog when within 2 tile-steps = neighbouring room)
     for (const cat of this.cats) {
       if (!cat.active) continue;
       if (Math.abs(cat.pos.tx - tx) + Math.abs(cat.pos.ty - ty) <= 2) {

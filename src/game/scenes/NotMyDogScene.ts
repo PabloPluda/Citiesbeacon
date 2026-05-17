@@ -32,12 +32,12 @@ interface LevelConfig {
 const LEVELS: LevelConfig[] = [
   { roomsW: 3, roomsH:  5, numCats: 0, hasDoors: false, coins: 50, dogDelay: 600, time:  80 }, // L1
   { roomsW: 4, roomsH:  6, numCats: 0, hasDoors: false, coins: 50, dogDelay: 560, time:  90 }, // L2
-  { roomsW: 5, roomsH:  8, numCats: 2, hasDoors: false, coins: 50, dogDelay: 520, time: 105 }, // L3
-  { roomsW: 6, roomsH:  9, numCats: 3, hasDoors: false, coins: 50, dogDelay: 480, time: 115 }, // L4
-  { roomsW: 6, roomsH: 10, numCats: 3, hasDoors: true,  coins: 50, dogDelay: 440, time: 120 }, // L5
-  { roomsW: 7, roomsH: 11, numCats: 4, hasDoors: true,  coins: 50, dogDelay: 400, time: 130 }, // L6
-  { roomsW: 8, roomsH: 12, numCats: 4, hasDoors: true,  coins: 50, dogDelay: 360, time: 140 }, // L7
-  { roomsW: 8, roomsH: 13, numCats: 5, hasDoors: true,  coins: 60, dogDelay: 320, time: 150 }, // L8+
+  { roomsW: 5, roomsH:  8, numCats: 0, hasDoors: false, coins: 50, dogDelay: 520, time: 105 }, // L3
+  { roomsW: 6, roomsH:  9, numCats: 0, hasDoors: false, coins: 50, dogDelay: 480, time: 115 }, // L4
+  { roomsW: 6, roomsH: 10, numCats: 0, hasDoors: false, coins: 50, dogDelay: 440, time: 120 }, // L5
+  { roomsW: 7, roomsH: 11, numCats: 0, hasDoors: false, coins: 50, dogDelay: 400, time: 130 }, // L6
+  { roomsW: 8, roomsH: 12, numCats: 0, hasDoors: false, coins: 50, dogDelay: 360, time: 140 }, // L7
+  { roomsW: 8, roomsH: 13, numCats: 0, hasDoors: false, coins: 60, dogDelay: 320, time: 150 }, // L8+
 ];
 
 function getLevelConfig(level: number): LevelConfig {

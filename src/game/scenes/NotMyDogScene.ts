@@ -3,7 +3,6 @@ import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
 
 const MISSION_ID = 5;
-const TILE_SIZE  = 64;
 const MOVE_DUR   = 140; // ms per tile
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -20,8 +19,8 @@ interface CatObj {
   active: boolean;
 }
 interface LevelConfig {
-  roomsW:   number;
-  roomsH:   number;
+  roomsW:   number; // columns of rooms (≈ 2:3 ratio with roomsH)
+  roomsH:   number; // rows of rooms
   numCats:  number;
   hasDoors: boolean;
   coins:    number;
@@ -29,16 +28,18 @@ interface LevelConfig {
   time:     number;
 }
 
-// ─── Level table ──────────────────────────────────────────────────────────────
+// ─── Level table (2:3 width:height ratio) ─────────────────────────────────────
+// gridW = roomsW*2+1, gridH = roomsH*2+1
+// tileSize is computed dynamically in create() to fill the available screen area
 const LEVELS: LevelConfig[] = [
-  { roomsW:  5, roomsH:  5, numCats: 0, hasDoors: false, coins: 50, dogDelay: 500, time:  90 }, // L1
-  { roomsW:  7, roomsH:  7, numCats: 0, hasDoors: false, coins: 50, dogDelay: 470, time: 100 }, // L2
-  { roomsW:  9, roomsH:  9, numCats: 2, hasDoors: false, coins: 50, dogDelay: 440, time: 110 }, // L3
-  { roomsW: 11, roomsH: 11, numCats: 3, hasDoors: false, coins: 50, dogDelay: 410, time: 120 }, // L4
-  { roomsW: 13, roomsH: 13, numCats: 3, hasDoors: true,  coins: 50, dogDelay: 380, time: 135 }, // L5
-  { roomsW: 15, roomsH: 15, numCats: 4, hasDoors: true,  coins: 50, dogDelay: 350, time: 145 }, // L6
-  { roomsW: 17, roomsH: 17, numCats: 4, hasDoors: true,  coins: 50, dogDelay: 320, time: 155 }, // L7
-  { roomsW: 19, roomsH: 19, numCats: 5, hasDoors: true,  coins: 60, dogDelay: 300, time: 165 }, // L8+
+  { roomsW: 3, roomsH:  5, numCats: 0, hasDoors: false, coins: 50, dogDelay: 600, time:  80 }, // L1
+  { roomsW: 4, roomsH:  6, numCats: 0, hasDoors: false, coins: 50, dogDelay: 560, time:  90 }, // L2
+  { roomsW: 5, roomsH:  8, numCats: 2, hasDoors: false, coins: 50, dogDelay: 520, time: 105 }, // L3
+  { roomsW: 6, roomsH:  9, numCats: 3, hasDoors: false, coins: 50, dogDelay: 480, time: 115 }, // L4
+  { roomsW: 6, roomsH: 10, numCats: 3, hasDoors: true,  coins: 50, dogDelay: 440, time: 120 }, // L5
+  { roomsW: 7, roomsH: 11, numCats: 4, hasDoors: true,  coins: 50, dogDelay: 400, time: 130 }, // L6
+  { roomsW: 8, roomsH: 12, numCats: 4, hasDoors: true,  coins: 50, dogDelay: 360, time: 140 }, // L7
+  { roomsW: 8, roomsH: 13, numCats: 5, hasDoors: true,  coins: 60, dogDelay: 320, time: 150 }, // L8+
 ];
 
 function getLevelConfig(level: number): LevelConfig {
@@ -104,6 +105,11 @@ export class NotMyDogScene extends Phaser.Scene {
   private gridW = 0;
   private gridH = 0;
 
+  // Computed in create() to fit the whole maze on screen
+  private tileSize = 32;
+  private offsetX  = 0;
+  private offsetY  = 0;
+
   private playerPos: TilePos = { tx: 1, ty: 1 };
   private dogPos:    TilePos = { tx: 1, ty: 1 };
   private playerAtGoal       = false;
@@ -119,7 +125,7 @@ export class NotMyDogScene extends Phaser.Scene {
   private dogSprite!:    Phaser.GameObjects.Text;
   private ownerSprite!:  Phaser.GameObjects.Text;
 
-  private cats:           CatObj[]   = [];
+  private cats:           CatObj[]        = [];
   private door:           DoorInfo | null = null;
   private leversCollected = 0;
 
@@ -174,8 +180,25 @@ export class NotMyDogScene extends Phaser.Scene {
     EventBus.on('restart-scene', handleRestart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', handleRestart));
 
-    // Background (fixed to camera)
-    const bgGfx = this.add.graphics().setScrollFactor(0).setDepth(0);
+    // ── Compute tile size to fit entire maze on screen ─────
+    const HUD_H       = 72;
+    const CTRL_H      = 44;
+    const BOTTOM_SAFE = 56;
+    const mazeAreaW   = SW - 4;
+    const mazeAreaH   = SH - HUD_H - CTRL_H - BOTTOM_SAFE - 4;
+
+    this.tileSize = Math.max(12, Math.floor(Math.min(
+      mazeAreaW / this.gridW,
+      mazeAreaH / this.gridH
+    )));
+
+    const mazeW = this.gridW * this.tileSize;
+    const mazeH = this.gridH * this.tileSize;
+    this.offsetX = Math.floor((SW - mazeW) / 2);
+    this.offsetY = HUD_H + Math.floor((mazeAreaH - mazeH) / 2) + 2;
+
+    // Background
+    const bgGfx = this.add.graphics();
     bgGfx.fillStyle(0x1A3A0A);
     bgGfx.fillRect(0, 0, SW, SH);
 
@@ -185,7 +208,7 @@ export class NotMyDogScene extends Phaser.Scene {
     // Place door
     if (this.cfg.hasDoors) this.placeDoor();
 
-    // Draw maze (world space)
+    // Draw maze (world = screen, no camera scrolling)
     this.mazeGfx = this.add.graphics().setDepth(2);
     this.drawMaze();
 
@@ -193,10 +216,14 @@ export class NotMyDogScene extends Phaser.Scene {
     const gTx = this.gridW - 2, gTy = this.gridH - 2;
     const goalGfx = this.add.graphics().setDepth(1);
     goalGfx.fillStyle(0xFFD700, 0.35);
-    goalGfx.fillRect(gTx * TILE_SIZE + 2, gTy * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+    goalGfx.fillRect(
+      this.offsetX + gTx * this.tileSize + 2,
+      this.offsetY + gTy * this.tileSize + 2,
+      this.tileSize - 4, this.tileSize - 4
+    );
 
-    const fs      = Math.round(TILE_SIZE * 0.62);
-    const fsSmall = Math.round(TILE_SIZE * 0.50);
+    const fs      = Math.max(14, Math.round(this.tileSize * 0.72));
+    const fsSmall = Math.max(12, Math.round(this.tileSize * 0.58));
 
     this.ownerSprite = this.add.text(
       this.wx(gTx), this.wy(gTy), '🧑', { fontSize: `${fs}px` }
@@ -212,12 +239,8 @@ export class NotMyDogScene extends Phaser.Scene {
       this.wx(1), this.wy(1), '🧒', { fontSize: `${fs}px` }
     ).setOrigin(0.5).setDepth(5);
 
-    // Camera: follow player, bounded to maze world
-    this.cameras.main.setBounds(0, 0, this.gridW * TILE_SIZE, this.gridH * TILE_SIZE);
-    this.cameras.main.startFollow(this.playerSprite, true, 0.15, 0.15);
-
-    // Controls (fixed to screen)
-    this.buildControls(SW, SH);
+    // Controls
+    this.buildControls(SW, SH, CTRL_H, BOTTOM_SAFE);
 
     // Countdown timer
     this.time.addEvent({
@@ -251,29 +274,34 @@ export class NotMyDogScene extends Phaser.Scene {
     }
   }
 
-  // ── World coordinate helpers ──────────────────────────────
-  private wx(tx: number) { return tx * TILE_SIZE + TILE_SIZE / 2; }
-  private wy(ty: number) { return ty * TILE_SIZE + TILE_SIZE / 2; }
+  // ── Screen coordinate helpers ─────────────────────────────
+  // Converts tile index to screen pixel center
+  private wx(tx: number) { return this.offsetX + tx * this.tileSize + this.tileSize / 2; }
+  private wy(ty: number) { return this.offsetY + ty * this.tileSize + this.tileSize / 2; }
 
   private emitScore() {
     EventBus.emit('game-scored-update', this.cfg.hasDoors ? `🔧${this.leversCollected}/1` : '🐾');
   }
 
-  // ── Maze drawing (world space tiles) ─────────────────────
+  // ── Maze drawing ──────────────────────────────────────────
   private drawMaze() {
-    const g = this.mazeGfx;
+    const g  = this.mazeGfx;
+    const ox = this.offsetX;
+    const oy = this.offsetY;
+    const ts = this.tileSize;
     g.clear();
     for (let ty = 0; ty < this.gridH; ty++) {
       for (let tx = 0; tx < this.gridW; tx++) {
         g.fillStyle(this.grid[ty][tx] === 1 ? 0x2D6A1E : 0xC8A86B);
-        g.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        g.fillRect(ox + tx * ts, oy + ty * ts, ts, ts);
       }
     }
-    // Closed door overlay (red passage tile)
+    // Closed door: red fill over the blocked passage tile
     if (this.door && !this.door.open) {
       const { tx, ty } = this.door.doorTile;
+      const pad = Math.max(2, Math.floor(ts * 0.08));
       g.fillStyle(0xEF4444);
-      g.fillRect(tx * TILE_SIZE + 4, ty * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+      g.fillRect(ox + tx * ts + pad, oy + ty * ts + pad, ts - pad * 2, ts - pad * 2);
     }
   }
 
@@ -281,7 +309,7 @@ export class NotMyDogScene extends Phaser.Scene {
   private placeDoor() {
     const mainPath = this.mainPathTiles();
 
-    // Collect passage tiles on the main path: exactly one of (tx, ty) is even
+    // Passage tiles on main path: exactly one of (tx, ty) is even
     const passages: TilePos[] = [];
     for (const k of mainPath) {
       const [tx, ty] = k.split(',').map(Number);
@@ -290,10 +318,9 @@ export class NotMyDogScene extends Phaser.Scene {
     passages.sort(() => Math.random() - 0.5);
 
     for (const pass of passages) {
-      this.grid[pass.ty][pass.tx] = 1; // block passage
+      this.grid[pass.ty][pass.tx] = 1;
 
-      // Find room tiles reachable from start (start side of door)
-      const reachable = this.bfsReachableTiles(1, 1);
+      const reachable   = this.bfsReachableTiles(1, 1);
       const candidates: TilePos[] = [];
       for (const k of reachable) {
         const [tx, ty] = k.split(',').map(Number);
@@ -306,14 +333,14 @@ export class NotMyDogScene extends Phaser.Scene {
         const keyPos = candidates[Math.floor(Math.random() * candidates.length)];
         const spr = this.add.text(
           this.wx(keyPos.tx), this.wy(keyPos.ty), '🔧',
-          { fontSize: `${Math.round(TILE_SIZE * 0.5)}px` }
+          { fontSize: `${Math.max(12, Math.round(this.tileSize * 0.58))}px` }
         ).setOrigin(0.5).setDepth(3);
         this.tweens.add({ targets: spr, scaleX: 1.15, scaleY: 1.15, yoyo: true, repeat: -1, duration: 700 });
         this.door = { doorTile: { tx: pass.tx, ty: pass.ty }, keyTile: keyPos, open: false, keySprite: spr };
         return;
       }
 
-      this.grid[pass.ty][pass.tx] = 0; // undo and try next passage
+      this.grid[pass.ty][pass.tx] = 0; // undo
     }
   }
 
@@ -422,23 +449,21 @@ export class NotMyDogScene extends Phaser.Scene {
       const pos = pool[i];
       const spr = this.add.text(this.wx(pos.tx), this.wy(pos.ty), '😺', { fontSize: `${fs}px` })
         .setOrigin(0.5).setDepth(3);
-      this.tweens.add({ targets: spr, y: spr.y - 4, yoyo: true, repeat: -1, duration: 900 + Math.random() * 400 });
+      this.tweens.add({ targets: spr, y: spr.y - 3, yoyo: true, repeat: -1, duration: 900 + Math.random() * 400 });
       this.cats.push({ pos, sprite: spr, active: true });
     }
   }
 
-  // ── Controls (fixed to camera) ────────────────────────────
-  private buildControls(SW: number, SH: number) {
-    const BOTTOM_SAFE = 56;
-    const stripY = SH - BOTTOM_SAFE - 20;
-
+  // ── Controls ──────────────────────────────────────────────
+  private buildControls(SW: number, SH: number, ctrlH: number, bottomSafe: number) {
+    const stripY = SH - bottomSafe - Math.floor(ctrlH / 2);
     this.add.text(SW / 2, stripY, '← Swipe anywhere to move →', {
       fontSize: '13px', color: '#A7F3D0'
-    }).setOrigin(0.5).setDepth(20).setAlpha(0.7).setScrollFactor(0);
+    }).setOrigin(0.5).setDepth(20).setAlpha(0.7);
 
-    const arrowTxt = this.add.text(SW / 2, stripY - 28, '', {
-      fontSize: '24px'
-    }).setOrigin(0.5).setDepth(21).setScrollFactor(0);
+    const arrowTxt = this.add.text(SW / 2, stripY - 22, '', {
+      fontSize: '22px'
+    }).setOrigin(0.5).setDepth(21);
 
     const ARROWS: Record<string, string> = { '1,0': '▶', '-1,0': '◀', '0,1': '▼', '0,-1': '▲' };
     const SWIPE_THRESHOLD = 12;
@@ -466,7 +491,7 @@ export class NotMyDogScene extends Phaser.Scene {
     });
   }
 
-  // ── Fun messages ──────────────────────────────────────────
+  // ── Messages ──────────────────────────────────────────────
   private scheduleFunMessage() {
     this.time.delayedCall(Phaser.Math.Between(18000, 28000), () => {
       if (!this.done) {
@@ -476,7 +501,6 @@ export class NotMyDogScene extends Phaser.Scene {
     });
   }
 
-  // ── Owner speech bubble (world space) ─────────────────────
   private scheduleOwnerCall() {
     this.time.addEvent({ delay: 10000, loop: true, callback: () => {
       if (this.done) return;
@@ -497,9 +521,11 @@ export class NotMyDogScene extends Phaser.Scene {
     this.ownerBubble?.destroy();
     this.ownerBubbleBg?.destroy();
 
-    const ownerWorldX = this.wx(this.gridW - 2);
-    const ownerWorldY = this.wy(this.gridH - 2);
-    const fontSize = 14, maxTxtW = 155, pad = 9, tailH = 10, radius = 10;
+    const ownerScreenX = this.wx(this.gridW - 2);
+    const ownerScreenY = this.wy(this.gridH - 2);
+    const fontSize = Math.min(14, Math.max(10, Math.round(this.tileSize * 0.5)));
+    const maxTxtW  = Math.min(150, Math.max(80, this.gridW * this.tileSize * 0.55));
+    const pad = 8, tailH = 8, radius = 8;
 
     const probe = this.add.text(0, -999, msg, {
       fontFamily: '"Fredoka One", Arial, sans-serif',
@@ -509,9 +535,9 @@ export class NotMyDogScene extends Phaser.Scene {
     const bh = Math.ceil(probe.height) + pad * 2;
     probe.destroy();
 
-    const bRight  = ownerWorldX + Math.floor(bw * 0.35);
-    const bLeft   = bRight - bw;
-    const bBottom = ownerWorldY - Math.round(TILE_SIZE * 0.55);
+    const bRight  = Math.min(this.cameras.main.width - 5, ownerScreenX + Math.floor(bw * 0.35));
+    const bLeft   = Math.max(5, bRight - bw);
+    const bBottom = ownerScreenY - Math.round(this.tileSize * 0.55);
     const bTop    = bBottom - bh;
     const tailX   = bLeft + bw - Math.round(bw * 0.28);
 
@@ -519,7 +545,7 @@ export class NotMyDogScene extends Phaser.Scene {
     bg.fillStyle(0x000000, 0.15);
     bg.fillRoundedRect(bLeft + 3, bTop + 3, bw, bh, radius);
     bg.fillStyle(0xFFFDE7, 1);
-    bg.fillTriangle(tailX - 7, bBottom, tailX + 7, bBottom, tailX, bBottom + tailH);
+    bg.fillTriangle(tailX - 6, bBottom, tailX + 6, bBottom, tailX, bBottom + tailH);
     bg.fillRoundedRect(bLeft, bTop, bw, bh, radius);
     bg.lineStyle(2, 0xB45309, 1);
     bg.strokeRoundedRect(bLeft, bTop, bw, bh, radius);
@@ -562,7 +588,6 @@ export class NotMyDogScene extends Phaser.Scene {
     const { tx, ty } = this.playerPos;
     if (tx === this.gridW - 2 && ty === this.gridH - 2) this.playerAtGoal = true;
 
-    // Key pickup
     if (this.door && !this.door.open && this.door.keyTile.tx === tx && this.door.keyTile.ty === ty) {
       this.door.open = true;
       this.door.keySprite?.destroy();
@@ -621,7 +646,6 @@ export class NotMyDogScene extends Phaser.Scene {
 
     if (tx === this.gridW - 2 && ty === this.gridH - 2 && !this.done) {
       this.done = true;
-      // Award coins and update progress before emitting overlay event
       const state = useProgressStore.getState();
       const isNew = this.level > (state.highestLevel[MISSION_ID] ?? 0);
       state.addCityCoins(this.cfg.coins);
@@ -634,7 +658,7 @@ export class NotMyDogScene extends Phaser.Scene {
       const totalCoins = useProgressStore.getState().cityCoins;
       this.tweens.add({
         targets: [this.playerSprite, this.dogSprite, this.ownerSprite],
-        y: '-=8', yoyo: true, repeat: 2, duration: 180,
+        y: '-=6', yoyo: true, repeat: 2, duration: 180,
         onComplete: () => EventBus.emit('show-dog-complete', {
           level: this.level,
           coins: this.cfg.coins,
@@ -644,7 +668,7 @@ export class NotMyDogScene extends Phaser.Scene {
       return;
     }
 
-    // Cat encounter — distract dog when adjacent (≤ 2 tiles = 1 room away)
+    // Cat encounter — distract dog when adjacent (≤ 2 tiles = neighbouring room)
     for (const cat of this.cats) {
       if (!cat.active) continue;
       if (Math.abs(cat.pos.tx - tx) + Math.abs(cat.pos.ty - ty) <= 2) {
@@ -652,7 +676,7 @@ export class NotMyDogScene extends Phaser.Scene {
         this.tweens.add({ targets: cat.sprite, scaleX: 1.6, scaleY: 1.6, alpha: 0, duration: 500,
           onComplete: () => cat.sprite.destroy() });
         this.dogDistractedUntil = this.time.now + 4000;
-        this.tweens.add({ targets: this.dogSprite, x: this.dogSprite.x + 6, yoyo: true, repeat: 6, duration: 80 });
+        this.tweens.add({ targets: this.dogSprite, x: this.dogSprite.x + 5, yoyo: true, repeat: 6, duration: 80 });
         EventBus.emit('show-dog-message', '😾 Firulai got distracted by a cat — go find him!');
       }
     }

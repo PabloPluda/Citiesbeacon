@@ -269,6 +269,10 @@ export default function GameWindow() {
     coinsEarned: number; totalCoins: number;
   } | null>(null);
 
+  // Mission 5 (NotMyDog) complete overlay
+  const [m5Complete, setM5Complete] = useState(false);
+  const [m5Data, setM5Data] = useState<{ level: number; coins: number; totalCoins: number } | null>(null);
+
   // Dog game overlays
   const [showDogTutorial, setShowDogTutorial] = useState(false);
   const [showDogPreLevel, setShowDogPreLevel] = useState(false);
@@ -367,6 +371,11 @@ export default function GameWindow() {
     const onM8Over = (data: typeof m8Data) => { setM8Data(data); setM8Over(true); };
     EventBus.on('game-over-recycling', onM8Over);
 
+    const onM5Complete = (data: { level: number; coins: number; totalCoins: number }) => {
+      setM5Data(data); setM5Complete(true);
+    };
+    EventBus.on('show-dog-complete', onM5Complete);
+
     const onM1Tutorial = (pos?: { binX: number; binY: number; trashX: number; trashY: number }) => {
       if (m1TutorialDoneRef.current) {
         EventBus.emit('m1-tutorial-done');
@@ -397,6 +406,7 @@ export default function GameWindow() {
       EventBus.off('citybuilder-demolish-done',    onDemolishDone);
       EventBus.off('game-over-m1', onM1Over);
       EventBus.off('game-over-recycling', onM8Over);
+      EventBus.off('show-dog-complete', onM5Complete);
       EventBus.off('show-m1-tutorial', onM1Tutorial);
       if (gameRef.current) {
         gameRef.current.destroy(true);
@@ -743,10 +753,10 @@ export default function GameWindow() {
             </div>
             <div style={{ padding: '16px 20px 20px' }}>
               <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '1.3rem', color: '#1D4ED8', marginBottom: 10 }}>
-                {dogPreLevelInfo.level <= 5  ? "The maze grows! 🗺️"
-                : dogPreLevelInfo.level <= 10 ? "Watch for puddles! 💦"
-                : dogPreLevelInfo.level <= 15 ? "Find water for the dog! 💧"
-                : "Cats and doors! 😺🔧"}
+                {dogPreLevelInfo.hasDoors && dogPreLevelInfo.numCats > 0 ? "Cats and doors! 😺🔧"
+                : dogPreLevelInfo.hasDoors ? "Find the key! 🔑"
+                : dogPreLevelInfo.numCats > 0 ? "Watch out for cats! 😺"
+                : "New maze! 🗺️"}
               </div>
               <div style={{ fontFamily: 'Fredoka One, cursive', fontSize: '0.88rem', color: '#374151', lineHeight: 1.5, marginBottom: 16 }}>
                 {dogPreLevelInfo.hasPuddles && <span>💦 Puddles slow you down<br/></span>}
@@ -806,6 +816,20 @@ export default function GameWindow() {
           onRetry={() => {
             setM1Over(false); setM1Data(null);
             EventBus.emit('restart-scene', { level: 1 });
+          }}
+          onMap={() => navigate('/map')}
+        />
+      )}
+
+      {/* ─ Mission 5 (NotMyDog) complete overlay ─────────────────────────── */}
+      {m5Complete && m5Data && (
+        <DogCompleteOverlay
+          data={m5Data}
+          heroName={heroName}
+          onContinue={() => {
+            const next = m5Data.level + 1;
+            setM5Complete(false); setM5Data(null);
+            EventBus.emit('restart-scene', { level: next });
           }}
           onMap={() => navigate('/map')}
         />
@@ -1443,6 +1467,149 @@ function M8GameOverOverlay({
                 borderRadius: 20, padding: '13px 8px', color: '#fff', cursor: 'pointer',
                 boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
               }}>♻️ Play Again</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Mission 5 (NotMyDog) complete overlay ────────────────────────────────────
+function DogCompleteOverlay({
+  data, heroName, onContinue, onMap,
+}: {
+  data: { level: number; coins: number; totalCoins: number };
+  heroName: string;
+  onContinue: () => void;
+  onMap: () => void;
+}) {
+  const { coins, totalCoins } = data;
+  const coinsBeforeGame = totalCoins - coins;
+
+  const [phase, setPhase] = useState(0);
+  const [displayCoins, setDisplayCoins] = useState(coinsBeforeGame);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase(1), 700);
+    return () => clearTimeout(t1);
+  }, []);
+
+  useEffect(() => {
+    if (phase !== 1) return;
+    const t2 = setTimeout(() => setPhase(2), 1000);
+    return () => clearTimeout(t2);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 2) return;
+    const duration = 900;
+    const start = coinsBeforeGame, end = totalCoins;
+    const startTime = Date.now();
+    const raf = { id: 0 };
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - startTime) / duration);
+      setDisplayCoins(Math.round(start + (end - start) * (1 - Math.pow(1 - t, 3))));
+      if (t < 1) { raf.id = requestAnimationFrame(tick); }
+    };
+    raf.id = requestAnimationFrame(tick);
+    const t3 = setTimeout(() => setPhase(3), duration + 900);
+    return () => { cancelAnimationFrame(raf.id); clearTimeout(t3); };
+  }, [phase, coinsBeforeGame, totalCoins]);
+
+  return (
+    <motion.div
+      key="m5-complete"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+      style={{
+        position: 'absolute', inset: 0, zIndex: 80,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(4,10,20,0.90)',
+      }}
+    >
+      <motion.div
+        initial={{ scale: 0.82, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ delay: 0.08, type: 'spring', stiffness: 260, damping: 20 }}
+        style={{
+          background: 'linear-gradient(160deg,#071225 0%,#0D2210 60%,#071225 100%)',
+          border: '2.5px solid #22C55E',
+          borderRadius: 28,
+          width: 'min(340px, calc(100vw - 40px))',
+          padding: '28px 24px 24px', textAlign: 'center',
+          boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+        }}
+      >
+        <div style={{ fontSize: '3rem', lineHeight: 1, marginBottom: 8 }}>🐕🏠</div>
+        <div style={{
+          fontFamily: 'Fredoka One, cursive', fontSize: '1.8rem',
+          color: '#22C55E', marginBottom: 10,
+          textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+        }}>Wohoo!</div>
+        <div style={{
+          fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+          color: 'rgba(255,255,255,0.88)', lineHeight: 1.5, marginBottom: 20,
+        }}>
+          Thank you{heroName ? `, ${heroName},` : ''} for bringing<br />
+          my dog back — you are a real hero! 🌟
+        </div>
+
+        <AnimatePresence>
+          {phase >= 1 && (
+            <motion.div
+              key="earned"
+              initial={{ scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 20 }}
+            >
+              <span style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '3.8rem', lineHeight: 1,
+                color: '#4ADE80', textShadow: '0 0 24px rgba(74,222,128,0.6), 0 3px 0 #14532D',
+              }}>+{coins}</span>
+              <span style={{ fontSize: '2.8rem', lineHeight: 1 }}>🪙</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {phase >= 2 && (
+            <motion.div
+              key="total"
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 240, damping: 20 }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 24 }}
+            >
+              <span style={{ fontSize: '2rem', lineHeight: 1 }}>🪙</span>
+              <span style={{
+                fontFamily: 'Fredoka One, cursive', fontSize: '3rem', lineHeight: 1,
+                color: '#FFD700', textShadow: '0 0 20px rgba(255,215,0,0.5), 0 3px 0 #92400E',
+              }}>{displayCoins}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {phase >= 3 && (
+            <motion.div
+              key="buttons"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+              style={{ display: 'flex', gap: 12 }}
+            >
+              <button onClick={onMap} style={{
+                flex: 1, fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+                background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(255,255,255,0.2)',
+                borderRadius: 20, padding: '13px 8px', color: 'rgba(255,255,255,0.8)', cursor: 'pointer',
+              }}>🗺️ Map</button>
+              <button onClick={onContinue} style={{
+                flex: 2, fontFamily: 'Fredoka One, cursive', fontSize: '1rem',
+                background: 'linear-gradient(135deg,#22C55E,#15803D)', border: 'none',
+                borderRadius: 20, padding: '13px 8px', color: '#fff', cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(34,197,94,0.45)',
+              }}>🐾 Next Maze!</button>
             </motion.div>
           )}
         </AnimatePresence>

@@ -44,14 +44,18 @@ function getLevelConfig(level: number): LevelConfig {
   return LEVELS[Math.min(level - 1, LEVELS.length - 1)];
 }
 
-// ─── Maze Generator (Maximum-Distance algorithm) ───────────────────────────────
+// ─── Maze Generator (Maximum-Distance + Controlled Safe Loops) ───────────────
 //
 // 1. DFS builds a perfect spanning-tree maze from room (0,0) = tile (1,1).
-// 2. Force-open a second exit from tile (1,1) to guarantee two branching paths.
-// 3. Remove ~10% of internal passage walls → creates loops, shortcuts, false paths.
-// 4. BFS Flood Fill from (1,1) computes real step-count to every tile.
-// 5. Owner placed at the ROOM TILE requiring the most real steps.
-// 6. Owner's tile is dead-ended: all passages except the single entry are closed.
+// 2. Force-open a second exit from (1,1) for two branching paths at the start.
+// 3. BFS Flood Fill from (1,1) computes real step-count to every tile.
+// 4. Owner placed at the ROOM TILE requiring the most real steps.
+// 5. Reconstruct main-path room tiles from start to owner via BFS dist[].
+// 6. Controlled wall removal (Safe Loops only):
+//    - A wall may only be removed if it joins two non-main-path DEAD-END rooms.
+//    - The last third of the main path (near owner) is always fully protected.
+//    - At least 60% of off-path rooms remain strict dead-ends after removal.
+// 7. Dead-end the owner tile: close all passages except the single entry.
 //
 function generateMaze(roomsW: number, roomsH: number): { grid: number[][]; ownerTile: TilePos } {
   const gridW = roomsW * 2 + 1;
@@ -72,18 +76,16 @@ function generateMaze(roomsW: number, roomsH: number): { grid: number[][]; owner
     for (const [dx, dy] of dirs) {
       const nx = rx + dx, ny = ry + dy;
       if (nx < 0 || nx >= roomsW || ny < 0 || ny >= roomsH || vis[ny][nx]) continue;
-      grid[ry * 2 + 1 + dy][rx * 2 + 1 + dx] = 0; // carve passage
+      grid[ry * 2 + 1 + dy][rx * 2 + 1 + dx] = 0;
       dfs(nx, ny);
     }
   }
   dfs(0, 0);
 
   // ── 2. Guarantee two exits from start tile (1,1) ─────────────────────────
-  // Room (0,0) is a corner with only east (2,1) and south (1,2) as possible exits.
-  // DFS may only have carved one; force-open the other to create two parallel paths.
   const startExits: [number, number][] = [];
-  if (gridW > 2) startExits.push([2, 1]); // east
-  if (gridH > 2) startExits.push([1, 2]); // south
+  if (gridW > 2) startExits.push([2, 1]);
+  if (gridH > 2) startExits.push([1, 2]);
   const openAtStart = startExits.filter(([tx, ty]) => grid[ty][tx] === 0).length;
   if (openAtStart < 2) {
     for (const [tx, ty] of startExits) {
@@ -91,35 +93,7 @@ function generateMaze(roomsW: number, roomsH: number): { grid: number[][]; owner
     }
   }
 
-  // ── 3. Remove ~10% of internal passage walls to create loops ─────────────
-  // An internal wall is a passage tile (exactly one coord even) currently = 1,
-  // with passable tiles on both of its two sides.
-  const internalWalls: [number, number][] = [];
-  for (let ty = 1; ty < gridH - 1; ty++) {
-    for (let tx = 1; tx < gridW - 1; tx++) {
-      if (grid[ty][tx] !== 1) continue;
-      const isPassageTile = (tx % 2 === 0) !== (ty % 2 === 0);
-      if (!isPassageTile) continue;
-      const [r1x, r1y, r2x, r2y] = tx % 2 === 0
-        ? [tx - 1, ty, tx + 1, ty]   // horizontal: rooms left & right
-        : [tx, ty - 1, tx, ty + 1];  // vertical:   rooms above & below
-      if (r1x < 0 || r1y < 0 || r2x >= gridW || r2y >= gridH) continue;
-      if (grid[r1y][r1x] === 0 && grid[r2y][r2x] === 0) {
-        internalWalls.push([tx, ty]);
-      }
-    }
-  }
-  for (let i = internalWalls.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [internalWalls[i], internalWalls[j]] = [internalWalls[j], internalWalls[i]];
-  }
-  const toRemove = Math.max(1, Math.round(internalWalls.length * 0.10));
-  for (let i = 0; i < toRemove; i++) {
-    const [tx, ty] = internalWalls[i];
-    grid[ty][tx] = 0;
-  }
-
-  // ── 4. BFS Flood Fill from (1,1) — exact step count to every tile ─────────
+  // ── 3. BFS Flood Fill from (1,1) — exact step count to every tile ─────────
   const dist: number[][] = Array.from({ length: gridH }, () => new Array(gridW).fill(-1));
   dist[1][1] = 0;
   const bfsQ: [number, number][] = [[1, 1]];
@@ -135,29 +109,105 @@ function generateMaze(roomsW: number, roomsH: number): { grid: number[][]; owner
     }
   }
 
-  // ── 5. Owner = room tile with maximum real distance from start ────────────
+  // ── 4. Owner = room tile with maximum real distance from start ────────────
   let maxDist = -1;
   let ownerTile: TilePos = { tx: gridW - 2, ty: gridH - 2 };
-  for (let ty = 1; ty < gridH; ty += 2) {      // only room tiles (both coords odd)
+  for (let ty = 1; ty < gridH; ty += 2) {
     for (let tx = 1; tx < gridW; tx += 2) {
-      if (tx === 1 && ty === 1) continue;        // skip start
-      if (dist[ty][tx] > maxDist) {
-        maxDist = dist[ty][tx];
-        ownerTile = { tx, ty };
-      }
+      if (tx === 1 && ty === 1) continue;
+      if (dist[ty][tx] > maxDist) { maxDist = dist[ty][tx]; ownerTile = { tx, ty }; }
     }
   }
 
-  // ── 6. Dead-end the owner tile (keep only one entry passage) ─────────────
+  // ── 5. Reconstruct main-path room tiles (owner → start via BFS back-trace) ──
+  const mainPathRoomSet = new Set<string>();
+  {
+    let curTx = ownerTile.tx, curTy = ownerTile.ty;
+    for (let safety = 0; safety < gridW * gridH + 4; safety++) {
+      if (curTx % 2 === 1 && curTy % 2 === 1) mainPathRoomSet.add(`${curTx},${curTy}`);
+      if (curTx === 1 && curTy === 1) break;
+      const curD = dist[curTy][curTx];
+      let moved = false;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
+        const nx = curTx + dx, ny = curTy + dy;
+        if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH) continue;
+        if (grid[ny][nx] === 0 && dist[ny][nx] === curD - 1) {
+          curTx = nx; curTy = ny; moved = true; break;
+        }
+      }
+      if (!moved) break;
+    }
+    mainPathRoomSet.add('1,1');
+  }
+
+  // ── 6. Controlled wall removal: Safe Loops only ───────────────────────────
+  // Count open passage tiles adjacent to a room tile
+  const openPassages = (rtx: number, rty: number): number => {
+    let c = 0;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
+      const px = rtx + dx, py = rty + dy;
+      if (px > 0 && px < gridW - 1 && py > 0 && py < gridH - 1 && grid[py][px] === 0) c++;
+    }
+    return c;
+  };
+
+  // Count dead-ends among non-main-path, non-start, non-owner room tiles
+  const countNonPathDeadEnds = (): { total: number; deadEnds: number } => {
+    let total = 0, deadEnds = 0;
+    for (let ty = 1; ty < gridH; ty += 2) {
+      for (let tx = 1; tx < gridW; tx += 2) {
+        const k = `${tx},${ty}`;
+        if (k === '1,1' || k === `${ownerTile.tx},${ownerTile.ty}`) continue;
+        if (mainPathRoomSet.has(k)) continue;
+        total++;
+        if (openPassages(tx, ty) === 1) deadEnds++;
+      }
+    }
+    return { total, deadEnds };
+  };
+
+  // Candidate walls: internal passage walls whose both sides are non-main-path dead-end rooms
+  const safeWalls: [number, number][] = [];
+  for (let ty = 1; ty < gridH - 1; ty++) {
+    for (let tx = 1; tx < gridW - 1; tx++) {
+      if (grid[ty][tx] !== 1) continue;
+      if (!((tx % 2 === 0) !== (ty % 2 === 0))) continue; // only passage tiles
+      const [r1x, r1y, r2x, r2y] = tx % 2 === 0
+        ? [tx - 1, ty, tx + 1, ty]
+        : [tx, ty - 1, tx, ty + 1];
+      if (r1x <= 0 || r1y <= 0 || r2x >= gridW - 1 || r2y >= gridH - 1) continue;
+      if (grid[r1y][r1x] !== 0 || grid[r2y][r2x] !== 0) continue;
+      const r1k = `${r1x},${r1y}`, r2k = `${r2x},${r2y}`;
+      // Both rooms must be off the main path (this also protects the last-third zone)
+      if (mainPathRoomSet.has(r1k) || mainPathRoomSet.has(r2k)) continue;
+      // Both rooms must currently be dead-ends
+      if (openPassages(r1x, r1y) !== 1 || openPassages(r2x, r2y) !== 1) continue;
+      safeWalls.push([tx, ty]);
+    }
+  }
+
+  for (let i = safeWalls.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [safeWalls[i], safeWalls[j]] = [safeWalls[j], safeWalls[i]];
+  }
+
+  // Remove at most as many walls as the 60% dead-end floor allows
+  // Each removal turns 2 dead-ends into non-dead-ends, so max = floor((D - 60%·T) / 2)
+  const { total: T, deadEnds: D } = countNonPathDeadEnds();
+  const maxRem = T > 0 ? Math.max(0, Math.floor((D - Math.ceil(T * 0.60)) / 2)) : 0;
+  for (let i = 0; i < Math.min(maxRem, safeWalls.length); i++) {
+    const [wtx, wty] = safeWalls[i];
+    grid[wty][wtx] = 0;
+  }
+
+  // ── 7. Dead-end the owner tile (keep only one entry passage) ─────────────
   const { tx: ownTx, ty: ownTy } = ownerTile;
   const adjPassages = (
     [[ownTx + 1, ownTy], [ownTx - 1, ownTy], [ownTx, ownTy + 1], [ownTx, ownTy - 1]] as [number,number][]
   ).filter(([px, py]) =>
     px > 0 && px < gridW - 1 && py > 0 && py < gridH - 1 && grid[py][px] === 0
   );
-
   if (adjPassages.length > 1) {
-    // Shuffle and keep first as the single entry; block the rest
     for (let i = adjPassages.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [adjPassages[i], adjPassages[j]] = [adjPassages[j], adjPassages[i]];

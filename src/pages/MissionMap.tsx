@@ -40,14 +40,14 @@ export default function MissionMap() {
           scrollbarWidth: 'none' as never,
         }}
       >
-        {MISSIONS.map((mission) => {
+        {MISSIONS.map((mission, idx) => {
           const highestLevel = getHighestLevel(mission.id);
           const nextLevel    = Math.min(20, Math.max(1, highestLevel + 1));
 
           return (
             <MissionCard
               key={mission.id}
-              id={mission.id}
+              imageIndex={idx + 1}
               onPlay={() => navigate(`/game/${mission.id}`, { state: { startLevel: nextLevel } })}
             />
           );
@@ -62,7 +62,7 @@ export default function MissionMap() {
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
-function MissionCard({ id, onPlay }: { id: number; onPlay: () => void }) {
+function MissionCard({ imageIndex, onPlay }: { imageIndex: number; onPlay: () => void }) {
   // Width = 100vw - 80px (same as before), height = width * 3/2  (2:3 ratio)
   const w = 'calc(100vw - 80px)';
   const h = 'calc((100vw - 80px) * 1.5)';
@@ -79,7 +79,7 @@ function MissionCard({ id, onPlay }: { id: number; onPlay: () => void }) {
         borderRadius: 28,
         overflow: 'hidden',
         position: 'relative',
-        backgroundImage: `url(/missions/mission_${id}.jpg)`,
+        backgroundImage: `url(/missions/mission_${imageIndex}.jpg)`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundColor: '#1E3A5F',

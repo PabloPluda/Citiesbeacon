@@ -7,15 +7,15 @@ import { useAdminStore, DEFAULT_MISSION_CONFIG } from '../store/adminStore';
 // Mission 4 (Water Saver) hidden until ready
 const MISSION_IDS = DEFAULT_MISSION_CONFIG.map(m => m.id).filter(id => id !== 4);
 
-// Explicit image file number per mission ID (sequential 1-7 matching public/missions/)
-const MISSION_IMAGE_INDEX: Record<number, number> = {
-  1: 1,  // ThrowToBin
-  2: 2,  // Crossing the street
-  3: 3,  // Lights out
-  5: 4,  // Not my dog
-  6: 5,  // Biking
-  8: 6,  // Recycling
-  7: 7,  // City Builder
+// Explicit image filename per mission ID (files live in public/missions/)
+const MISSION_IMAGE: Record<number, string> = {
+  1: 'mission_1',
+  2: 'mission_2',
+  3: 'mission_3',
+  5: 'mission_4',
+  6: 'mission_5',
+  8: 'mission_6',
+  7: 'citybuilder',
 };
 
 export default function MissionMap() {
@@ -58,7 +58,7 @@ export default function MissionMap() {
           return (
             <MissionCard
               key={mission.id}
-              imageIndex={MISSION_IMAGE_INDEX[mission.id] ?? idx + 1}
+              imageFile={MISSION_IMAGE[mission.id] ?? `mission_${idx + 1}`}
               onPlay={() => navigate(`/game/${mission.id}`, { state: { startLevel: nextLevel } })}
             />
           );
@@ -73,7 +73,7 @@ export default function MissionMap() {
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
-function MissionCard({ imageIndex, onPlay }: { imageIndex: number; onPlay: () => void }) {
+function MissionCard({ imageFile, onPlay }: { imageFile: string; onPlay: () => void }) {
   // Width = 100vw - 80px (same as before), height = width * 3/2  (2:3 ratio)
   const w = 'calc(100vw - 80px)';
   const h = 'calc((100vw - 80px) * 1.5)';
@@ -90,7 +90,7 @@ function MissionCard({ imageIndex, onPlay }: { imageIndex: number; onPlay: () =>
         borderRadius: 28,
         overflow: 'hidden',
         position: 'relative',
-        backgroundImage: `url(/missions/mission_${imageIndex}.jpg)`,
+        backgroundImage: `url(/missions/${imageFile}.jpg)`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundColor: '#1E3A5F',

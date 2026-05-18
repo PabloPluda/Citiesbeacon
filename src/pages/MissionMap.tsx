@@ -7,6 +7,17 @@ import { useAdminStore, DEFAULT_MISSION_CONFIG } from '../store/adminStore';
 // Mission 4 (Water Saver) hidden until ready
 const MISSION_IDS = DEFAULT_MISSION_CONFIG.map(m => m.id).filter(id => id !== 4);
 
+// Explicit image file number per mission ID (sequential 1-7 matching public/missions/)
+const MISSION_IMAGE_INDEX: Record<number, number> = {
+  1: 1,  // ThrowToBin
+  2: 2,  // Crossing the street
+  3: 3,  // Lights out
+  5: 4,  // Not my dog
+  6: 5,  // Biking
+  8: 6,  // Recycling
+  7: 7,  // City Builder
+};
+
 export default function MissionMap() {
   const navigate            = useNavigate();
   const { getHighestLevel } = useProgressStore();
@@ -47,7 +58,7 @@ export default function MissionMap() {
           return (
             <MissionCard
               key={mission.id}
-              imageIndex={idx + 1}
+              imageIndex={MISSION_IMAGE_INDEX[mission.id] ?? idx + 1}
               onPlay={() => navigate(`/game/${mission.id}`, { state: { startLevel: nextLevel } })}
             />
           );

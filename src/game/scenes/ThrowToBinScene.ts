@@ -5,8 +5,8 @@ import { useProgressStore } from '../../store/progressStore';
 const MISSION_ID  = 1;
 const TRASH_KEYS  = ['paper_ball', 'newspaper', 'banana_peel', 'watermelon_rind', 'fish_bone', 'bottle'];
 const MAX_PULL       = 140;
-const MIN_SPEED      = 1000;  // speed at minimum pull — always reaches the bin
-const MAX_SPEED      = 1300;  // speed at full pull — reaches ~top of screen
+const MIN_SPEED      = 700;   // speed at minimum pull — always reaches the bin
+const MAX_SPEED      = 1200;  // speed at full pull — reaches ~top of screen
 const GRAVITY        = 1000;
 const MAX_FLOOR_ITEMS = 10;
 const FLOOR_Y_RATIO  = 0.78;

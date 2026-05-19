@@ -22,12 +22,14 @@ interface UserState {
   profile: UserProfile | null;
   loading: boolean;
   authError: string | null;
+  isNewUser: boolean;
 
   initialize: () => Promise<void>;
   signIn: (username: string, password: string) => Promise<void>;
   signUp: (username: string, password: string, country: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
+  clearNewUser: () => void;
 }
 
 async function loadProgressFromSupabase(userId: string) {
@@ -57,6 +59,7 @@ export const useUserStore = create<UserState>()((set) => ({
   profile: null,
   loading: true,
   authError: null,
+  isNewUser: false,
 
   initialize: async () => {
     try {
@@ -137,11 +140,12 @@ export const useUserStore = create<UserState>()((set) => ({
         set({ authError: 'Email confirmation is ON in Supabase — disable it in Auth → Settings.', loading: false });
         return;
       }
+      const STARTING_COINS = 500;
       const { error: profileError } = await supabase.from('perfiles_usuarios').insert({
         id: data.user.id,
         username: username.trim(),
         pais_residencia: country.trim(),
-        monedas: 0,
+        monedas: STARTING_COINS,
         progreso_juegos: {},
         city_grid: [],
       });
@@ -150,9 +154,11 @@ export const useUserStore = create<UserState>()((set) => ({
         set({ authError: `Profile error: ${profileError.message}`, loading: false });
         return;
       }
+      useProgressStore.setState({ cityCoins: STARTING_COINS });
       set({
         user: data.user,
-        profile: { id: data.user.id, username: username.trim(), pais_residencia: country.trim(), avatar_url: null, monedas: 0 },
+        profile: { id: data.user.id, username: username.trim(), pais_residencia: country.trim(), avatar_url: null, monedas: STARTING_COINS },
+        isNewUser: true,
         loading: false,
       });
     } catch (e) {
@@ -168,4 +174,5 @@ export const useUserStore = create<UserState>()((set) => ({
   },
 
   clearError: () => set({ authError: null }),
+  clearNewUser: () => set({ isNewUser: false }),
 }));

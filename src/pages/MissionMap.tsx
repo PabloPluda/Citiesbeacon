@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { Play } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useProgressStore } from '../store/progressStore';
 import { useAdminStore, DEFAULT_MISSION_CONFIG } from '../store/adminStore';
+import { useUserStore } from '../store/userStore';
 
 // Mission 4 (Water Saver) hidden until ready
 const MISSION_IDS = DEFAULT_MISSION_CONFIG.map(m => m.id).filter(id => id !== 4);
@@ -22,6 +24,7 @@ export default function MissionMap() {
   const navigate            = useNavigate();
   const { getHighestLevel } = useProgressStore();
   const getEffectiveMission = useAdminStore(s => s.getEffectiveMission);
+  const { isNewUser, clearNewUser, profile } = useUserStore();
 
   const MISSIONS = MISSION_IDS.map(id => ({ id, ...getEffectiveMission(id) }));
 
@@ -67,6 +70,17 @@ export default function MissionMap() {
         {/* trailing spacer so last card can fully snap */}
         <div style={{ flexShrink: 0, width: 24 }} />
       </div>
+
+      {/* ── Welcome overlay (new users only) ──────────────────────────────── */}
+      <AnimatePresence>
+        {isNewUser && (
+          <WelcomeOverlay
+            username={profile?.username ?? 'Hero'}
+            onGoToMissions={clearNewUser}
+            onCityBuilder={() => { clearNewUser(); navigate('/game/7'); }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -74,7 +88,6 @@ export default function MissionMap() {
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
 function MissionCard({ imageFile, onPlay }: { imageFile: string; onPlay: () => void }) {
-  // Width = 100vw - 80px (same as before), height = width * 3/2  (2:3 ratio)
   const w = 'calc(100vw - 80px)';
   const h = 'calc((100vw - 80px) * 1.5)';
 
@@ -98,7 +111,6 @@ function MissionCard({ imageFile, onPlay }: { imageFile: string; onPlay: () => v
         boxShadow: '0 16px 48px rgba(0,0,0,0.55)',
       }}
     >
-      {/* Subtle gradient just at the very bottom for the button */}
       <div style={{
         position: 'absolute',
         bottom: 0, left: 0, right: 0,
@@ -107,7 +119,6 @@ function MissionCard({ imageFile, onPlay }: { imageFile: string; onPlay: () => v
         pointerEvents: 'none',
       }} />
 
-      {/* Play button — bottom right */}
       <motion.button
         whileTap={{ scale: 0.93 }}
         onClick={onPlay}
@@ -133,6 +144,210 @@ function MissionCard({ imageFile, onPlay }: { imageFile: string; onPlay: () => v
         <Play size={18} fill="white" strokeWidth={0} />
         PLAY NOW
       </motion.button>
+    </motion.div>
+  );
+}
+
+// ─── Welcome Overlay ──────────────────────────────────────────────────────────
+
+function WelcomeOverlay({
+  username,
+  onGoToMissions,
+  onCityBuilder,
+}: {
+  username: string;
+  onGoToMissions: () => void;
+  onCityBuilder: () => void;
+}) {
+  const [coins, setCoins] = useState(0);
+  const [imgError, setImgError] = useState(false);
+
+  // Animate coin counter 0 → 500 over ~1.8 s, starting after a short delay
+  useEffect(() => {
+    const TARGET = 500;
+    const DURATION = 1800;
+    let startTime: number | null = null;
+    let raf: number;
+
+    const delay = setTimeout(() => {
+      const tick = (now: number) => {
+        if (!startTime) startTime = now;
+        const t = Math.min((now - startTime) / DURATION, 1);
+        const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+        setCoins(Math.round(eased * TARGET));
+        if (t < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }, 600);
+
+    return () => { clearTimeout(delay); cancelAnimationFrame(raf); };
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.82)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 200,
+        padding: '24px 20px',
+      }}
+    >
+      <motion.div
+        initial={{ scale: 0.88, opacity: 0, y: 24 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.92, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 280, damping: 22 }}
+        style={{
+          background: 'linear-gradient(160deg, #0f2d5e 0%, #1a4a8a 60%, #0d3b6e 100%)',
+          borderRadius: 28,
+          padding: '28px 24px 24px',
+          maxWidth: 380,
+          width: '100%',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.7), 0 0 0 1.5px rgba(255,255,255,0.08)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16,
+          textAlign: 'center',
+        }}
+      >
+        {/* Governor image / placeholder */}
+        <div style={{
+          width: 130,
+          height: 130,
+          borderRadius: 16,
+          overflow: 'hidden',
+          border: '3px solid rgba(255,215,0,0.6)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          background: 'rgba(255,255,255,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          {imgError ? (
+            <span style={{ fontSize: 64 }}>👨‍💼</span>
+          ) : (
+            <img
+              src="/governor.jpg"
+              alt="Governor"
+              onError={() => setImgError(true)}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          )}
+        </div>
+
+        {/* Title */}
+        <div>
+          <div style={{
+            fontFamily: 'Fredoka One, cursive',
+            fontSize: '1.35rem',
+            color: '#FFD700',
+            letterSpacing: '0.02em',
+            lineHeight: 1.2,
+            marginBottom: 8,
+          }}>
+            A Message from the Governor
+          </div>
+          <div style={{
+            fontFamily: 'Outfit, sans-serif',
+            fontSize: '0.92rem',
+            color: 'rgba(255,255,255,0.88)',
+            lineHeight: 1.55,
+          }}>
+            Hello <strong style={{ color: '#7DD3FC' }}>{username}</strong>!{' '}
+            I'm the Governor of this city, and I want to personally thank you
+            for joining our mission to improve people's behavior and build a
+            friendlier, more sustainable city for everyone.{' '}
+            Please accept these <strong style={{ color: '#FFD700' }}>500 CityCoins</strong>{' '}
+            to start building the city of your dreams!
+          </div>
+        </div>
+
+        {/* Coin counter */}
+        <motion.div
+          animate={coins === 500 ? { scale: [1, 1.08, 1] } : {}}
+          transition={{ duration: 0.35 }}
+          style={{
+            background: 'rgba(0,0,0,0.35)',
+            borderRadius: 99,
+            padding: '10px 28px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            border: '1.5px solid rgba(255,215,0,0.35)',
+          }}
+        >
+          <span style={{ fontSize: 26 }}>🪙</span>
+          <span style={{
+            fontFamily: 'Fredoka One, cursive',
+            fontSize: '2rem',
+            color: '#FFD700',
+            letterSpacing: '0.04em',
+            minWidth: 56,
+          }}>
+            {coins.toLocaleString()}
+          </span>
+          <span style={{
+            fontFamily: 'Outfit, sans-serif',
+            fontSize: '0.8rem',
+            color: 'rgba(255,255,255,0.6)',
+            alignSelf: 'flex-end',
+            paddingBottom: 4,
+          }}>
+            CityCoins
+          </span>
+        </motion.div>
+
+        {/* Buttons */}
+        <div style={{ display: 'flex', gap: 12, width: '100%', marginTop: 4 }}>
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={onGoToMissions}
+            style={{
+              flex: 1,
+              padding: '13px 8px',
+              border: '1.5px solid rgba(255,255,255,0.25)',
+              borderRadius: 14,
+              background: 'rgba(255,255,255,0.1)',
+              color: '#fff',
+              fontFamily: 'Fredoka One, cursive',
+              fontSize: '0.95rem',
+              cursor: 'pointer',
+              letterSpacing: '0.02em',
+            }}
+          >
+            🗺️ Go to Missions
+          </motion.button>
+
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={onCityBuilder}
+            style={{
+              flex: 1,
+              padding: '13px 8px',
+              border: 'none',
+              borderRadius: 14,
+              background: 'linear-gradient(135deg, #22C55E, #15803D)',
+              boxShadow: '0 4px 0 #14532D',
+              color: '#fff',
+              fontFamily: 'Fredoka One, cursive',
+              fontSize: '0.95rem',
+              cursor: 'pointer',
+              letterSpacing: '0.02em',
+            }}
+          >
+            🏙️ City Builder
+          </motion.button>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }

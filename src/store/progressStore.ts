@@ -10,6 +10,8 @@ interface GameState {
   highestLevel: Record<number, number>;   // missionId → highest completed level
   puzzlePieces: Record<number, number>;   // missionId → pieces revealed (0-20)
   cityGrid: SavedBuilding[];              // CityBuilder placed buildings
+  lastLoginDate: string;                  // ISO date "YYYY-MM-DD" of last session
+  streakDays: number;                     // consecutive daily login count
 
   addCityPoints: (points: number) => void;
   addCityCoins: (coins: number) => void;
@@ -20,6 +22,7 @@ interface GameState {
   getPuzzlePieces: (missionId: number) => number;
   getRankInfo: () => { rank: string; nextRank: string; progress: number; currentCP: number; nextCP: number };
   setCityGrid: (grid: SavedBuilding[]) => void;
+  setStreakData: (lastLoginDate: string, streakDays: number) => void;
   resetProgress: () => void;
 }
 
@@ -45,12 +48,12 @@ async function syncToSupabase() {
   const userId = useUserStore.getState().user?.id;
   if (!userId) return;
 
-  const { cityCoins, cityPoints, highScores, highestLevel, puzzlePieces, cityGrid } =
+  const { cityCoins, cityPoints, highScores, highestLevel, puzzlePieces, cityGrid, lastLoginDate, streakDays } =
     useProgressStore.getState();
 
   await supabase.from('perfiles_usuarios').update({
     monedas: cityCoins,
-    progreso_juegos: { cityPoints, highScores, highestLevel, puzzlePieces },
+    progreso_juegos: { cityPoints, highScores, highestLevel, puzzlePieces, lastLoginDate, streakDays },
     city_grid: cityGrid,
   }).eq('id', userId);
 }
@@ -64,6 +67,8 @@ export const useProgressStore = create<GameState>()(
       highestLevel: {},
       puzzlePieces: {},
       cityGrid: [],
+      lastLoginDate: '',
+      streakDays: 0,
 
       addCityPoints: (points) => {
         set((s) => ({ cityPoints: s.cityPoints + points }));
@@ -111,12 +116,17 @@ export const useProgressStore = create<GameState>()(
         scheduleSync();
       },
 
+      setStreakData: (lastLoginDate, streakDays) => {
+        set({ lastLoginDate, streakDays });
+        scheduleSync();
+      },
+
       getHighestLevel: (missionId) => get().highestLevel[missionId] || 0,
       getPuzzlePieces: (missionId) => get().puzzlePieces[missionId] || 0,
 
       resetProgress: () => set({
         cityPoints: 0, cityCoins: 0, highScores: {}, highestLevel: {},
-        puzzlePieces: {}, cityGrid: [],
+        puzzlePieces: {}, cityGrid: [], lastLoginDate: '', streakDays: 0,
       }),
 
       getRankInfo: () => {

@@ -17,12 +17,19 @@ export interface SavedBuilding {
   row: number;
 }
 
+export interface StreakReward {
+  streakDays: number;
+  coinsEarned: number;
+  totalCoins: number;
+}
+
 interface UserState {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
   authError: string | null;
   isNewUser: boolean;
+  streakReward: StreakReward | null;
 
   initialize: () => Promise<void>;
   signIn: (username: string, password: string) => Promise<void>;
@@ -30,6 +37,7 @@ interface UserState {
   signOut: () => Promise<void>;
   clearError: () => void;
   clearNewUser: () => void;
+  clearStreakReward: () => void;
 }
 
 async function loadProgressFromSupabase(userId: string) {
@@ -42,16 +50,45 @@ async function loadProgressFromSupabase(userId: string) {
     if (!data) return;
     const progress = (data.progreso_juegos ?? {}) as Record<string, unknown>;
     useProgressStore.setState({
-      cityCoins:    data.monedas ?? 0,
-      cityPoints:   (progress.cityPoints  as number) ?? 0,
-      highScores:   (progress.highScores  as Record<number,number>) ?? {},
-      highestLevel: (progress.highestLevel as Record<number,number>) ?? {},
-      puzzlePieces: (progress.puzzlePieces as Record<number,number>) ?? {},
-      cityGrid:     (data.city_grid ?? []) as SavedBuilding[],
+      cityCoins:     data.monedas ?? 0,
+      cityPoints:    (progress.cityPoints    as number) ?? 0,
+      highScores:    (progress.highScores    as Record<number,number>) ?? {},
+      highestLevel:  (progress.highestLevel  as Record<number,number>) ?? {},
+      puzzlePieces:  (progress.puzzlePieces  as Record<number,number>) ?? {},
+      cityGrid:      (data.city_grid ?? []) as SavedBuilding[],
+      lastLoginDate: (progress.lastLoginDate as string)  ?? '',
+      streakDays:    (progress.streakDays    as number)  ?? 0,
     });
   } catch (e) {
     console.error('[loadProgress]', e);
   }
+}
+
+// Returns streak reward info if the user qualifies, null otherwise.
+// Mutates progressStore (updates date + streak) and awards coins.
+function checkDailyStreak(): { streakDays: number; coinsEarned: number; totalCoins: number } | null {
+  const today = new Date().toISOString().slice(0, 10);
+  const prev  = new Date(); prev.setDate(prev.getDate() - 1);
+  const yesterday = prev.toISOString().slice(0, 10);
+
+  const { lastLoginDate, streakDays, setStreakData, addCityCoins } =
+    useProgressStore.getState();
+
+  if (lastLoginDate === today) return null; // already handled this session
+
+  if (lastLoginDate === yesterday) {
+    // Consecutive day — extend streak
+    const newStreak  = streakDays + 1;
+    const coinsEarned = (newStreak - 1) * 50;
+    setStreakData(today, newStreak);
+    if (coinsEarned > 0) addCityCoins(coinsEarned);
+    const totalCoins = useProgressStore.getState().cityCoins;
+    return { streakDays: newStreak, coinsEarned, totalCoins };
+  }
+
+  // Streak broken or first-ever login — reset to 1, no reward
+  setStreakData(today, 1);
+  return null;
 }
 
 export const useUserStore = create<UserState>()((set) => ({
@@ -60,6 +97,7 @@ export const useUserStore = create<UserState>()((set) => ({
   loading: true,
   authError: null,
   isNewUser: false,
+  streakReward: null,
 
   initialize: async () => {
     try {
@@ -73,6 +111,8 @@ export const useUserStore = create<UserState>()((set) => ({
           .single();
         set({ user: session.user, profile: profile ?? null, loading: false });
         await loadProgressFromSupabase(session.user.id);
+        const reward = checkDailyStreak();
+        if (reward) set({ streakReward: reward });
       } else {
         set({ user: null, profile: null, loading: false });
       }
@@ -112,6 +152,8 @@ export const useUserStore = create<UserState>()((set) => ({
         .eq('id', data.user.id);
       set({ user: data.user, profile: profile ?? null, loading: false });
       await loadProgressFromSupabase(data.user.id);
+      const reward = checkDailyStreak();
+      if (reward) set({ streakReward: reward });
     } catch (e) {
       console.error('[signIn unexpected]', e);
       set({ authError: `Unexpected error. Check your connection.`, loading: false });
@@ -175,4 +217,5 @@ export const useUserStore = create<UserState>()((set) => ({
 
   clearError: () => set({ authError: null }),
   clearNewUser: () => set({ isNewUser: false }),
+  clearStreakReward: () => set({ streakReward: null }),
 }));

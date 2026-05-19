@@ -5,7 +5,8 @@ import { useProgressStore } from '../../store/progressStore';
 const MISSION_ID  = 1;
 const TRASH_KEYS  = ['paper_ball', 'newspaper', 'banana_peel', 'watermelon_rind', 'fish_bone', 'bottle'];
 const MAX_PULL       = 140;
-const MAX_SPEED      = 1500;
+const MIN_SPEED      = 1000;  // speed at minimum pull — always reaches the bin
+const MAX_SPEED      = 1300;  // speed at full pull — reaches ~top of screen
 const GRAVITY        = 1000;
 const MAX_FLOOR_ITEMS = 10;
 const FLOOR_Y_RATIO  = 0.78;
@@ -29,7 +30,7 @@ export class ThrowToBinScene extends Phaser.Scene {
 
   private binCX    = 0;
   private binRimY  = 165;
-  private binHalfW = 62;
+  private binHalfW = 71;
   private binBodyH = 130;
   private binContainer: Phaser.GameObjects.Container | null = null;
 
@@ -535,7 +536,8 @@ export class ThrowToBinScene extends Phaser.Scene {
     this.slingshotGfx.fillCircle(f2x, f2y, 7);
 
     // Trajectory dots
-    let sx = ox, sy = oy, svx = -nx * power * MAX_SPEED, svy = -ny * power * MAX_SPEED;
+    const previewSpeed = MIN_SPEED + power * (MAX_SPEED - MIN_SPEED);
+    let sx = ox, sy = oy, svx = -nx * previewSpeed, svy = -ny * previewSpeed;
     const dt = 0.06;
     for (let s = 1; s <= 10; s++) {
       svy += GRAVITY * dt; sx += svx * dt; sy += svy * dt;
@@ -574,8 +576,9 @@ export class ThrowToBinScene extends Phaser.Scene {
 
     const power  = Math.min(dist / MAX_PULL, 1.0);
     const nx = dx / dist, ny = dy / dist;
-    const vx = -nx * power * MAX_SPEED;
-    const vy = -ny * power * MAX_SPEED;
+    const speed = MIN_SPEED + power * (MAX_SPEED - MIN_SPEED);
+    const vx = -nx * speed;
+    const vy = -ny * speed;
 
     this.trashItems = this.trashItems.filter(t => t !== trash);
     trash.setDepth(22);

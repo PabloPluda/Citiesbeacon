@@ -11,7 +11,7 @@ const LANE_OFFSETS = [-40, 0, 40];   // Y from H/2 for lanes 0 (top), 1 (mid), 2
 // ─── Level config ──────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
   const crossings    = level === 1 ? 4 : Math.min(4 + Math.floor(level * 0.8), 18);
-  const speed        = Math.round(127 + (level - 1) * 128 / 19); // px/s: 127 at lvl1 → 255 at lvl20
+  const speed        = Math.round(190 + (level - 1) * 192 / 19); // px/s: 190 at lvl1 → 382 at lvl20
   const obstInterval = Math.max(155, 380 - level * 12); // px between obstacle spawns
   return { crossings, speed, obstInterval };
 }
@@ -195,10 +195,10 @@ interface WorldObj {
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
 function coinsPerSegment(level: number): number {
-  if (level <= 2)  return 2;
-  if (level <= 8)  return 3;
-  if (level <= 15) return 4;
-  return 5;
+  if (level <= 2)  return 6;
+  if (level <= 8)  return 9;
+  if (level <= 15) return 12;
+  return 15;
 }
 
 export class CrossingScene extends Phaser.Scene {
@@ -234,6 +234,11 @@ export class CrossingScene extends Phaser.Scene {
 
   lifeIndicators: Phaser.GameObjects.Graphics[] = [];
   bookTxt!: Phaser.GameObjects.Text;
+
+  private hintBg?: Phaser.GameObjects.Graphics;
+  private hintTxt?: Phaser.GameObjects.Text;
+  private hintForCrossIdx = -1;
+  private shownHints = new Set<number>();
 
   crossCount = 4;
   schoolX    = 0;
@@ -276,8 +281,10 @@ export class CrossingScene extends Phaser.Scene {
     this.carTextureKeys  = {};
     this.worldObstacles  = [];
     this.worldBooks      = [];
-    this.swipeUsed = false;
-    this.schoolX   = 0;
+    this.swipeUsed       = false;
+    this.schoolX         = 0;
+    this.hintForCrossIdx = -1;
+    this.shownHints      = new Set();
   }
 
   create() {
@@ -624,10 +631,10 @@ export class CrossingScene extends Phaser.Scene {
     this.tweens.add({ targets: book.gfx, scaleX: 1.8, scaleY: 1.8, alpha: 0, duration: 300,
       onComplete: () => book.gfx.destroy() });
 
-    this.coinsEarned += 2;
+    this.coinsEarned += 6;
     this.bookTxt.setText(`🪙 ${this.coinsEarned}`);
 
-    const plusTxt = this.add.text(this.tommy.x, this.tommy.y - 30, '+2 🪙', {
+    const plusTxt = this.add.text(this.tommy.x, this.tommy.y - 30, '+6 🪙', {
       fontFamily: 'Fredoka One', fontSize: '16px',
       color: '#FCD34D', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(22);
@@ -763,6 +770,34 @@ export class CrossingScene extends Phaser.Scene {
     }
   }
 
+  // ── Red-light hint ────────────────────────────────────────────────────────────
+
+  private showRedHint(crossIdx: number) {
+    this.hintForCrossIdx = crossIdx;
+    this.shownHints.add(crossIdx);
+    const W = this.cameras.main.width;
+    this.hintBg = this.add.graphics().setScrollFactor(0).setDepth(40).setAlpha(0);
+    this.hintBg.fillStyle(0xCC2222, 0.92);
+    this.hintBg.fillRoundedRect(W / 2 - 172, 46, 344, 58, 14);
+    this.hintTxt = this.add.text(W / 2, 75, '🚦 The light is red!  👆 Tap to stop', {
+      fontFamily: 'Fredoka One', fontSize: '16px',
+      color: '#FFFFFF', stroke: '#000000', strokeThickness: 2, align: 'center',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(41).setAlpha(0);
+    this.tweens.add({ targets: [this.hintBg, this.hintTxt], alpha: 1, duration: 280, ease: 'Quad.easeOut' });
+  }
+
+  private hideRedHint() {
+    const bg = this.hintBg, txt = this.hintTxt;
+    this.hintBg = undefined;
+    this.hintTxt = undefined;
+    this.hintForCrossIdx = -1;
+    if (!bg && !txt) return;
+    this.tweens.add({
+      targets: [bg, txt].filter(Boolean), alpha: 0, duration: 260,
+      onComplete: () => { bg?.destroy(); txt?.destroy(); },
+    });
+  }
+
   // ── Update ────────────────────────────────────────────────────────────────────
 
   update(_time: number, delta: number) {
@@ -775,12 +810,37 @@ export class CrossingScene extends Phaser.Scene {
 
     const W = this.cameras.main.width, H = this.sceneH;
     const tommyX = this.tommy.x;
-    const { speed } = getLevelCfg(this.level);
+    const { speed: baseSpeed } = getLevelCfg(this.level);
+    const progressStep = Math.floor(this.scored / 2);       // increases every 2 crossings
+    const speed        = baseSpeed + progressStep * 20;      // +20 px/s per step
+    const dynCarSpeed  = 170 + progressStep * 12;            // cars also get faster
+    const dynCarProb   = Math.min(0.030, 0.012 + progressStep * 0.0025); // more cars over time
 
     // Camera follow
     const targetScrollX = tommyX - W * 0.35;
     const lerpFactor    = 1 - Math.pow(0.92, delta * 60 / 1000);
     this.cameras.main.scrollX += (targetScrollX - this.cameras.main.scrollX) * lerpFactor;
+
+    // Red-light hint for the first 3 crossings
+    {
+      let targetIdx = -1;
+      for (let i = 0; i < Math.min(3, this.crossroads.length); i++) {
+        const cr = this.crossroads[i];
+        if (!cr.passed && !this.shownHints.has(i) && cr.state === 'red' &&
+            tommyX > cr.x - 380 && tommyX < cr.x - 10) {
+          targetIdx = i;
+          break;
+        }
+      }
+      if (targetIdx !== -1 && !this.hintBg) {
+        this.showRedHint(targetIdx);
+      } else if (this.hintBg && this.hintForCrossIdx >= 0) {
+        const cr = this.crossroads[this.hintForCrossIdx];
+        if (cr.passed || cr.state === 'green' || tommyX >= cr.x + 90) {
+          this.hideRedHint();
+        }
+      }
+    }
 
     // Win
     if (tommyX >= this.schoolX - 30) {
@@ -859,7 +919,7 @@ export class CrossingScene extends Phaser.Scene {
       }
 
       // Spawn cars — skip if another car on same crossing+direction is too close
-      if (Math.abs(cr.x - tommyX) < 1200 && Math.random() < 0.012) {
+      if (Math.abs(cr.x - tommyX) < 1200 && Math.random() < dynCarProb) {
         const isDown  = Math.random() > 0.5;
         const dir     = isDown ? 'down' : 'up';
         const spawnY  = isDown ? -110 : H + 110;
@@ -875,7 +935,7 @@ export class CrossingScene extends Phaser.Scene {
             cr.x + (isDown ? -25 : 25), spawnY, texKey,
           ) as Phaser.Physics.Arcade.Image & { cr: any; dir: string };
           car.cr = cr; car.dir = dir;
-          car.setDepth(6).setVelocityY(isDown ? 170 : -170);
+          car.setDepth(6).setVelocityY(isDown ? dynCarSpeed : -dynCarSpeed);
           if (isDown) car.setAngle(180);
           this.time.delayedCall(10000, () => { if (car.active) car.destroy(); });
         }
@@ -934,8 +994,8 @@ export class CrossingScene extends Phaser.Scene {
           if (c.y < st + 30) c.setVelocityY(0);
         }
       } else {
-        if (c.dir === 'down' && c.body?.velocity.y === 0) c.setVelocityY(170);
-        if (c.dir === 'up'   && c.body?.velocity.y === 0) c.setVelocityY(-170);
+        if (c.dir === 'down' && c.body?.velocity.y === 0) c.setVelocityY(dynCarSpeed);
+        if (c.dir === 'up'   && c.body?.velocity.y === 0) c.setVelocityY(-dynCarSpeed);
       }
     });
   }

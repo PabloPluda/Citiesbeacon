@@ -406,6 +406,8 @@ interface UserRow {
   username: string;
   pais_residencia: string | null;
   monedas: number;
+  created_at: string | null;
+  last_active: string | null;
   progreso_juegos: {
     cityPoints?: number;
     highScores?: Record<string, number>;
@@ -432,7 +434,7 @@ function UsersTab({ adminClient }: { adminClient: AdminClient | null }) {
     setLoading(true); setError('');
     const { data, error: e } = await db
       .from('perfiles_usuarios')
-      .select('id, username, pais_residencia, monedas, progreso_juegos')
+      .select('id, username, pais_residencia, monedas, created_at, last_active, progreso_juegos')
       .order('username');
     if (e) setError(`Error: ${e.message}`);
     else setUsers((data ?? []) as UserRow[]);
@@ -540,7 +542,7 @@ function UsersTab({ adminClient }: { adminClient: AdminClient | null }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: '#F1F5F9' }}>
-              {['#', 'Usuario', 'País', 'CityCoins', 'CP', 'Streak', 'Progreso (nivel máx.)', ''].map((h, i) => (
+              {['#', 'Usuario', 'País', 'CityCoins', 'CP', 'Streak', 'Progreso (nivel máx.)', 'Registro', 'Último acceso', ''].map((h, i) => (
                 <th key={i} style={{
                   padding: '8px 10px', textAlign: 'left', fontWeight: 700,
                   color: '#475569', fontSize: 11, whiteSpace: 'nowrap',
@@ -552,7 +554,7 @@ function UsersTab({ adminClient }: { adminClient: AdminClient | null }) {
           <tbody>
             {filtered.length === 0 && !loading && (
               <tr>
-                <td colSpan={8} style={{ padding: 24, textAlign: 'center', color: '#94A3B8' }}>
+                <td colSpan={10} style={{ padding: 24, textAlign: 'center', color: '#94A3B8' }}>
                   {users.length === 0
                     ? 'Sin usuarios. ¿Está configurada la Service Key?'
                     : 'Sin resultados para la búsqueda.'}
@@ -577,6 +579,12 @@ function UsersTab({ adminClient }: { adminClient: AdminClient | null }) {
                     <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 11 }}>
                       {progressSummary(u)}
                     </td>
+                    <td style={{ padding: '8px 10px', fontSize: 11, color: '#64748B', whiteSpace: 'nowrap' }}>
+                      {u.created_at ? u.created_at.slice(0, 10) : '—'}
+                    </td>
+                    <td style={{ padding: '8px 10px', fontSize: 11, color: '#64748B', whiteSpace: 'nowrap' }}>
+                      {u.last_active ? u.last_active.slice(0, 10) : '—'}
+                    </td>
                     <td style={{ padding: '8px 10px' }}>
                       {isEditing ? (
                         <button onClick={() => setEditId(null)}
@@ -594,7 +602,7 @@ function UsersTab({ adminClient }: { adminClient: AdminClient | null }) {
 
                   {isEditing && (
                     <tr style={{ background: '#EEF2FF', borderBottom: '2px solid #6366F1' }}>
-                      <td colSpan={8} style={{ padding: '14px 16px' }}>
+                      <td colSpan={10} style={{ padding: '14px 16px' }}>
                         {/* Edit fields */}
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
                           <div>

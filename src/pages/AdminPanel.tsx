@@ -1,11 +1,19 @@
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createClient } from '@supabase/supabase-js';
 import { useAdminStore, DEFAULT_MISSION_CONFIG } from '../store/adminStore';
 import type { AdminBuildCat } from '../store/adminStore';
 import type { BuildItem } from '../game/cityBuilderData';
 import { supabase } from '../lib/supabase';
 
-type Tab = 'missions' | 'builder' | 'analytics';
+const SUPABASE_URL = 'https://ielaccsufrrafhcssqpu.supabase.co';
+
+type Tab = 'missions' | 'builder' | 'analytics' | 'users';
+type AdminClient = ReturnType<typeof createClient>;
+
+const GAME_LABEL: Record<string, string> = {
+  '1': 'Trash', '2': 'Cross', '3': 'Lights', '4': 'Water', '5': 'Dog',
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -18,9 +26,7 @@ const BLANK_ITEM: Omit<BuildItem, 'key'> = { label: '', cost: 10, w: 1, d: 1, fi
 // ─── Item Card ────────────────────────────────────────────────────────────────
 
 function ItemCard({
-  item,
-  onChange,
-  onDelete,
+  item, onChange, onDelete,
 }: {
   item: BuildItem;
   onChange: (patch: Partial<BuildItem>) => void;
@@ -28,55 +34,32 @@ function ItemCard({
 }) {
   return (
     <div style={{
-      background: '#fff',
-      border: '1px solid #E2E8F0',
-      borderRadius: 12,
-      padding: 12,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 6,
-      minWidth: 130,
-      maxWidth: 160,
-      flex: '0 0 auto',
+      background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+      padding: 12, display: 'flex', flexDirection: 'column', gap: 6,
+      minWidth: 130, maxWidth: 160, flex: '0 0 auto',
       boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
     }}>
       <div style={{ position: 'relative', textAlign: 'center' }}>
         <img
-          src={`/Builder/${item.file}.png`}
-          alt={item.label}
+          src={`/Builder/${item.file}.png`} alt={item.label}
           style={{ width: 60, height: 60, objectFit: 'contain', borderRadius: 6, background: '#F8FAFC' }}
           onError={e => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
         />
-        <button
-          onClick={onDelete}
-          title="Delete item"
-          style={{
-            position: 'absolute', top: -6, right: -6,
-            width: 20, height: 20, borderRadius: '50%',
-            background: '#EF4444', color: '#fff',
-            border: 'none', cursor: 'pointer',
-            fontSize: 11, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >✕</button>
+        <button onClick={onDelete} title="Delete item" style={{
+          position: 'absolute', top: -6, right: -6,
+          width: 20, height: 20, borderRadius: '50%',
+          background: '#EF4444', color: '#fff', border: 'none', cursor: 'pointer',
+          fontSize: 11, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>✕</button>
       </div>
-
-      <input
-        value={item.label}
-        onChange={e => onChange({ label: e.target.value })}
-        placeholder="Label"
-        style={inputStyle}
-      />
-
+      <input value={item.label} onChange={e => onChange({ label: e.target.value })}
+        placeholder="Label" style={inputStyle} />
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         <span style={labelStyle}>💰</span>
-        <input
-          type="number" min={0} max={999}
-          value={item.cost}
+        <input type="number" min={0} max={999} value={item.cost}
           onChange={e => onChange({ cost: Number(e.target.value) })}
-          style={{ ...inputStyle, width: 54 }}
-        />
+          style={{ ...inputStyle, width: 54 }} />
       </div>
-
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         <span style={labelStyle}>W</span>
         <select value={item.w} onChange={e => onChange({ w: Number(e.target.value) })} style={selectStyle}>
@@ -89,15 +72,11 @@ function ItemCard({
           <option value={3}>3</option><option value={4}>4</option>
         </select>
       </div>
-
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         <span style={{ ...labelStyle, whiteSpace: 'nowrap' }}>File</span>
-        <input
-          value={item.file}
-          onChange={e => onChange({ file: e.target.value })}
+        <input value={item.file} onChange={e => onChange({ file: e.target.value })}
           placeholder="Filename (no .png)"
-          style={{ ...inputStyle, fontSize: '0.6rem' }}
-        />
+          style={{ ...inputStyle, fontSize: '0.6rem' }} />
       </div>
     </div>
   );
@@ -119,20 +98,13 @@ function AddItemCard({ onAdd }: { onAdd: (item: BuildItem) => void }) {
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        style={{
-          minWidth: 100, height: 180,
-          background: '#F1F5F9',
-          border: '2px dashed #CBD5E1',
-          borderRadius: 12,
-          cursor: 'pointer',
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          gap: 6, color: '#94A3B8', fontSize: 13,
-          flex: '0 0 auto',
-        }}
-      >
+      <button onClick={() => setOpen(true)} style={{
+        minWidth: 100, height: 180, background: '#F1F5F9',
+        border: '2px dashed #CBD5E1', borderRadius: 12, cursor: 'pointer',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', gap: 6, color: '#94A3B8', fontSize: 13,
+        flex: '0 0 auto',
+      }}>
         <span style={{ fontSize: 28 }}>＋</span>
         New item
       </button>
@@ -141,28 +113,19 @@ function AddItemCard({ onAdd }: { onAdd: (item: BuildItem) => void }) {
 
   return (
     <div style={{
-      background: '#F8FAFC',
-      border: '2px solid #6366F1',
-      borderRadius: 12,
-      padding: 12,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 6,
-      minWidth: 160,
-      flex: '0 0 auto',
+      background: '#F8FAFC', border: '2px solid #6366F1', borderRadius: 12,
+      padding: 12, display: 'flex', flexDirection: 'column', gap: 6,
+      minWidth: 160, flex: '0 0 auto',
     }}>
       <strong style={{ fontSize: 12, color: '#6366F1' }}>New item</strong>
-
       <input value={draft.label} onChange={e => setDraft(d => ({ ...d, label: e.target.value }))}
         placeholder="Label *" style={inputStyle} />
-
       <div style={{ display: 'flex', gap: 4 }}>
         <span style={labelStyle}>💰</span>
         <input type="number" min={0} value={draft.cost}
           onChange={e => setDraft(d => ({ ...d, cost: Number(e.target.value) }))}
           style={{ ...inputStyle, width: 54 }} />
       </div>
-
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         <span style={labelStyle}>W</span>
         <select value={draft.w} onChange={e => setDraft(d => ({ ...d, w: Number(e.target.value) }))} style={selectStyle}>
@@ -173,16 +136,14 @@ function AddItemCard({ onAdd }: { onAdd: (item: BuildItem) => void }) {
           <option value={1}>1</option><option value={2}>2</option>
         </select>
       </div>
-
       <input value={draft.file} onChange={e => setDraft(d => ({ ...d, file: e.target.value }))}
-        placeholder="Filename in /Builder/ (no .png) *" style={{ ...inputStyle, fontSize: '0.6rem' }} />
-
+        placeholder="Filename in /Builder/ (no .png) *"
+        style={{ ...inputStyle, fontSize: '0.6rem' }} />
       {draft.file && (
         <img src={`/Builder/${draft.file}.png`} alt="preview"
           style={{ width: 48, height: 48, objectFit: 'contain', alignSelf: 'center', background: '#E2E8F0', borderRadius: 6 }}
           onError={e => { (e.target as HTMLImageElement).style.opacity = '0.3'; }} />
       )}
-
       <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
         <button onClick={submit} disabled={!draft.label.trim() || !draft.file.trim()}
           style={{ ...btnStyle, background: '#6366F1', color: '#fff', flex: 1 }}>Add</button>
@@ -193,7 +154,80 @@ function AddItemCard({ onAdd }: { onAdd: (item: BuildItem) => void }) {
   );
 }
 
-// ─── Analytics Tab ───────────────────────────────────────────────────────────
+// ─── Service Key Banner ───────────────────────────────────────────────────────
+
+function ServiceKeyBanner({ serviceKey, onSave }: { serviceKey: string; onSave: (k: string) => void }) {
+  const [expanded, setExpanded] = useState(!serviceKey);
+  const [draft, setDraft] = useState(serviceKey);
+
+  const save = () => {
+    const trimmed = draft.trim();
+    localStorage.setItem('admin-service-key', trimmed);
+    onSave(trimmed);
+    if (trimmed) setExpanded(false);
+  };
+
+  const clear = () => {
+    localStorage.removeItem('admin-service-key');
+    setDraft('');
+    onSave('');
+    setExpanded(true);
+  };
+
+  return (
+    <div style={{
+      background: serviceKey ? '#F0FDF4' : '#FFFBEB',
+      border: `1px solid ${serviceKey ? '#86EFAC' : '#FCD34D'}`,
+      borderRadius: 10, padding: '10px 16px', marginBottom: 20,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: serviceKey ? '#166534' : '#92400E', fontWeight: 600 }}>
+          {serviceKey ? '🟢 Service Key activa' : '🟡 Service Key no configurada'}
+        </span>
+        {!serviceKey && (
+          <span style={{ fontSize: 12, color: '#92400E' }}>
+            — necesaria para ver todos los usuarios y cambiar contraseñas
+          </span>
+        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button onClick={() => setExpanded(e => !e)}
+            style={{ ...btnStyle, padding: '3px 10px', fontSize: 11, background: '#E2E8F0', color: '#475569' }}>
+            {expanded ? 'Ocultar' : 'Configurar'}
+          </button>
+          {serviceKey && (
+            <button onClick={clear}
+              style={{ ...btnStyle, padding: '3px 10px', fontSize: 11, background: '#FEE2E2', color: '#EF4444' }}>
+              Limpiar
+            </button>
+          )}
+        </div>
+      </div>
+      {expanded && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 11, color: '#78350F', marginBottom: 6 }}>
+            Supabase Dashboard → Project Settings → API → <strong>service_role</strong> key.
+            Solo se guarda localmente en este navegador (nunca se envía a ningún servidor).
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="password"
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              style={{ ...inputStyle, flex: 1, fontFamily: 'monospace', fontSize: 11 }}
+            />
+            <button onClick={save} disabled={!draft.trim()}
+              style={{ ...btnStyle, background: '#D97706', color: '#fff' }}>
+              {serviceKey ? 'Actualizar' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Analytics Tab ────────────────────────────────────────────────────────────
 
 interface CountryRow { pais_residencia: string | null; count: number }
 interface Stats {
@@ -203,16 +237,17 @@ interface Stats {
   countries: CountryRow[];
 }
 
-function today() { return new Date().toISOString().slice(0, 10); }
+function todayStr() { return new Date().toISOString().slice(0, 10); }
 function monthAgo() {
   const d = new Date();
   d.setMonth(d.getMonth() - 1);
   return d.toISOString().slice(0, 10);
 }
 
-function AnalyticsTab() {
-  const [from, setFrom]   = useState(monthAgo());
-  const [to, setTo]       = useState(today());
+function AnalyticsTab({ adminClient }: { adminClient: AdminClient | null }) {
+  const db = adminClient ?? supabase;
+  const [from, setFrom] = useState(monthAgo());
+  const [to, setTo]     = useState(todayStr());
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -223,32 +258,30 @@ function AnalyticsTab() {
       const fromTs = `${from}T00:00:00.000Z`;
       const toTs   = `${to}T23:59:59.999Z`;
 
-      // Total users
-      const { count: total, error: e1 } = await supabase
-        .from('perfiles_usuarios').select('*', { count: 'exact', head: true });
+      const { data: allData, error: e1 } = await db
+        .from('perfiles_usuarios').select('id');
       if (e1) throw e1;
+      const total = allData?.length ?? 0;
 
-      // New users in period (by created_at)
-      const { count: newIn, error: e2 } = await supabase
-        .from('perfiles_usuarios').select('*', { count: 'exact', head: true })
+      const { data: newData, error: e2 } = await db
+        .from('perfiles_usuarios').select('id')
         .gte('created_at', fromTs).lte('created_at', toTs);
       if (e2) throw e2;
+      const newIn = newData?.length ?? 0;
 
-      // Active users in period (by last_active)
-      const { count: activeIn, error: e3 } = await supabase
-        .from('perfiles_usuarios').select('*', { count: 'exact', head: true })
+      const { data: activeData, error: e3 } = await db
+        .from('perfiles_usuarios').select('id')
         .gte('last_active', fromTs).lte('last_active', toTs);
       if (e3) throw e3;
+      const activeIn = activeData?.length ?? 0;
 
-      // Countries breakdown (new users in period)
-      const { data: countryRows, error: e4 } = await supabase
-        .from('perfiles_usuarios')
-        .select('pais_residencia')
+      const { data: countryRows, error: e4 } = await db
+        .from('perfiles_usuarios').select('pais_residencia')
         .gte('created_at', fromTs).lte('created_at', toTs);
       if (e4) throw e4;
 
       const countryMap: Record<string, number> = {};
-      (countryRows ?? []).forEach(r => {
+      (countryRows ?? []).forEach((r: { pais_residencia: string | null }) => {
         const c = r.pais_residencia || 'Unknown';
         countryMap[c] = (countryMap[c] || 0) + 1;
       });
@@ -256,41 +289,40 @@ function AnalyticsTab() {
         .map(([pais_residencia, count]) => ({ pais_residencia, count }))
         .sort((a, b) => b.count - a.count);
 
-      setStats({ total: total ?? 0, newInPeriod: newIn ?? 0, activeInPeriod: activeIn ?? 0, countries });
+      setStats({ total, newInPeriod: newIn, activeInPeriod: activeIn, countries });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : (e as { message?: string })?.message ?? String(e);
-      setError(`Error fetching data: ${msg}`);
+      setError(`Error al obtener datos: ${msg}`);
     }
     setLoading(false);
   };
 
-  useEffect(() => { fetchStats(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchStats(); }, [adminClient]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const maxCountry = stats ? Math.max(...stats.countries.map(c => c.count), 1) : 1;
 
   return (
     <div>
-      <h2 style={{ margin: '0 0 20px', fontSize: 16, color: '#1E293B' }}>Usage Analytics</h2>
+      <h2 style={{ margin: '0 0 20px', fontSize: 16, color: '#1E293B' }}>Analytics</h2>
 
-      {/* Date filter */}
       <div style={{
         background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
         padding: '16px 20px', marginBottom: 24,
         display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end',
       }}>
         <div>
-          <label style={{ display: 'block', fontSize: 11, color: '#94A3B8', fontWeight: 600, marginBottom: 4 }}>FROM</label>
+          <label style={fieldLabel}>DESDE</label>
           <input type="date" value={from} onChange={e => setFrom(e.target.value)}
             style={{ ...inputStyle, width: 150 }} />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 11, color: '#94A3B8', fontWeight: 600, marginBottom: 4 }}>TO</label>
+          <label style={fieldLabel}>HASTA</label>
           <input type="date" value={to} onChange={e => setTo(e.target.value)}
             style={{ ...inputStyle, width: 150 }} />
         </div>
         <button onClick={fetchStats} disabled={loading}
           style={{ ...btnStyle, background: '#6366F1', color: '#fff', height: 34 }}>
-          {loading ? 'Loading…' : 'Apply'}
+          {loading ? 'Cargando…' : 'Aplicar'}
         </button>
       </div>
 
@@ -303,27 +335,25 @@ function AnalyticsTab() {
 
       {stats && (
         <>
-          {/* Stat cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 28 }}>
-            <StatCard label="Total Users" value={stats.total} icon="👥" color="#6366F1" note="all time" />
-            <StatCard label="New Users" value={stats.newInPeriod} icon="🆕" color="#10B981"
+            <StatCard label="Total Usuarios" value={stats.total} icon="👥" color="#6366F1" note="todos los tiempos" />
+            <StatCard label="Nuevos Usuarios" value={stats.newInPeriod} icon="🆕" color="#10B981"
               note={`${from} → ${to}`} />
-            <StatCard label="Active Users" value={stats.activeInPeriod} icon="🎮" color="#F59E0B"
-              note={`last_active in period`} />
+            <StatCard label="Usuarios Activos" value={stats.activeInPeriod} icon="🎮" color="#F59E0B"
+              note="last_active en el período" />
           </div>
 
-          {/* Countries */}
           <div style={{
             background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, padding: '20px',
           }}>
             <h3 style={{ margin: '0 0 16px', fontSize: 14, color: '#1E293B' }}>
-              🌍 Countries — new users in selected period
+              🌍 Países — nuevos usuarios en el período
               <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 400, marginLeft: 8 }}>
-                ({stats.countries.length} countries, {stats.newInPeriod} users)
+                ({stats.countries.length} países, {stats.newInPeriod} usuarios)
               </span>
             </h3>
             {stats.countries.length === 0 ? (
-              <p style={{ color: '#94A3B8', fontSize: 13 }}>No data for this period.</p>
+              <p style={{ color: '#94A3B8', fontSize: 13 }}>Sin datos para este período.</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {stats.countries.map(({ pais_residencia, count }) => {
@@ -332,7 +362,7 @@ function AnalyticsTab() {
                     <div key={pais_residencia ?? 'unknown'}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
                         <span style={{ fontWeight: 600, color: '#334155' }}>{pais_residencia || 'Unknown'}</span>
-                        <span style={{ color: '#64748B' }}>{count} user{count !== 1 ? 's' : ''}</span>
+                        <span style={{ color: '#64748B' }}>{count} usuario{count !== 1 ? 's' : ''}</span>
                       </div>
                       <div style={{ background: '#F1F5F9', borderRadius: 99, height: 8, overflow: 'hidden' }}>
                         <div style={{
@@ -369,6 +399,285 @@ function StatCard({ label, value, icon, color, note }: {
   );
 }
 
+// ─── Users Tab ────────────────────────────────────────────────────────────────
+
+interface UserRow {
+  id: string;
+  username: string;
+  pais_residencia: string | null;
+  monedas: number;
+  progreso_juegos: {
+    cityPoints?: number;
+    highScores?: Record<string, number>;
+    highestLevel?: Record<string, number>;
+    streakDays?: number;
+    lastLoginDate?: string;
+  };
+}
+
+function UsersTab({ adminClient }: { adminClient: AdminClient | null }) {
+  const db = adminClient ?? supabase;
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]   = useState('');
+  const [search, setSearch] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState({
+    username: '', pais_residencia: '', monedas: 0, newPassword: '',
+  });
+  const [saving, setSaving]   = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  const fetchUsers = async () => {
+    setLoading(true); setError('');
+    const { data, error: e } = await db
+      .from('perfiles_usuarios')
+      .select('id, username, pais_residencia, monedas, progreso_juegos')
+      .order('username');
+    if (e) setError(`Error: ${e.message}`);
+    else setUsers((data ?? []) as UserRow[]);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchUsers(); }, [adminClient]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startEdit = (u: UserRow) => {
+    setEditId(u.id);
+    setSaveMsg('');
+    setEditDraft({
+      username: u.username,
+      pais_residencia: u.pais_residencia ?? '',
+      monedas: u.monedas,
+      newPassword: '',
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editId) return;
+    setSaving(true); setSaveMsg('');
+    try {
+      const { error: e1 } = await db.from('perfiles_usuarios')
+        .update({
+          username: editDraft.username.trim(),
+          pais_residencia: editDraft.pais_residencia.trim(),
+          monedas: editDraft.monedas,
+        })
+        .eq('id', editId);
+      if (e1) throw new Error(e1.message);
+
+      if (editDraft.newPassword.trim()) {
+        if (!adminClient) throw new Error('La Service Key es necesaria para cambiar contraseñas');
+        const { error: e2 } = await adminClient.auth.admin.updateUserById(
+          editId, { password: editDraft.newPassword.trim() }
+        );
+        if (e2) throw new Error(e2.message);
+      }
+
+      setUsers(prev => prev.map(u => u.id === editId ? {
+        ...u,
+        username: editDraft.username.trim(),
+        pais_residencia: editDraft.pais_residencia.trim(),
+        monedas: editDraft.monedas,
+      } : u));
+      setSaveMsg('✓ Guardado');
+      setTimeout(() => { setEditId(null); setSaveMsg(''); }, 1200);
+    } catch (e: unknown) {
+      setSaveMsg(`✗ ${e instanceof Error ? e.message : String(e)}`);
+    }
+    setSaving(false);
+  };
+
+  const filtered = users.filter(u =>
+    u.username.toLowerCase().includes(search.toLowerCase()) ||
+    (u.pais_residencia ?? '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const progressSummary = (u: UserRow) => {
+    const hl = u.progreso_juegos?.highestLevel ?? {};
+    const parts = Object.entries(GAME_LABEL)
+      .map(([id, lbl]) => (hl[id] ?? 0) > 0 ? `${lbl[0]}:${hl[id]}` : null)
+      .filter(Boolean);
+    return parts.length ? parts.join(' ') : '—';
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ margin: 0, fontSize: 16, color: '#1E293B' }}>
+          Usuarios ({loading ? '…' : filtered.length}
+          {filtered.length !== users.length ? ` / ${users.length}` : ''})
+        </h2>
+        <button onClick={fetchUsers} disabled={loading}
+          style={{ ...btnStyle, background: '#6366F1', color: '#fff' }}>
+          {loading ? 'Cargando…' : '↻ Actualizar'}
+        </button>
+      </div>
+
+      {!adminClient && (
+        <div style={{
+          background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8,
+          padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#92400E',
+        }}>
+          ⚠️ Sin Service Key solo verás tus propios datos. Configura la Service Key arriba para ver todos los usuarios.
+        </div>
+      )}
+
+      {error && (
+        <div style={{
+          background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8,
+          padding: '8px 12px', color: '#EF4444', fontSize: 13, marginBottom: 12,
+        }}>{error}</div>
+      )}
+
+      <input
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder="🔍 Buscar por usuario o país…"
+        style={{ ...inputStyle, marginBottom: 14, fontSize: 13, padding: '8px 12px' }}
+      />
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: '#F1F5F9' }}>
+              {['#', 'Usuario', 'País', 'CityCoins', 'CP', 'Streak', 'Progreso (nivel máx.)', ''].map((h, i) => (
+                <th key={i} style={{
+                  padding: '8px 10px', textAlign: 'left', fontWeight: 700,
+                  color: '#475569', fontSize: 11, whiteSpace: 'nowrap',
+                  borderBottom: '1px solid #E2E8F0',
+                }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && !loading && (
+              <tr>
+                <td colSpan={8} style={{ padding: 24, textAlign: 'center', color: '#94A3B8' }}>
+                  {users.length === 0
+                    ? 'Sin usuarios. ¿Está configurada la Service Key?'
+                    : 'Sin resultados para la búsqueda.'}
+                </td>
+              </tr>
+            )}
+            {filtered.map((u, i) => {
+              const isEditing = editId === u.id;
+              const prog = u.progreso_juegos ?? {};
+              return (
+                <React.Fragment key={u.id}>
+                  <tr style={{
+                    background: isEditing ? '#EEF2FF' : (i % 2 === 0 ? '#fff' : '#F8FAFC'),
+                    borderBottom: isEditing ? 'none' : '1px solid #E2E8F0',
+                  }}>
+                    <td style={{ padding: '8px 10px', color: '#94A3B8' }}>{i + 1}</td>
+                    <td style={{ padding: '8px 10px', fontWeight: 600 }}>{u.username}</td>
+                    <td style={{ padding: '8px 10px' }}>{u.pais_residencia || '—'}</td>
+                    <td style={{ padding: '8px 10px' }}>💰 {u.monedas.toLocaleString()}</td>
+                    <td style={{ padding: '8px 10px' }}>{prog.cityPoints ?? 0}</td>
+                    <td style={{ padding: '8px 10px' }}>{prog.streakDays ?? 0}d</td>
+                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 11 }}>
+                      {progressSummary(u)}
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      {isEditing ? (
+                        <button onClick={() => setEditId(null)}
+                          style={{ ...btnStyle, padding: '3px 8px', fontSize: 11, background: '#E2E8F0', color: '#64748B' }}>
+                          Cancelar
+                        </button>
+                      ) : (
+                        <button onClick={() => startEdit(u)}
+                          style={{ ...btnStyle, padding: '3px 8px', fontSize: 11, background: '#6366F1', color: '#fff' }}>
+                          Editar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+
+                  {isEditing && (
+                    <tr style={{ background: '#EEF2FF', borderBottom: '2px solid #6366F1' }}>
+                      <td colSpan={8} style={{ padding: '14px 16px' }}>
+                        {/* Edit fields */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+                          <div>
+                            <label style={fieldLabel}>Usuario</label>
+                            <input value={editDraft.username}
+                              onChange={e => setEditDraft(d => ({ ...d, username: e.target.value }))}
+                              style={{ ...inputStyle, width: 160 }} />
+                          </div>
+                          <div>
+                            <label style={fieldLabel}>País</label>
+                            <input value={editDraft.pais_residencia}
+                              onChange={e => setEditDraft(d => ({ ...d, pais_residencia: e.target.value }))}
+                              style={{ ...inputStyle, width: 120 }} />
+                          </div>
+                          <div>
+                            <label style={fieldLabel}>CityCoins</label>
+                            <input type="number" min={0} value={editDraft.monedas}
+                              onChange={e => setEditDraft(d => ({ ...d, monedas: Number(e.target.value) }))}
+                              style={{ ...inputStyle, width: 100 }} />
+                          </div>
+                          <div>
+                            <label style={fieldLabel}>
+                              Nueva contraseña{!adminClient && ' (requiere Service Key)'}
+                            </label>
+                            <input
+                              type="text"
+                              value={editDraft.newPassword}
+                              onChange={e => setEditDraft(d => ({ ...d, newPassword: e.target.value }))}
+                              placeholder={adminClient ? 'Dejar vacío para no cambiar' : 'Configura la Service Key primero'}
+                              disabled={!adminClient}
+                              style={{ ...inputStyle, width: 200, opacity: adminClient ? 1 : 0.5 }}
+                            />
+                          </div>
+                          <button onClick={saveEdit} disabled={saving}
+                            style={{ ...btnStyle, background: '#6366F1', color: '#fff' }}>
+                            {saving ? 'Guardando…' : 'Guardar cambios'}
+                          </button>
+                          {saveMsg && (
+                            <span style={{
+                              fontSize: 13, fontWeight: 600,
+                              color: saveMsg.startsWith('✓') ? '#10B981' : '#EF4444',
+                            }}>{saveMsg}</span>
+                          )}
+                        </div>
+
+                        {/* Game progress details */}
+                        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #C7D2FE' }}>
+                          <div style={{ fontSize: 11, color: '#6366F1', fontWeight: 700, marginBottom: 8 }}>
+                            Progreso por juego:
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {Object.entries(GAME_LABEL).map(([id, name]) => {
+                              const level = (prog.highestLevel ?? {})[id] ?? 0;
+                              const score = (prog.highScores ?? {})[id] ?? 0;
+                              return (
+                                <div key={id} style={{
+                                  background: '#fff', border: '1px solid #C7D2FE', borderRadius: 8,
+                                  padding: '8px 12px', fontSize: 12, minWidth: 90, textAlign: 'center',
+                                }}>
+                                  <div style={{ fontWeight: 700, color: '#4F46E5', marginBottom: 2 }}>{name}</div>
+                                  <div style={{ color: '#334155' }}>Nivel {level}/20</div>
+                                  <div style={{ color: '#94A3B8', fontSize: 11 }}>Best: {score}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 8 }}>
+                            * Tiempo jugado por día no está disponible en el modelo de datos actual (no se registra).
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function AdminPanel() {
@@ -376,6 +685,14 @@ export default function AdminPanel() {
   const store = useAdminStore();
 
   const [tab, setTab] = useState<Tab>('missions');
+  const [serviceKey, setServiceKey] = useState(() => localStorage.getItem('admin-service-key') ?? '');
+
+  const adminClient = useMemo<AdminClient | null>(() => {
+    if (!serviceKey.trim()) return null;
+    return createClient(SUPABASE_URL, serviceKey.trim(), {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+  }, [serviceKey]);
 
   // ── Missions local state ────────────────────────────────────────────────────
   const [missionDraft, setMissionDraft] = useState(() =>
@@ -434,12 +751,13 @@ export default function AdminPanel() {
   }, []);
 
   const resetAll = () => {
-    if (!confirm('Reset all admin settings to defaults? This cannot be undone.')) return;
+    if (!confirm('¿Resetear todos los ajustes admin a los valores por defecto? Esto no se puede deshacer.')) return;
     store.resetAll();
     window.location.reload();
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  const needsServiceKey = tab === 'analytics' || tab === 'users';
+
   return (
     <div style={{ minHeight: '100vh', background: '#F1F5F9', fontFamily: 'Outfit, sans-serif' }}>
 
@@ -459,15 +777,14 @@ export default function AdminPanel() {
 
       {/* Tab nav */}
       <div style={{
-        background: '#fff',
-        borderBottom: '1px solid #E2E8F0',
-        display: 'flex',
-        padding: '0 20px',
+        background: '#fff', borderBottom: '1px solid #E2E8F0',
+        display: 'flex', padding: '0 20px', overflowX: 'auto',
       }}>
         {([
-          ['missions', '🗺️ Missions'],
-          ['builder',  '🏗️ City Builder'],
-          ['analytics','📊 Analytics'],
+          ['missions',  '🗺️ Misiones'],
+          ['builder',   '🏗️ City Builder'],
+          ['analytics', '📊 Analytics'],
+          ['users',     '👥 Usuarios'],
         ] as [Tab, string][]).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer',
@@ -479,15 +796,24 @@ export default function AdminPanel() {
         ))}
       </div>
 
-      <div style={{ padding: '24px 20px', maxWidth: 800, margin: '0 auto' }}>
+      <div style={{
+        padding: '24px 20px',
+        maxWidth: tab === 'users' ? 1100 : 800,
+        margin: '0 auto',
+      }}>
+
+        {/* Service Key Banner (only for tabs that need DB reads) */}
+        {needsServiceKey && (
+          <ServiceKeyBanner serviceKey={serviceKey} onSave={setServiceKey} />
+        )}
 
         {/* ── MISSIONS TAB ─────────────────────────────────────────────────── */}
         {tab === 'missions' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 16, color: '#1E293B' }}>Mission Names</h2>
+              <h2 style={{ margin: 0, fontSize: 16, color: '#1E293B' }}>Nombres de Misiones</h2>
               <button onClick={saveMissions} style={{ ...btnStyle, background: '#6366F1', color: '#fff' }}>
-                {missionSaved ? '✓ Saved!' : 'Save Changes'}
+                {missionSaved ? '✓ Guardado!' : 'Guardar cambios'}
               </button>
             </div>
 
@@ -529,16 +855,16 @@ export default function AdminPanel() {
               <h2 style={{ margin: 0, fontSize: 16, color: '#1E293B' }}>City Builder Items</h2>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={saveBuilder} style={{ ...btnStyle, background: '#6366F1', color: '#fff' }}>
-                  {builderSaved ? '✓ Saved!' : 'Save Changes'}
+                  {builderSaved ? '✓ Guardado!' : 'Guardar cambios'}
                 </button>
               </div>
             </div>
 
             <p style={{ margin: '0 0 16px', fontSize: 12, color: '#94A3B8' }}>
-              W = columns to the right, D = columns to the left (isometric footprint). Images must exist in <code>/Builder/</code> on the server.
+              W = columnas a la derecha, D = columnas a la izquierda (huella isométrica).
+              Las imágenes deben existir en <code>/Builder/</code> en el servidor.
             </p>
 
-            {/* Category tabs */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
               {cats.map((cat, i) => (
                 <button key={i} onClick={() => setActiveCat(i)} style={{
@@ -548,16 +874,13 @@ export default function AdminPanel() {
                   color: activeCat === i ? '#6366F1' : '#64748B',
                   cursor: 'pointer', fontSize: 13, fontWeight: activeCat === i ? 700 : 400,
                 }}>
-                  {cat.emoji} {cat.label} <span style={{ color: '#94A3B8', fontSize: 11 }}>({cat.items.length})</span>
+                  {cat.emoji} {cat.label}{' '}
+                  <span style={{ color: '#94A3B8', fontSize: 11 }}>({cat.items.length})</span>
                 </button>
               ))}
             </div>
 
-            {/* Items row */}
-            <div style={{
-              display: 'flex', gap: 12, overflowX: 'auto',
-              paddingBottom: 12, alignItems: 'flex-start',
-            }}>
+            <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
               {cats[activeCat].items.map((item, j) => (
                 <ItemCard
                   key={item.key}
@@ -570,21 +893,23 @@ export default function AdminPanel() {
             </div>
 
             <div style={{ marginTop: 12, fontSize: 12, color: '#94A3B8' }}>
-              Changes are local until you click <strong>Save Changes</strong>. The game reads the saved config on next load.
+              Los cambios son locales hasta hacer clic en <strong>Guardar cambios</strong>.
             </div>
           </div>
         )}
 
         {/* ── ANALYTICS TAB ────────────────────────────────────────────────── */}
-        {tab === 'analytics' && <AnalyticsTab />}
+        {tab === 'analytics' && <AnalyticsTab adminClient={adminClient} />}
+
+        {/* ── USERS TAB ────────────────────────────────────────────────────── */}
+        {tab === 'users' && <UsersTab adminClient={adminClient} />}
 
         {/* ── DANGER ZONE ──────────────────────────────────────────────────── */}
-        <div style={{
-          marginTop: 40, borderTop: '1px solid #E2E8F0', paddingTop: 20,
-        }}>
-          <h3 style={{ margin: '0 0 10px', fontSize: 13, color: '#94A3B8' }}>Danger zone</h3>
-          <button onClick={resetAll} style={{ ...btnStyle, background: '#FEF2F2', color: '#EF4444', border: '1px solid #FCA5A5' }}>
-            Reset ALL admin settings to defaults
+        <div style={{ marginTop: 40, borderTop: '1px solid #E2E8F0', paddingTop: 20 }}>
+          <h3 style={{ margin: '0 0 10px', fontSize: 13, color: '#94A3B8' }}>Zona de peligro</h3>
+          <button onClick={resetAll}
+            style={{ ...btnStyle, background: '#FEF2F2', color: '#EF4444', border: '1px solid #FCA5A5' }}>
+            Resetear TODOS los ajustes admin a los valores por defecto
           </button>
         </div>
       </div>
@@ -618,6 +943,14 @@ const labelStyle: React.CSSProperties = {
   fontSize: 11,
   color: '#94A3B8',
   minWidth: 16,
+};
+
+const fieldLabel: React.CSSProperties = {
+  display: 'block',
+  fontSize: 10,
+  color: '#6366F1',
+  fontWeight: 700,
+  marginBottom: 3,
 };
 
 const btnStyle: React.CSSProperties = {

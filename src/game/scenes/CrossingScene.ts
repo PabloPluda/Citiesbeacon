@@ -631,10 +631,10 @@ export class CrossingScene extends Phaser.Scene {
     this.tweens.add({ targets: book.gfx, scaleX: 1.8, scaleY: 1.8, alpha: 0, duration: 300,
       onComplete: () => book.gfx.destroy() });
 
-    this.coinsEarned += 6;
+    this.coinsEarned += 3;
     this.bookTxt.setText(`🪙 ${this.coinsEarned}`);
 
-    const plusTxt = this.add.text(this.tommy.x, this.tommy.y - 30, '+6 🪙', {
+    const plusTxt = this.add.text(this.tommy.x, this.tommy.y - 30, '+3 🪙', {
       fontFamily: 'Fredoka One', fontSize: '16px',
       color: '#FCD34D', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(22);
@@ -811,10 +811,10 @@ export class CrossingScene extends Phaser.Scene {
     const W = this.cameras.main.width, H = this.sceneH;
     const tommyX = this.tommy.x;
     const { speed: baseSpeed } = getLevelCfg(this.level);
-    const progressStep = Math.floor(this.scored / 2);       // increases every 2 crossings
-    const speed        = baseSpeed + progressStep * 20;      // +20 px/s per step
-    const dynCarSpeed  = 170 + progressStep * 12;            // cars also get faster
-    const dynCarProb   = Math.min(0.030, 0.012 + progressStep * 0.0025); // more cars over time
+    const progressStep = Math.floor(this.scored / 2);   // increases every 2 crossings
+    const speed        = baseSpeed + progressStep * 20;  // +20 px/s per step
+    const dynCarSpeed  = 170;                            // car speed stays constant
+    const dynCarProb   = 0.012;                          // spawn rate stays constant
 
     // Camera follow
     const targetScrollX = tommyX - W * 0.35;

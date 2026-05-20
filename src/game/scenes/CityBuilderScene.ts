@@ -135,10 +135,6 @@ export class CityBuilderScene extends Phaser.Scene {
     // Ensure native touch events reach the canvas on mobile
     this.game.canvas.style.touchAction = 'none';
 
-    // Seed coins for testing
-    const store = useProgressStore.getState();
-    if (store.cityCoins < 9999) store.addCityCoins(9999 - store.cityCoins);
-
     EventBus.emit('current-scene-ready', this);
 
     // ── EventBus listeners ─────────────────────────────────────────────────────

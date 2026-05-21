@@ -180,7 +180,6 @@ function DailyStreakOverlay({
   onCityBuilder: () => void;
 }) {
   const [displayCoins, setDisplayCoins] = useState(totalCoins - coinsEarned);
-  const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     const from = totalCoins - coinsEarned;
@@ -240,12 +239,8 @@ function DailyStreakOverlay({
           background: 'rgba(255,255,255,0.08)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
-          {imgError ? (
-            <span style={{ fontSize: 64 }}>👨‍💼</span>
-          ) : (
-            <img src="/gobernor.jpg" alt="Governor" onError={() => setImgError(true)}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          )}
+          <img src="/gobernor.jpg" alt="Governor"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
 
         {/* Streak badge */}
@@ -348,7 +343,6 @@ function WelcomeOverlay({
   onCityBuilder: () => void;
 }) {
   const [coins, setCoins] = useState(0);
-  const [imgError, setImgError] = useState(false);
 
   // Animate coin counter 0 → 500 over ~1.8 s, starting after a short delay
   useEffect(() => {
@@ -420,16 +414,8 @@ function WelcomeOverlay({
           justifyContent: 'center',
           flexShrink: 0,
         }}>
-          {imgError ? (
-            <span style={{ fontSize: 64 }}>👨‍💼</span>
-          ) : (
-            <img
-              src="/gobernor.jpg"
-              alt="Governor"
-              onError={() => setImgError(true)}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          )}
+          <img src="/gobernor.jpg" alt="Governor"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
 
         {/* Title */}

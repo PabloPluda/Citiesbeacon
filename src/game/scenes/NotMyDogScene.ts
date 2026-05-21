@@ -320,8 +320,8 @@ export class NotMyDogScene extends Phaser.Scene {
 
   // ── preload ───────────────────────────────────────────────
   preload() {
-    for (let i = 1; i <= 4; i++) this.load.image(`arbol${i}`, `notmydog/arbol${i}.png`);
-    for (let i = 1; i <= 3; i++) this.load.image(`camino${i}`, `notmydog/camino${i}.png`);
+    for (let i = 1; i <= 4; i++) this.load.image(`arbol${i}`, `/notmydog/arbol${i}.png`);
+    for (let i = 1; i <= 3; i++) this.load.image(`camino${i}`, `/notmydog/camino${i}.png`);
   }
 
   // ── init ──────────────────────────────────────────────────

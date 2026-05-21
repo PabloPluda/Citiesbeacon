@@ -320,7 +320,7 @@ export class NotMyDogScene extends Phaser.Scene {
 
   // ── preload ───────────────────────────────────────────────
   preload() {
-    for (let i = 1; i <= 4; i++) this.load.image(`arbol${i}`, `/notmydog/arbol${i}.png`);
+    for (let i = 1; i <= 2; i++) this.load.image(`arbol${i}`, `/notmydog/arbol${i}.png`);
     this.load.image('camino1', '/notmydog/camino1.png');
   }
 
@@ -481,7 +481,7 @@ export class NotMyDogScene extends Phaser.Scene {
   // ── Tile variant assignment (called once after maze generation) ──────────
   private assignTileVariants() {
     this.tileWallVariant = Array.from({ length: this.gridH }, () =>
-      Array.from({ length: this.gridW }, () => Phaser.Math.Between(1, 4))
+      Array.from({ length: this.gridW }, () => Phaser.Math.Between(1, 2))
     );
     this.tilePathVariant = Array.from({ length: this.gridH }, () =>
       Array.from({ length: this.gridW }, () => 1)

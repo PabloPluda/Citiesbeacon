@@ -243,7 +243,7 @@ function DailyStreakOverlay({
           {imgError ? (
             <span style={{ fontSize: 64 }}>👨‍💼</span>
           ) : (
-            <img src="/governor.jpg" alt="Governor" onError={() => setImgError(true)}
+            <img src="/gobernor.jpg" alt="Governor" onError={() => setImgError(true)}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           )}
         </div>
@@ -424,7 +424,7 @@ function WelcomeOverlay({
             <span style={{ fontSize: 64 }}>👨‍💼</span>
           ) : (
             <img
-              src="/governor.jpg"
+              src="/gobernor.jpg"
               alt="Governor"
               onError={() => setImgError(true)}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}

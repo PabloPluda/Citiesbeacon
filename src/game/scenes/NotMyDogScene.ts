@@ -140,6 +140,38 @@ function generateMaze(roomsW: number, roomsH: number): { grid: number[][]; owner
     mainPathRoomSet.add('1,1');
   }
 
+  // ── 5.5. Off-path connected components ───────────────────────────────────
+  // BFS through open passages without crossing main-path rooms.
+  // Two off-path rooms in different components (branching from different main-path nodes)
+  // must never be directly connected — doing so would create a shortcut bypassing
+  // part of the correct path.
+  const offPathComp = new Map<string, number>();
+  let nextComp = 0;
+  for (let ry = 0; ry < roomsH; ry++) {
+    for (let rx = 0; rx < roomsW; rx++) {
+      const rk = `${rx * 2 + 1},${ry * 2 + 1}`;
+      if (mainPathRoomSet.has(rk) || offPathComp.has(rk)) continue;
+      const cid = nextComp++;
+      const compQ: [number, number][] = [[rx, ry]];
+      offPathComp.set(rk, cid);
+      let ch = 0;
+      while (ch < compQ.length) {
+        const [cx, cy] = compQ[ch++];
+        for (const [ddx, ddy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
+          const nx = cx + ddx, ny = cy + ddy;
+          if (nx < 0 || nx >= roomsW || ny < 0 || ny >= roomsH) continue;
+          const nk = `${nx * 2 + 1},${ny * 2 + 1}`;
+          if (mainPathRoomSet.has(nk) || offPathComp.has(nk)) continue;
+          // Passage tile between these two room tiles must be open
+          const px = cx * 2 + 1 + ddx, py = cy * 2 + 1 + ddy;
+          if (grid[py][px] !== 0) continue;
+          offPathComp.set(nk, cid);
+          compQ.push([nx, ny]);
+        }
+      }
+    }
+  }
+
   // ── 6. Controlled wall removal: Safe Loops only ───────────────────────────
   // Count open passage tiles adjacent to a room tile
   const openPassages = (rtx: number, rty: number): number => {
@@ -182,6 +214,8 @@ function generateMaze(roomsW: number, roomsH: number): { grid: number[][]; owner
       if (mainPathRoomSet.has(r1k) || mainPathRoomSet.has(r2k)) continue;
       // Both rooms must currently be dead-ends
       if (openPassages(r1x, r1y) !== 1 || openPassages(r2x, r2y) !== 1) continue;
+      // Both rooms must be in the same off-path component to prevent cross-branch shortcuts
+      if (offPathComp.get(r1k) !== offPathComp.get(r2k)) continue;
       safeWalls.push([tx, ty]);
     }
   }
@@ -267,6 +301,9 @@ export class NotMyDogScene extends Phaser.Scene {
   private dirY = 0;
 
   private mazeGfx!:      Phaser.GameObjects.Graphics;
+  private mazeTileImages: Phaser.GameObjects.Image[] = [];
+  private tileWallVariant: number[][] = [];
+  private tilePathVariant: number[][] = [];
   private playerSprite!: Phaser.GameObjects.Text;
   private dogSprite!:    Phaser.GameObjects.Text;
   private ownerSprite!:  Phaser.GameObjects.Text;
@@ -280,6 +317,12 @@ export class NotMyDogScene extends Phaser.Scene {
   private doorHintShownAt = 0;
 
   constructor() { super('NotMyDogScene'); }
+
+  // ── preload ───────────────────────────────────────────────
+  preload() {
+    for (let i = 1; i <= 4; i++) this.load.image(`arbol${i}`, `notmydog/arbol${i}.png`);
+    for (let i = 1; i <= 3; i++) this.load.image(`camino${i}`, `notmydog/camino${i}.png`);
+  }
 
   // ── init ──────────────────────────────────────────────────
   init(data?: { level?: number }) {
@@ -312,6 +355,9 @@ export class NotMyDogScene extends Phaser.Scene {
     this.ownerBubble   = undefined;
     this.ownerBubbleBg = undefined;
     this.doorHintShownAt = 0;
+    this.mazeTileImages = [];
+    this.tileWallVariant = [];
+    this.tilePathVariant = [];
   }
 
   // ── create ────────────────────────────────────────────────
@@ -353,17 +399,18 @@ export class NotMyDogScene extends Phaser.Scene {
     const result = generateMaze(this.cfg.roomsW, this.cfg.roomsH);
     this.grid      = result.grid;
     this.ownerTile = result.ownerTile;
+    this.assignTileVariants();
 
     // Door placement (before drawing — modifies grid)
     if (this.cfg.hasDoors) this.placeDoor();
 
     // Draw maze
-    this.mazeGfx = this.add.graphics().setDepth(2);
+    this.mazeGfx = this.add.graphics().setDepth(4);
     this.drawMaze();
 
     // Goal highlight at owner tile
     const { tx: gTx, ty: gTy } = this.ownerTile;
-    const goalGfx = this.add.graphics().setDepth(1);
+    const goalGfx = this.add.graphics().setDepth(2);
     goalGfx.fillStyle(0xFFD700, 0.35);
     goalGfx.fillRect(
       this.offsetX + gTx * this.tileSize + 2,
@@ -376,17 +423,17 @@ export class NotMyDogScene extends Phaser.Scene {
 
     this.ownerSprite = this.add.text(
       this.wx(gTx), this.wy(gTy), '🧑', { fontSize: `${fs}px` }
-    ).setOrigin(0.5).setDepth(3);
+    ).setOrigin(0.5).setDepth(5);
 
     this.placeCats(fsSmall);
 
     this.dogSprite = this.add.text(
       this.wx(1), this.wy(1), '🐕', { fontSize: `${fs}px` }
-    ).setOrigin(0.5).setDepth(4);
+    ).setOrigin(0.5).setDepth(6);
 
     this.playerSprite = this.add.text(
       this.wx(1), this.wy(1), '🧒', { fontSize: `${fs}px` }
-    ).setOrigin(0.5).setDepth(5);
+    ).setOrigin(0.5).setDepth(7);
 
     // Controls
     this.buildControls(SW, SH, CTRL_H, BOTTOM_SAFE);
@@ -431,23 +478,62 @@ export class NotMyDogScene extends Phaser.Scene {
     EventBus.emit('game-scored-update', this.cfg.hasDoors ? `🔧${this.leversCollected}/1` : '🐾');
   }
 
+  // ── Tile variant assignment (called once after maze generation) ──────────
+  private assignTileVariants() {
+    this.tileWallVariant = Array.from({ length: this.gridH }, () =>
+      Array.from({ length: this.gridW }, () => Phaser.Math.Between(1, 4))
+    );
+    this.tilePathVariant = Array.from({ length: this.gridH }, () =>
+      Array.from({ length: this.gridW }, () => Phaser.Math.Between(1, 3))
+    );
+  }
+
   // ── Maze drawing ──────────────────────────────────────────
   private drawMaze() {
-    const g  = this.mazeGfx;
+    for (const img of this.mazeTileImages) img.destroy();
+    this.mazeTileImages = [];
+
     const ox = this.offsetX, oy = this.offsetY, ts = this.tileSize;
-    g.clear();
+
+    // First pass: path tiles (depth 1)
     for (let ty = 0; ty < this.gridH; ty++) {
       for (let tx = 0; tx < this.gridW; tx++) {
-        g.fillStyle(this.grid[ty][tx] === 1 ? 0x2D6A1E : 0xC8A86B);
-        g.fillRect(ox + tx * ts, oy + ty * ts, ts, ts);
+        if (this.grid[ty][tx] === 0) {
+          const key = `camino${this.tilePathVariant[ty][tx]}`;
+          const img = this.add.image(
+            ox + tx * ts + ts / 2,
+            oy + ty * ts + ts / 2,
+            key
+          ).setDisplaySize(ts, ts).setDepth(1);
+          this.mazeTileImages.push(img);
+        }
       }
     }
-    // Closed door: red overlay on blocked passage tile
+
+    // Second pass: wall/tree tiles (depth 3, bottom-anchored so tall trees overlap tile above)
+    for (let ty = 0; ty < this.gridH; ty++) {
+      for (let tx = 0; tx < this.gridW; tx++) {
+        if (this.grid[ty][tx] === 1) {
+          const key = `arbol${this.tileWallVariant[ty][tx]}`;
+          const src = this.textures.get(key).getSourceImage() as HTMLImageElement;
+          const displayH = src.width > 0 ? Math.round((src.height / src.width) * ts) : ts;
+          const img = this.add.image(
+            ox + tx * ts + ts / 2,
+            oy + (ty + 1) * ts,
+            key
+          ).setOrigin(0.5, 1).setDisplaySize(ts, displayH).setDepth(3);
+          this.mazeTileImages.push(img);
+        }
+      }
+    }
+
+    // Door overlay: red rectangle on top of the door tile
+    this.mazeGfx.clear();
     if (this.door && !this.door.open) {
       const { tx, ty } = this.door.doorTile;
       const pad = Math.max(2, Math.floor(ts * 0.08));
-      g.fillStyle(0xEF4444);
-      g.fillRect(ox + tx * ts + pad, oy + ty * ts + pad, ts - pad * 2, ts - pad * 2);
+      this.mazeGfx.fillStyle(0xEF4444);
+      this.mazeGfx.fillRect(ox + tx * ts + pad, oy + ty * ts + pad, ts - pad * 2, ts - pad * 2);
     }
   }
 
@@ -480,7 +566,7 @@ export class NotMyDogScene extends Phaser.Scene {
         const spr = this.add.text(
           this.wx(keyPos.tx), this.wy(keyPos.ty), '🔧',
           { fontSize: `${Math.max(12, Math.round(this.tileSize * 0.58))}px` }
-        ).setOrigin(0.5).setDepth(3);
+        ).setOrigin(0.5).setDepth(5);
         this.tweens.add({ targets: spr, scaleX: 1.15, scaleY: 1.15, yoyo: true, repeat: -1, duration: 700 });
         this.door = { doorTile: { tx: pass.tx, ty: pass.ty }, keyTile: keyPos, open: false, keySprite: spr };
         return;
@@ -595,7 +681,7 @@ export class NotMyDogScene extends Phaser.Scene {
     for (let i = 0; i < Math.min(this.cfg.numCats, pool.length); i++) {
       const pos = pool[i];
       const spr = this.add.text(this.wx(pos.tx), this.wy(pos.ty), '😺', { fontSize: `${fs}px` })
-        .setOrigin(0.5).setDepth(3);
+        .setOrigin(0.5).setDepth(5);
       this.tweens.add({ targets: spr, y: spr.y - 3, yoyo: true, repeat: -1, duration: 900 + Math.random() * 400 });
       this.cats.push({ pos, sprite: spr, active: true });
     }

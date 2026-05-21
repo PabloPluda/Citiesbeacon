@@ -233,7 +233,7 @@ function DailyStreakOverlay({
       >
         {/* Governor image */}
         <div style={{
-          width: 130, height: 130, borderRadius: 16, overflow: 'hidden',
+          width: 182, height: 182, borderRadius: 16, overflow: 'hidden',
           border: '3px solid rgba(255,165,0,0.7)',
           boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
           background: 'rgba(255,255,255,0.08)',
@@ -402,8 +402,8 @@ function WelcomeOverlay({
       >
         {/* Governor image / placeholder */}
         <div style={{
-          width: 130,
-          height: 130,
+          width: 182,
+          height: 182,
           borderRadius: 16,
           overflow: 'hidden',
           border: '3px solid rgba(255,215,0,0.6)',
@@ -418,31 +418,18 @@ function WelcomeOverlay({
             style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
 
-        {/* Title */}
-        <div>
-          <div style={{
-            fontFamily: 'Fredoka One, cursive',
-            fontSize: '1.35rem',
-            color: '#FFD700',
-            letterSpacing: '0.02em',
-            lineHeight: 1.2,
-            marginBottom: 8,
-          }}>
-            A Message from the Governor
-          </div>
-          <div style={{
-            fontFamily: 'Outfit, sans-serif',
-            fontSize: '0.92rem',
-            color: 'rgba(255,255,255,0.88)',
-            lineHeight: 1.55,
-          }}>
-            Hello <strong style={{ color: '#7DD3FC' }}>{username}</strong>!{' '}
-            I'm the Governor of this city, and I want to personally thank you
-            for joining our mission to improve people's behavior and build a
-            friendlier, more sustainable city for everyone.{' '}
-            Please accept these <strong style={{ color: '#FFD700' }}>500 CityCoins</strong>{' '}
-            to start building the city of your dreams!
-          </div>
+        <div style={{
+          fontFamily: 'Outfit, sans-serif',
+          fontSize: '0.92rem',
+          color: 'rgba(255,255,255,0.88)',
+          lineHeight: 1.55,
+        }}>
+          Hello <strong style={{ color: '#7DD3FC' }}>{username}</strong>!{' '}
+          I'm the Governor of this city, and I want to personally thank you
+          for joining our mission to improve people's behavior and build a
+          friendlier, more sustainable city for everyone.{' '}
+          Please accept these <strong style={{ color: '#FFD700' }}>500 CityCoins</strong>{' '}
+          to start building the city of your dreams!
         </div>
 
         {/* Coin counter */}

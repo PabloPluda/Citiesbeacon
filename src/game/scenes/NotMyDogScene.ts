@@ -30,227 +30,165 @@ interface LevelConfig {
 
 // ─── Level table ──────────────────────────────────────────────────────────────
 const LEVELS: LevelConfig[] = [
-  { roomsW: 3, roomsH:  5, numCats: 0, hasDoors: false, coins: 50, dogDelay: 600, time:  80 }, // L1
-  { roomsW: 4, roomsH:  6, numCats: 0, hasDoors: false, coins: 50, dogDelay: 560, time:  90 }, // L2
-  { roomsW: 5, roomsH:  8, numCats: 0, hasDoors: false, coins: 50, dogDelay: 520, time: 105 }, // L3
-  { roomsW: 6, roomsH:  9, numCats: 0, hasDoors: false, coins: 50, dogDelay: 480, time: 115 }, // L4
-  { roomsW: 6, roomsH: 10, numCats: 0, hasDoors: false, coins: 50, dogDelay: 440, time: 120 }, // L5
-  { roomsW: 7, roomsH: 11, numCats: 0, hasDoors: false, coins: 50, dogDelay: 400, time: 130 }, // L6
-  { roomsW: 8, roomsH: 12, numCats: 0, hasDoors: false, coins: 50, dogDelay: 360, time: 140 }, // L7
-  { roomsW: 8, roomsH: 13, numCats: 0, hasDoors: false, coins: 60, dogDelay: 320, time: 150 }, // L8+
+  { roomsW: 11, roomsH: 17, numCats: 0, hasDoors: false, coins: 50, dogDelay: 480, time: 120 }, // L1
+  { roomsW: 11, roomsH: 17, numCats: 0, hasDoors: false, coins: 50, dogDelay: 440, time: 130 }, // L2
+  { roomsW: 11, roomsH: 17, numCats: 0, hasDoors: false, coins: 50, dogDelay: 400, time: 140 }, // L3
+  { roomsW: 11, roomsH: 17, numCats: 0, hasDoors: false, coins: 50, dogDelay: 360, time: 150 }, // L4
+  { roomsW: 11, roomsH: 17, numCats: 0, hasDoors: false, coins: 50, dogDelay: 320, time: 160 }, // L5
+  { roomsW: 11, roomsH: 17, numCats: 0, hasDoors: false, coins: 60, dogDelay: 280, time: 170 }, // L6
+  { roomsW: 11, roomsH: 17, numCats: 0, hasDoors: false, coins: 60, dogDelay: 240, time: 180 }, // L7
+  { roomsW: 11, roomsH: 17, numCats: 0, hasDoors: false, coins: 60, dogDelay: 200, time: 190 }, // L8+
 ];
 
 function getLevelConfig(level: number): LevelConfig {
   return LEVELS[Math.min(level - 1, LEVELS.length - 1)];
 }
 
-// ─── Maze Generator (Maximum-Distance + Controlled Safe Loops) ───────────────
+// ─── Maze Generator (Two-Branch: one correct path to owner, one false dead-end) ─
 //
-// 1. DFS builds a perfect spanning-tree maze from room (0,0) = tile (1,1).
-// 2. Force-open a second exit from (1,1) for two branching paths at the start.
-// 3. BFS Flood Fill from (1,1) computes real step-count to every tile.
-// 4. Owner placed at the ROOM TILE requiring the most real steps.
-// 5. Reconstruct main-path room tiles from start to owner via BFS dist[].
-// 6. Controlled wall removal (Safe Loops only):
-//    - A wall may only be removed if it joins two non-main-path DEAD-END rooms.
-//    - The last third of the main path (near owner) is always fully protected.
-//    - At least 60% of off-path rooms remain strict dead-ends after removal.
-// 7. Dead-end the owner tile: close all passages except the single entry.
+// 1. DFS spanning tree covers every room (no loops by definition).
+// 2. Force both exits from start (right + down) so there are always two branches.
+// 3. BFS from start with prev tracking → farthest room = owner (Ruta A end).
+// 4. Ruta A: traced path start → owner.
+// 5. Ruta B: longest path reachable via the other start exit, never crossing Ruta A.
+//    Trimmed so its room-count ≤ Ruta A room-count.
+// 6. Fork: dead-end branch at the midpoint of Ruta A (~30% of A length).
+// 7. Final grid: all walls. Only Ruta A + Ruta B + Fork tiles are opened.
+//    Result: exactly two long paths from start, one leading to owner, one a dead-end.
 //
 function generateMaze(roomsW: number, roomsH: number): { grid: number[][]; ownerTile: TilePos } {
   const gridW = roomsW * 2 + 1;
   const gridH = roomsH * 2 + 1;
 
-  // ── 1. DFS perfect maze from room (0,0) ───────────────────────────────────
-  const grid = Array.from({ length: gridH }, () => new Array(gridW).fill(1));
+  // ── 1. DFS spanning tree (all rooms visited, zero loops) ─────────────────
+  const tree = Array.from({ length: gridH }, () => new Array(gridW).fill(1));
   const vis  = Array.from({ length: roomsH }, () => new Array(roomsW).fill(false));
-
   function dfs(rx: number, ry: number) {
     vis[ry][rx] = true;
-    grid[ry * 2 + 1][rx * 2 + 1] = 0;
-    const dirs: [number, number][] = [[1,0],[-1,0],[0,1],[0,-1]];
-    for (let i = dirs.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+    tree[ry*2+1][rx*2+1] = 0;
+    const dirs: [number,number][] = [[1,0],[-1,0],[0,1],[0,-1]];
+    for (let i = dirs.length-1; i > 0; i--) {
+      const j = Math.floor(Math.random()*(i+1)); [dirs[i],dirs[j]]=[dirs[j],dirs[i]];
     }
-    for (const [dx, dy] of dirs) {
-      const nx = rx + dx, ny = ry + dy;
-      if (nx < 0 || nx >= roomsW || ny < 0 || ny >= roomsH || vis[ny][nx]) continue;
-      grid[ry * 2 + 1 + dy][rx * 2 + 1 + dx] = 0;
-      dfs(nx, ny);
+    for (const [dx,dy] of dirs) {
+      const nx=rx+dx, ny=ry+dy;
+      if (nx<0||nx>=roomsW||ny<0||ny>=roomsH||vis[ny][nx]) continue;
+      tree[ry*2+1+dy][rx*2+1+dx]=0; dfs(nx,ny);
     }
   }
-  dfs(0, 0);
+  dfs(0,0);
+  // Force both exits from start so there are always two branches
+  if (gridW > 2) tree[1][2] = 0;
+  if (gridH > 2) tree[2][1] = 0;
 
-  // ── 2. Guarantee two exits from start tile (1,1) ─────────────────────────
-  const startExits: [number, number][] = [];
-  if (gridW > 2) startExits.push([2, 1]);
-  if (gridH > 2) startExits.push([1, 2]);
-  const openAtStart = startExits.filter(([tx, ty]) => grid[ty][tx] === 0).length;
-  if (openAtStart < 2) {
-    for (const [tx, ty] of startExits) {
-      if (grid[ty][tx] === 1) { grid[ty][tx] = 0; break; }
-    }
-  }
-
-  // ── 3. BFS Flood Fill from (1,1) — exact step count to every tile ─────────
-  const dist: number[][] = Array.from({ length: gridH }, () => new Array(gridW).fill(-1));
+  // ── 2. BFS from (1,1) with prev tracking ─────────────────────────────────
+  const dist = Array.from({ length: gridH }, () => new Array(gridW).fill(-1));
+  const prev = new Map<string,string>([['1,1','']]);
   dist[1][1] = 0;
-  const bfsQ: [number, number][] = [[1, 1]];
-  let head = 0;
-  while (head < bfsQ.length) {
-    const [tx, ty] = bfsQ[head++];
-    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number, number][]) {
-      const nx = tx + dx, ny = ty + dy;
-      if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH) continue;
-      if (grid[ny][nx] !== 0 || dist[ny][nx] !== -1) continue;
-      dist[ny][nx] = dist[ty][tx] + 1;
-      bfsQ.push([nx, ny]);
+  const bq: [number,number][] = [[1,1]]; let bh=0;
+  while (bh < bq.length) {
+    const [tx,ty]=bq[bh++];
+    for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
+      const nx=tx+dx, ny=ty+dy;
+      if (nx<0||nx>=gridW||ny<0||ny>=gridH) continue;
+      if (tree[ny][nx]!==0||dist[ny][nx]!==-1) continue;
+      dist[ny][nx]=dist[ty][tx]+1; prev.set(`${nx},${ny}`,`${tx},${ty}`); bq.push([nx,ny]);
     }
   }
 
-  // ── 4. Owner = room tile with maximum real distance from start ────────────
-  let maxDist = -1;
-  let ownerTile: TilePos = { tx: gridW - 2, ty: gridH - 2 };
-  for (let ty = 1; ty < gridH; ty += 2) {
-    for (let tx = 1; tx < gridW; tx += 2) {
-      if (tx === 1 && ty === 1) continue;
-      if (dist[ty][tx] > maxDist) { maxDist = dist[ty][tx]; ownerTile = { tx, ty }; }
+  // ── 3. Owner = farthest room tile from start ──────────────────────────────
+  let maxD=-1; let ownerTile: TilePos = {tx:gridW-2,ty:gridH-2};
+  for (let ty=1;ty<gridH;ty+=2) for (let tx=1;tx<gridW;tx+=2)
+    if (!(tx===1&&ty===1)&&dist[ty][tx]>maxD) { maxD=dist[ty][tx]; ownerTile={tx,ty}; }
+
+  // ── Helper: trace ordered tile path back to start via a prev map ──────────
+  function trace(endKey: string, prevMap: Map<string,string>): TilePos[] {
+    const path: TilePos[]=[];
+    let cur=endKey;
+    while (cur!==''&&prevMap.has(cur)) {
+      const [tx,ty]=cur.split(',').map(Number); path.unshift({tx,ty});
+      cur=prevMap.get(cur)??'';
     }
+    return path;
   }
 
-  // ── 5. Reconstruct main-path room tiles (owner → start via BFS back-trace) ──
-  const mainPathRoomSet = new Set<string>();
-  {
-    let curTx = ownerTile.tx, curTy = ownerTile.ty;
-    for (let safety = 0; safety < gridW * gridH + 4; safety++) {
-      if (curTx % 2 === 1 && curTy % 2 === 1) mainPathRoomSet.add(`${curTx},${curTy}`);
-      if (curTx === 1 && curTy === 1) break;
-      const curD = dist[curTy][curTx];
-      let moved = false;
-      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
-        const nx = curTx + dx, ny = curTy + dy;
-        if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH) continue;
-        if (grid[ny][nx] === 0 && dist[ny][nx] === curD - 1) {
-          curTx = nx; curTy = ny; moved = true; break;
-        }
-      }
-      if (!moved) break;
-    }
-    mainPathRoomSet.add('1,1');
-  }
+  // ── 4. Ruta A: start → owner (the correct path) ───────────────────────────
+  const rutaA = trace(`${ownerTile.tx},${ownerTile.ty}`, prev);
+  const rutaASet = new Set(rutaA.map(p=>`${p.tx},${p.ty}`));
+  const rutaARooms = rutaA.filter(p=>p.tx%2===1&&p.ty%2===1);
 
-  // ── 5.5. Off-path connected components ───────────────────────────────────
-  // BFS through open passages without crossing main-path rooms.
-  // Two off-path rooms in different components (branching from different main-path nodes)
-  // must never be directly connected — doing so would create a shortcut bypassing
-  // part of the correct path.
-  const offPathComp = new Map<string, number>();
-  let nextComp = 0;
-  for (let ry = 0; ry < roomsH; ry++) {
-    for (let rx = 0; rx < roomsW; rx++) {
-      const rk = `${rx * 2 + 1},${ry * 2 + 1}`;
-      if (mainPathRoomSet.has(rk) || offPathComp.has(rk)) continue;
-      const cid = nextComp++;
-      const compQ: [number, number][] = [[rx, ry]];
-      offPathComp.set(rk, cid);
-      let ch = 0;
-      while (ch < compQ.length) {
-        const [cx, cy] = compQ[ch++];
-        for (const [ddx, ddy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
-          const nx = cx + ddx, ny = cy + ddy;
-          if (nx < 0 || nx >= roomsW || ny < 0 || ny >= roomsH) continue;
-          const nk = `${nx * 2 + 1},${ny * 2 + 1}`;
-          if (mainPathRoomSet.has(nk) || offPathComp.has(nk)) continue;
-          // Passage tile between these two room tiles must be open
-          const px = cx * 2 + 1 + ddx, py = cy * 2 + 1 + ddy;
-          if (grid[py][px] !== 0) continue;
-          offPathComp.set(nk, cid);
-          compQ.push([nx, ny]);
-        }
-      }
-    }
-  }
-
-  // ── 6. Controlled wall removal: Safe Loops only ───────────────────────────
-  // Count open passage tiles adjacent to a room tile
-  const openPassages = (rtx: number, rty: number): number => {
-    let c = 0;
-    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
-      const px = rtx + dx, py = rty + dy;
-      if (px > 0 && px < gridW - 1 && py > 0 && py < gridH - 1 && grid[py][px] === 0) c++;
-    }
-    return c;
-  };
-
-  // Count dead-ends among non-main-path, non-start, non-owner room tiles
-  const countNonPathDeadEnds = (): { total: number; deadEnds: number } => {
-    let total = 0, deadEnds = 0;
-    for (let ty = 1; ty < gridH; ty += 2) {
-      for (let tx = 1; tx < gridW; tx += 2) {
-        const k = `${tx},${ty}`;
-        if (k === '1,1' || k === `${ownerTile.tx},${ownerTile.ty}`) continue;
-        if (mainPathRoomSet.has(k)) continue;
-        total++;
-        if (openPassages(tx, ty) === 1) deadEnds++;
-      }
-    }
-    return { total, deadEnds };
-  };
-
-  // Candidate walls: internal passage walls whose both sides are non-main-path dead-end rooms
-  const safeWalls: [number, number][] = [];
-  for (let ty = 1; ty < gridH - 1; ty++) {
-    for (let tx = 1; tx < gridW - 1; tx++) {
-      if (grid[ty][tx] !== 1) continue;
-      if (!((tx % 2 === 0) !== (ty % 2 === 0))) continue; // only passage tiles
-      const [r1x, r1y, r2x, r2y] = tx % 2 === 0
-        ? [tx - 1, ty, tx + 1, ty]
-        : [tx, ty - 1, tx, ty + 1];
-      if (r1x <= 0 || r1y <= 0 || r2x >= gridW - 1 || r2y >= gridH - 1) continue;
-      if (grid[r1y][r1x] !== 0 || grid[r2y][r2x] !== 0) continue;
-      const r1k = `${r1x},${r1y}`, r2k = `${r2x},${r2y}`;
-      // Both rooms must be off the main path (this also protects the last-third zone)
-      if (mainPathRoomSet.has(r1k) || mainPathRoomSet.has(r2k)) continue;
-      // Both rooms must currently be dead-ends
-      if (openPassages(r1x, r1y) !== 1 || openPassages(r2x, r2y) !== 1) continue;
-      // Both rooms must be in the same off-path component to prevent cross-branch shortcuts
-      if (offPathComp.get(r1k) !== offPathComp.get(r2k)) continue;
-      safeWalls.push([tx, ty]);
-    }
-  }
-
-  for (let i = safeWalls.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [safeWalls[i], safeWalls[j]] = [safeWalls[j], safeWalls[i]];
-  }
-
-  // Remove at most as many walls as the 60% dead-end floor allows
-  // Each removal turns 2 dead-ends into non-dead-ends, so max = floor((D - 60%·T) / 2)
-  const { total: T, deadEnds: D } = countNonPathDeadEnds();
-  const maxRem = T > 0 ? Math.max(0, Math.floor((D - Math.ceil(T * 0.60)) / 2)) : 0;
-  for (let i = 0; i < Math.min(maxRem, safeWalls.length); i++) {
-    const [wtx, wty] = safeWalls[i];
-    grid[wty][wtx] = 0;
-  }
-
-  // ── 7. Dead-end the owner tile (keep only one entry passage) ─────────────
-  const { tx: ownTx, ty: ownTy } = ownerTile;
-  const adjPassages = (
-    [[ownTx + 1, ownTy], [ownTx - 1, ownTy], [ownTx, ownTy + 1], [ownTx, ownTy - 1]] as [number,number][]
-  ).filter(([px, py]) =>
-    px > 0 && px < gridW - 1 && py > 0 && py < gridH - 1 && grid[py][px] === 0
+  // ── 5. Ruta B: longest path via the other start exit, never touching Ruta A ─
+  // rutaA[1] is the passage tile immediately after start — tells us which exit A uses
+  const aExit = rutaA.length > 1 ? rutaA[1] : null;
+  const bStartExits = ([[2,1],[1,2]] as [number,number][]).filter(
+    ([ex,ey]) => tree[ey][ex]===0 && !(ex===(aExit?.tx??-1) && ey===(aExit?.ty??-1))
   );
-  if (adjPassages.length > 1) {
-    for (let i = adjPassages.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [adjPassages[i], adjPassages[j]] = [adjPassages[j], adjPassages[i]];
+  let rutaB: TilePos[] = [];
+  for (const [bex,bey] of bStartExits) {
+    const bp = new Map<string,string>([[`${bex},${bey}`,'1,1']]);
+    const bd = new Map<string,number>([[`${bex},${bey}`,1]]);
+    const bq2: [number,number][] = [[bex,bey]]; let bh2=0;
+    while (bh2<bq2.length) {
+      const [tx,ty]=bq2[bh2++];
+      for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
+        const nx=tx+dx, ny=ty+dy;
+        if (nx<0||nx>=gridW||ny<0||ny>=gridH) continue;
+        if (tree[ny][nx]!==0) continue;
+        const k=`${nx},${ny}`;
+        if (bp.has(k)||rutaASet.has(k)) continue;
+        bp.set(k,`${tx},${ty}`); bd.set(k,(bd.get(`${tx},${ty}`)??0)+1); bq2.push([nx,ny]);
+      }
     }
-    for (let i = 1; i < adjPassages.length; i++) {
-      const [px, py] = adjPassages[i];
-      grid[py][px] = 1;
+    let bestBK=`${bex},${bey}`, bestBD=0;
+    for (const [k,d] of bd) {
+      const [tx,ty]=k.split(',').map(Number);
+      if (tx%2===1&&ty%2===1&&d>bestBD) { bestBD=d; bestBK=k; }
+    }
+    const cand = trace(bestBK, bp);
+    if (cand.length > rutaB.length) rutaB = cand;
+  }
+  // Trim Ruta B so its room count ≤ Ruta A room count
+  { let rc=0; const t: TilePos[]=[];
+    for (const p of rutaB) { t.push(p); if (p.tx%2===1&&p.ty%2===1&&++rc>=rutaARooms.length) break; }
+    rutaB=t; }
+  const rutaBSet = new Set(rutaB.map(p=>`${p.tx},${p.ty}`));
+
+  // ── 6. Fork: dead-end branch at ~50% of Ruta A, ~30% of its length ───────
+  let fork: TilePos[] = [];
+  if (rutaARooms.length >= 4) {
+    const mid = rutaARooms[Math.floor(rutaARooms.length*0.5)];
+    const forkTarget = Math.max(2, Math.floor(rutaARooms.length*0.3));
+    const blocked = new Set([...rutaASet,...rutaBSet]);
+    const fp = new Map<string,string>([[`${mid.tx},${mid.ty}`,'']]);
+    const fd = new Map<string,number>([[`${mid.tx},${mid.ty}`,0]]);
+    const fq2: [number,number][] = [[mid.tx,mid.ty]]; let fh2=0;
+    while (fh2<fq2.length) {
+      const [tx,ty]=fq2[fh2++];
+      for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
+        const nx=tx+dx, ny=ty+dy;
+        if (nx<0||nx>=gridW||ny<0||ny>=gridH) continue;
+        if (tree[ny][nx]!==0) continue;
+        const k=`${nx},${ny}`;
+        if (fp.has(k)||blocked.has(k)) continue;
+        fp.set(k,`${tx},${ty}`); fd.set(k,(fd.get(`${tx},${ty}`)??0)+1); fq2.push([nx,ny]);
+      }
+    }
+    let bestFK='', maxFD=-1;
+    for (const [k,d] of fd) {
+      const [tx,ty]=k.split(',').map(Number);
+      if (tx%2===1&&ty%2===1&&d>maxFD) { maxFD=d; bestFK=k; }
+    }
+    if (bestFK) {
+      const raw = trace(bestFK, fp);
+      let rc=0; const t: TilePos[]=[];
+      for (const p of raw) { t.push(p); if (p.tx%2===1&&p.ty%2===1&&++rc>=forkTarget) break; }
+      fork=t;
     }
   }
+
+  // ── 7. Build final grid: all walls → open only Ruta A + Ruta B + Fork ────
+  const grid = Array.from({ length: gridH }, () => new Array(gridW).fill(1));
+  for (const {tx,ty} of [...rutaA,...rutaB,...fork]) grid[ty][tx]=0;
 
   return { grid, ownerTile };
 }
@@ -392,7 +330,7 @@ export class NotMyDogScene extends Phaser.Scene {
 
     // Background
     const bgGfx = this.add.graphics();
-    bgGfx.fillStyle(0x1A3A0A);
+    bgGfx.fillStyle(0xC8E8B0);
     bgGfx.fillRect(0, 0, SW, SH);
 
     // ── Generate maze (Maximum Distance algorithm) ────────

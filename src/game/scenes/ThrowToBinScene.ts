@@ -9,7 +9,7 @@ const TRASH_KEYS  = [
 ];
 const MAX_PULL        = 140;
 const MIN_SPEED       = 700;
-const MAX_SPEED       = 1200;
+const MAX_SPEED       = 980;
 const GRAVITY         = 1000;
 const MAX_FLOOR_ITEMS = 10;
 const FLOOR_Y_RATIO   = 0.78;
@@ -451,7 +451,7 @@ export class ThrowToBinScene extends Phaser.Scene {
   private buildBin(W: number) {
     this.binCX    = W / 2;
     this.binRimY  = 165;
-    this.binHalfW = 62;
+    this.binHalfW = 71;
     this.binBodyH = 130;
 
     const cx = 0, ry = this.binRimY, hw = this.binHalfW, bh = this.binBodyH, bw = hw * 2;
@@ -715,6 +715,9 @@ export class ThrowToBinScene extends Phaser.Scene {
       if (ti.done) { this.thrownItems.splice(i, 1); continue; }
 
       ti.vy += GRAVITY * dt;
+      // Gentle horizontal pull toward bin centre (subtle, not obvious)
+      const bDx = this.binCX - ti.container.x;
+      if (Math.abs(bDx) > 12) ti.vx += Math.sign(bDx) * 55 * dt;
       ti.container.x += ti.vx * dt;
       ti.container.y += ti.vy * dt;
       ti.container.angle += ti.rotDir * 4;

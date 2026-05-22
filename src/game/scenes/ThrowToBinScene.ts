@@ -25,6 +25,7 @@ interface ThrownItem {
 interface FallingItem {
   container: Phaser.GameObjects.Container;
   vx: number; vy: number; rotDir: number; bounces: number;
+  settleY: number; // pre-assigned final resting height — no teleport after bounce
 }
 
 export class ThrowToBinScene extends Phaser.Scene {
@@ -394,24 +395,24 @@ export class ThrowToBinScene extends Phaser.Scene {
     const c       = this.add.container(startX, startY, [shadow, trashGO]);
     c.setSize(64, 64).setDepth(8);
 
-    const rotDir = fromLeft ? 1 : -1;
-    this.fallingItems.push({ container: c, vx, vy, rotDir, bounces: 0 });
+    const rotDir  = fromLeft ? 1 : -1;
+    const settleY = this.floorY - Phaser.Math.Between(0, 114);
+    this.fallingItems.push({ container: c, vx, vy, rotDir, bounces: 0, settleY });
   }
 
   private settleItem(c: Phaser.GameObjects.Container) {
-    const W       = this.cameras.main.width;
-    const sx      = Phaser.Math.Clamp(c.x, 65, W - 65);
-    const yOff    = Phaser.Math.Between(0, 114);
-    const settleY = this.floorY - yOff;
+    const W  = this.cameras.main.width;
+    const sx = Phaser.Math.Clamp(c.x, 65, W - 65);
+    const sy = c.y; // already at pre-assigned settleY — no random teleport
 
-    c.setPosition(sx, settleY);
+    c.setPosition(sx, sy);
     c.setAngle(0);
     c.setInteractive();
     c.setData('ox', sx);
-    c.setData('oy', settleY);
+    c.setData('oy', sy);
 
     this.tweens.add({
-      targets: c, y: settleY - 14,
+      targets: c, y: sy - 14,
       duration: 900 + Phaser.Math.Between(0, 300),
       yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
@@ -740,7 +741,8 @@ export class ThrowToBinScene extends Phaser.Scene {
 
       // Missed bin → convert to bouncing item at floor
       if (ti.vy > 0 && ti.container.y >= this.floorY) {
-        this.fallingItems.push({ container: ti.container, vx: ti.vx * 0.5, vy: ti.vy, rotDir: ti.rotDir, bounces: 0 });
+        const settleY = this.floorY - Phaser.Math.Between(0, 114);
+        this.fallingItems.push({ container: ti.container, vx: ti.vx * 0.5, vy: ti.vy, rotDir: ti.rotDir, bounces: 0, settleY });
         this.thrownItems.splice(i, 1); continue;
       }
     }
@@ -759,11 +761,11 @@ export class ThrowToBinScene extends Phaser.Scene {
       if (fi.container.x < 30)     { fi.container.x = 30;     fi.vx =  Math.abs(fi.vx) * 0.6; }
       if (fi.container.x > W - 30) { fi.container.x = W - 30; fi.vx = -Math.abs(fi.vx) * 0.6; }
 
-      // Floor bounce → settle
-      if (fi.container.y >= this.floorY && fi.vy > 0) {
+      // Floor bounce → settle at pre-assigned height (no teleport after bounce)
+      if (fi.container.y >= fi.settleY && fi.vy > 0) {
         fi.vy = -fi.vy * 0.35;
         fi.vx *= 0.7;
-        fi.container.y = this.floorY;
+        fi.container.y = fi.settleY;
         fi.bounces++;
 
         if (Math.abs(fi.vy) < 80 || fi.bounces >= 4) {

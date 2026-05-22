@@ -1745,7 +1745,7 @@ function M1TutorialOverlay({
 
       {/* ── Ghost trash SVG — full parabolic arc ──────────────── */}
       <motion.img
-        src="/trash/banana_peel.svg"
+        src="/recycling/organic_1.png"
         animate={
           gPhase === 1
             ? { x: KFX, y: KFY, rotate: KFR, opacity: KFO }

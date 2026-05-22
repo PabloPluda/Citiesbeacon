@@ -59,6 +59,7 @@ export default function MissionMap() {
           scrollSnapType: 'x mandatory',
           scrollPaddingLeft: 24,
           paddingLeft: 24,
+          paddingBottom: 20,
           gap: 16,
           scrollbarWidth: 'none' as never,
         }}
@@ -112,7 +113,7 @@ export default function MissionMap() {
 
 function CityBuilderCard({ onPlay }: { onPlay: () => void }) {
   const w = 'calc(100vw - 48px)';
-  const h = 'calc((100vw - 48px) * 0.4)';
+  const h = 'calc((100vw - 48px) * 0.52)';
 
   return (
     <motion.div

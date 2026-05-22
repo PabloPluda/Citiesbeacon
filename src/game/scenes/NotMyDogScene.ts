@@ -274,114 +274,75 @@ export class NotMyDogScene extends Phaser.Scene {
 
     const roomsX = Math.floor((width - 1) / 2);
     const roomsY = Math.floor((height - 1) / 2);
-    const visitedRooms = Array(roomsY).fill(null).map(() => Array(roomsX).fill(false));
+    const visited = Array(roomsY).fill(null).map(() => Array(roomsX).fill(false));
 
-    const startLogicalX = 0, startLogicalY = 0;
-    const startTileX = startLogicalX * 2 + 1, startTileY = startLogicalY * 2 + 1;
-    grid[startTileY][startTileX] = 0;
-    visitedRooms[startLogicalY][startLogicalX] = true;
+    const adj: Record<string, string[]> = {};
+    for (let ry = 0; ry < roomsY; ry++)
+      for (let rx = 0; rx < roomsX; rx++)
+        adj[`${rx*2+1},${ry*2+1}`] = [];
 
-    const splitterLogicalX = 2;
-    const isRoomValid = (rx: number, ry: number) => rx >= 0 && rx < roomsX && ry >= 0 && ry < roomsY;
-
-    // Carve a fixed initial sequence, opening rooms and the passages between them
-    const carveSequence = (seq: {rx:number,ry:number}[]) => {
-      seq.forEach((pos, i) => {
-        const tx = pos.rx * 2 + 1, ty = pos.ry * 2 + 1;
-        grid[ty][tx] = 0;
-        visitedRooms[pos.ry][pos.rx] = true;
-        if (i > 0) {
-          const p = seq[i - 1];
-          grid[(p.ry*2+1)+(pos.ry-p.ry)][(p.rx*2+1)+(pos.rx-p.rx)] = 0;
-        }
-      });
-    };
-
-    carveSequence([
-      {rx:0,ry:0},{rx:0,ry:1},{rx:0,ry:2},{rx:1,ry:2},{rx:1,ry:1},{rx:2,ry:1},{rx:2,ry:0}
-    ]);
-
-    visitedRooms[0][1] = true;
-    visitedRooms[0][2] = true;
-
-    // Carve Path B's far-right segment (skip rooms 0–2 which belong to start corridor)
-    const pathBLogical = [
-      {rx:0,ry:0},{rx:1,ry:0},{rx:2,ry:0},{rx:3,ry:0},{rx:4,ry:0},{rx:4,ry:1},{rx:4,ry:2}
-    ];
-    pathBLogical.forEach((pos, i) => {
-      if (i < 3) return;
-      const tx = pos.rx * 2 + 1, ty = pos.ry * 2 + 1;
-      grid[ty][tx] = 0;
-      visitedRooms[pos.ry][pos.rx] = true;
-      const p = pathBLogical[i - 1];
-      grid[(p.ry*2+1)+(pos.ry-p.ry)][(p.rx*2+1)+(pos.rx-p.rx)] = 0;
-    });
-
-    // Interleaved DFS fill with territorial constraints
-    const stackA: {rx:number,ry:number}[] = [{rx:2,ry:0}];
-    const stackB: {rx:number,ry:number}[] = [{rx:4,ry:2}];
-    let turnA = true;
+    grid[1][1] = 0;
+    visited[0][0] = true;
 
     const dirs = [
       {drx:1,dry:0,dwx:1,dwy:0},{drx:-1,dry:0,dwx:-1,dwy:0},
       {drx:0,dry:1,dwx:0,dwy:1},{drx:0,dry:-1,dwx:0,dwy:-1}
     ];
 
-    while (stackA.length > 0 || stackB.length > 0) {
-      const isA = turnA;
-      const currentStack = isA ? stackA : stackB;
-      turnA = !turnA;
-      if (currentStack.length === 0) continue;
-
-      const cur = currentStack[currentStack.length - 1];
-      const ctx = cur.rx * 2 + 1, cty = cur.ry * 2 + 1;
-      const neighbors: {rx:number,ry:number,wallX:number,wallY:number}[] = [];
+    // Weighted DFS: bias toward down and bottom-left to fill corners
+    const stack: {rx:number,ry:number}[] = [{rx:0,ry:0}];
+    while (stack.length > 0) {
+      const cur = stack[stack.length - 1];
+      const ctx = cur.rx*2+1, cty = cur.ry*2+1;
+      const neighbors: {rx:number,ry:number,wx:number,wy:number,w:number}[] = [];
 
       dirs.forEach(d => {
-        const nrx = cur.rx + d.drx, nry = cur.ry + d.dry;
-        if (!isRoomValid(nrx, nry) || visitedRooms[nry][nrx]) return;
-        const inA = nrx <= splitterLogicalX;
-        if (isA ? inA : !inA)
-          neighbors.push({rx:nrx, ry:nry, wallX:ctx+d.dwx, wallY:cty+d.dwy});
+        const nrx = cur.rx+d.drx, nry = cur.ry+d.dry;
+        if (nrx<0||nrx>=roomsX||nry<0||nry>=roomsY||visited[nry][nrx]) return;
+        let w = Math.random();
+        if (d.dry === 1) w += 0.5;
+        if (d.drx === -1 && cur.ry > roomsY/2) w += 0.4;
+        neighbors.push({rx:nrx,ry:nry,wx:ctx+d.dwx,wy:cty+d.dwy,w});
       });
 
       if (neighbors.length > 0) {
-        const next = neighbors[Math.floor(Math.random() * neighbors.length)];
-        grid[next.ry*2+1][next.rx*2+1] = 0;
-        grid[next.wallY][next.wallX] = 0;
-        visitedRooms[next.ry][next.rx] = true;
-        currentStack.push({rx:next.rx, ry:next.ry});
+        neighbors.sort((a,b) => b.w - a.w);
+        const next = neighbors[0];
+        const ntx = next.rx*2+1, nty = next.ry*2+1;
+        grid[nty][ntx] = 0;
+        grid[next.wy][next.wx] = 0;
+        const u = `${ctx},${cty}`, v = `${ntx},${nty}`;
+        adj[u].push(v); adj[v].push(u);
+        visited[next.ry][next.rx] = true;
+        stack.push({rx:next.rx,ry:next.ry});
       } else {
-        currentStack.pop();
+        stack.pop();
       }
     }
 
-    // BFS on physical grid to find farthest reachable room → owner placement
-    const distances = Array(roomsY).fill(null).map(() => Array(roomsX).fill(-1));
-    distances[startLogicalY][startLogicalX] = 0;
-    const bfsQueue: {rx:number,ry:number}[] = [{rx:startLogicalX, ry:startLogicalY}];
-    let maxDist = -1, farthestRoom = {rx:startLogicalX, ry:startLogicalY};
+    // Force both exits from start for the fork
+    grid[1][2]=0; grid[2][1]=0; grid[1][3]=0; grid[3][1]=0;
+    if (!adj['1,1'].includes('3,1')) { adj['1,1'].push('3,1'); adj['3,1'].push('1,1'); }
+    if (!adj['1,1'].includes('1,3')) { adj['1,1'].push('1,3'); adj['1,3'].push('1,1'); }
 
-    while (bfsQueue.length > 0) {
-      const cur = bfsQueue.shift()!;
-      const d = distances[cur.ry][cur.rx];
-      if (d > maxDist) { maxDist = d; farthestRoom = {rx:cur.rx, ry:cur.ry}; }
-      const ctx = cur.rx * 2 + 1, cty = cur.ry * 2 + 1;
-      dirs.forEach(dir => {
-        const nrx = cur.rx + dir.drx, nry = cur.ry + dir.dry;
-        if (isRoomValid(nrx, nry) && distances[nry][nrx] === -1 && grid[cty+dir.dwy][ctx+dir.dwx] === 0) {
-          distances[nry][nrx] = d + 1;
-          bfsQueue.push({rx:nrx, ry:nry});
-        }
-      });
+    // BFS to place owner at the farthest room
+    const dist: Record<string,number> = {'1,1':0};
+    const bq: string[] = ['1,1'];
+    let maxDist = -1, farthest = '1,1';
+    while (bq.length > 0) {
+      const curr = bq.shift()!;
+      if (dist[curr] > maxDist) { maxDist = dist[curr]; farthest = curr; }
+      for (const nb of adj[curr]) {
+        if (dist[nb] === undefined) { dist[nb] = dist[curr]+1; bq.push(nb); }
+      }
     }
 
-    const ownerTile = { tx: farthestRoom.rx * 2 + 1, ty: farthestRoom.ry * 2 + 1 };
+    const [ox,oy] = farthest.split(',').map(Number);
+    const ownerTile = {tx:ox, ty:oy};
     grid[ownerTile.ty][ownerTile.tx] = 0;
-    grid[startTileY][startTileX] = 0;
 
-    for (let x = 0; x < width; x++) { grid[0][x] = 1; grid[height-1][x] = 1; }
-    for (let y = 0; y < height; y++) { grid[y][0] = 1; grid[y][width-1] = 1; }
+    for (let x=0;x<width;x++) { grid[0][x]=1; grid[height-1][x]=1; }
+    for (let y=0;y<height;y++) { grid[y][0]=1; grid[y][width-1]=1; }
 
     return { grid, ownerTile };
   }

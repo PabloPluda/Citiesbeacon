@@ -44,154 +44,6 @@ function getLevelConfig(level: number): LevelConfig {
   return LEVELS[Math.min(level - 1, LEVELS.length - 1)];
 }
 
-// ─── Maze Generator (Two-Branch: one correct path to owner, one false dead-end) ─
-//
-// 1. DFS spanning tree covers every room (no loops by definition).
-// 2. Force both exits from start (right + down) so there are always two branches.
-// 3. BFS from start with prev tracking → farthest room = owner (Ruta A end).
-// 4. Ruta A: traced path start → owner.
-// 5. Ruta B: longest path reachable via the other start exit, never crossing Ruta A.
-//    Trimmed so its room-count ≤ Ruta A room-count.
-// 6. Fork: dead-end branch at the midpoint of Ruta A (~30% of A length).
-// 7. Final grid: all walls. Only Ruta A + Ruta B + Fork tiles are opened.
-//    Result: exactly two long paths from start, one leading to owner, one a dead-end.
-//
-function generateMaze(roomsW: number, roomsH: number): { grid: number[][]; ownerTile: TilePos } {
-  const gridW = roomsW * 2 + 1;
-  const gridH = roomsH * 2 + 1;
-
-  // ── 1. DFS spanning tree (all rooms visited, zero loops) ─────────────────
-  const tree = Array.from({ length: gridH }, () => new Array(gridW).fill(1));
-  const vis  = Array.from({ length: roomsH }, () => new Array(roomsW).fill(false));
-  function dfs(rx: number, ry: number) {
-    vis[ry][rx] = true;
-    tree[ry*2+1][rx*2+1] = 0;
-    const dirs: [number,number][] = [[1,0],[-1,0],[0,1],[0,-1]];
-    for (let i = dirs.length-1; i > 0; i--) {
-      const j = Math.floor(Math.random()*(i+1)); [dirs[i],dirs[j]]=[dirs[j],dirs[i]];
-    }
-    for (const [dx,dy] of dirs) {
-      const nx=rx+dx, ny=ry+dy;
-      if (nx<0||nx>=roomsW||ny<0||ny>=roomsH||vis[ny][nx]) continue;
-      tree[ry*2+1+dy][rx*2+1+dx]=0; dfs(nx,ny);
-    }
-  }
-  dfs(0,0);
-  // Force both exits from start so there are always two branches
-  if (gridW > 2) tree[1][2] = 0;
-  if (gridH > 2) tree[2][1] = 0;
-
-  // ── 2. BFS from (1,1) with prev tracking ─────────────────────────────────
-  const dist = Array.from({ length: gridH }, () => new Array(gridW).fill(-1));
-  const prev = new Map<string,string>([['1,1','']]);
-  dist[1][1] = 0;
-  const bq: [number,number][] = [[1,1]]; let bh=0;
-  while (bh < bq.length) {
-    const [tx,ty]=bq[bh++];
-    for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
-      const nx=tx+dx, ny=ty+dy;
-      if (nx<0||nx>=gridW||ny<0||ny>=gridH) continue;
-      if (tree[ny][nx]!==0||dist[ny][nx]!==-1) continue;
-      dist[ny][nx]=dist[ty][tx]+1; prev.set(`${nx},${ny}`,`${tx},${ty}`); bq.push([nx,ny]);
-    }
-  }
-
-  // ── 3. Owner = farthest room tile from start ──────────────────────────────
-  let maxD=-1; let ownerTile: TilePos = {tx:gridW-2,ty:gridH-2};
-  for (let ty=1;ty<gridH;ty+=2) for (let tx=1;tx<gridW;tx+=2)
-    if (!(tx===1&&ty===1)&&dist[ty][tx]>maxD) { maxD=dist[ty][tx]; ownerTile={tx,ty}; }
-
-  // ── Helper: trace ordered tile path back to start via a prev map ──────────
-  function trace(endKey: string, prevMap: Map<string,string>): TilePos[] {
-    const path: TilePos[]=[];
-    let cur=endKey;
-    while (cur!==''&&prevMap.has(cur)) {
-      const [tx,ty]=cur.split(',').map(Number); path.unshift({tx,ty});
-      cur=prevMap.get(cur)??'';
-    }
-    return path;
-  }
-
-  // ── 4. Ruta A: start → owner (the correct path) ───────────────────────────
-  const rutaA = trace(`${ownerTile.tx},${ownerTile.ty}`, prev);
-  const rutaASet = new Set(rutaA.map(p=>`${p.tx},${p.ty}`));
-  const rutaARooms = rutaA.filter(p=>p.tx%2===1&&p.ty%2===1);
-
-  // ── 5. Ruta B: longest path via the other start exit, never touching Ruta A ─
-  // rutaA[1] is the passage tile immediately after start — tells us which exit A uses
-  const aExit = rutaA.length > 1 ? rutaA[1] : null;
-  const bStartExits = ([[2,1],[1,2]] as [number,number][]).filter(
-    ([ex,ey]) => tree[ey][ex]===0 && !(ex===(aExit?.tx??-1) && ey===(aExit?.ty??-1))
-  );
-  let rutaB: TilePos[] = [];
-  for (const [bex,bey] of bStartExits) {
-    const bp = new Map<string,string>([[`${bex},${bey}`,'1,1']]);
-    const bd = new Map<string,number>([[`${bex},${bey}`,1]]);
-    const bq2: [number,number][] = [[bex,bey]]; let bh2=0;
-    while (bh2<bq2.length) {
-      const [tx,ty]=bq2[bh2++];
-      for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
-        const nx=tx+dx, ny=ty+dy;
-        if (nx<0||nx>=gridW||ny<0||ny>=gridH) continue;
-        if (tree[ny][nx]!==0) continue;
-        const k=`${nx},${ny}`;
-        if (bp.has(k)||rutaASet.has(k)) continue;
-        bp.set(k,`${tx},${ty}`); bd.set(k,(bd.get(`${tx},${ty}`)??0)+1); bq2.push([nx,ny]);
-      }
-    }
-    let bestBK=`${bex},${bey}`, bestBD=0;
-    for (const [k,d] of bd) {
-      const [tx,ty]=k.split(',').map(Number);
-      if (tx%2===1&&ty%2===1&&d>bestBD) { bestBD=d; bestBK=k; }
-    }
-    const cand = trace(bestBK, bp);
-    if (cand.length > rutaB.length) rutaB = cand;
-  }
-  // Trim Ruta B so its room count ≤ Ruta A room count
-  { let rc=0; const t: TilePos[]=[];
-    for (const p of rutaB) { t.push(p); if (p.tx%2===1&&p.ty%2===1&&++rc>=rutaARooms.length) break; }
-    rutaB=t; }
-  const rutaBSet = new Set(rutaB.map(p=>`${p.tx},${p.ty}`));
-
-  // ── 6. Fork: dead-end branch at ~50% of Ruta A, ~30% of its length ───────
-  let fork: TilePos[] = [];
-  if (rutaARooms.length >= 4) {
-    const mid = rutaARooms[Math.floor(rutaARooms.length*0.5)];
-    const forkTarget = Math.max(2, Math.floor(rutaARooms.length*0.3));
-    const blocked = new Set([...rutaASet,...rutaBSet]);
-    const fp = new Map<string,string>([[`${mid.tx},${mid.ty}`,'']]);
-    const fd = new Map<string,number>([[`${mid.tx},${mid.ty}`,0]]);
-    const fq2: [number,number][] = [[mid.tx,mid.ty]]; let fh2=0;
-    while (fh2<fq2.length) {
-      const [tx,ty]=fq2[fh2++];
-      for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
-        const nx=tx+dx, ny=ty+dy;
-        if (nx<0||nx>=gridW||ny<0||ny>=gridH) continue;
-        if (tree[ny][nx]!==0) continue;
-        const k=`${nx},${ny}`;
-        if (fp.has(k)||blocked.has(k)) continue;
-        fp.set(k,`${tx},${ty}`); fd.set(k,(fd.get(`${tx},${ty}`)??0)+1); fq2.push([nx,ny]);
-      }
-    }
-    let bestFK='', maxFD=-1;
-    for (const [k,d] of fd) {
-      const [tx,ty]=k.split(',').map(Number);
-      if (tx%2===1&&ty%2===1&&d>maxFD) { maxFD=d; bestFK=k; }
-    }
-    if (bestFK) {
-      const raw = trace(bestFK, fp);
-      let rc=0; const t: TilePos[]=[];
-      for (const p of raw) { t.push(p); if (p.tx%2===1&&p.ty%2===1&&++rc>=forkTarget) break; }
-      fork=t;
-    }
-  }
-
-  // ── 7. Build final grid: all walls → open only Ruta A + Ruta B + Fork ────
-  const grid = Array.from({ length: gridH }, () => new Array(gridW).fill(1));
-  for (const {tx,ty} of [...rutaA,...rutaB,...fork]) grid[ty][tx]=0;
-
-  return { grid, ownerTile };
-}
 
 const FUN_MESSAGES = [
   'Good job! 🐾', "Don't lose him!",
@@ -334,7 +186,7 @@ export class NotMyDogScene extends Phaser.Scene {
     bgGfx.fillRect(0, 0, SW, SH);
 
     // ── Generate maze (Maximum Distance algorithm) ────────
-    const result = generateMaze(this.cfg.roomsW, this.cfg.roomsH);
+    const result = this.generateMaze(this.gridW, this.gridH);
     this.grid      = result.grid;
     this.ownerTile = result.ownerTile;
     this.assignTileVariants();
@@ -414,6 +266,70 @@ export class NotMyDogScene extends Phaser.Scene {
 
   private emitScore() {
     EventBus.emit('game-scored-update', this.cfg.hasDoors ? `🔧${this.leversCollected}/1` : '🐾');
+  }
+
+  // ── Maze generation ───────────────────────────────────────────────────────
+  private generateMaze(width: number, height: number): { grid: number[][], ownerTile: { tx: number, ty: number } } {
+    const grid: number[][] = Array(height).fill(null).map(() => Array(width).fill(1));
+
+    const roomsX = Math.floor((width - 1) / 2);
+    const roomsY = Math.floor((height - 1) / 2);
+    const visited = Array(roomsY).fill(null).map(() => Array(roomsX).fill(false));
+
+    grid[1][1] = 0;
+    visited[0][0] = true;
+
+    grid[1][2] = 0; grid[2][1] = 0;
+    grid[1][3] = 0; grid[3][1] = 0;
+    visited[0][1] = true;
+    visited[1][0] = true;
+
+    const stackA: {rx: number, ry: number}[] = [{rx: 1, ry: 0}];
+    const stackB: {rx: number, ry: number}[] = [{rx: 0, ry: 1}];
+    let turnA = true;
+
+    const dirs = [
+      {drx:1,dry:0,dwx:1,dwy:0},{drx:-1,dry:0,dwx:-1,dwy:0},
+      {drx:0,dry:1,dwx:0,dwy:1},{drx:0,dry:-1,dwx:0,dwy:-1}
+    ];
+
+    while (stackA.length > 0 || stackB.length > 0) {
+      const stack = turnA ? stackA : stackB;
+      turnA = !turnA;
+      if (stack.length === 0) continue;
+
+      const cur = stack[stack.length - 1];
+      const neighbors: {rx:number,ry:number,wallX:number,wallY:number}[] = [];
+
+      dirs.forEach(d => {
+        const nrx = cur.rx + d.drx, nry = cur.ry + d.dry;
+        if (nrx >= 0 && nrx < roomsX && nry >= 0 && nry < roomsY && !visited[nry][nrx]) {
+          neighbors.push({
+            rx: nrx, ry: nry,
+            wallX: (cur.rx * 2 + 1) + d.dwx,
+            wallY: (cur.ry * 2 + 1) + d.dwy
+          });
+        }
+      });
+
+      if (neighbors.length > 0) {
+        const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+        grid[next.ry * 2 + 1][next.rx * 2 + 1] = 0;
+        grid[next.wallY][next.wallX] = 0;
+        visited[next.ry][next.rx] = true;
+        stack.push({rx: next.rx, ry: next.ry});
+      } else {
+        stack.pop();
+      }
+    }
+
+    const ownerTile = { tx: (roomsX - 1) * 2 + 1, ty: (roomsY - 1) * 2 + 1 };
+    grid[ownerTile.ty][ownerTile.tx] = 0;
+
+    for (let x = 0; x < width; x++) { grid[0][x] = 1; grid[height-1][x] = 1; }
+    for (let y = 0; y < height; y++) { grid[y][0] = 1; grid[y][width-1] = 1; }
+
+    return { grid, ownerTile };
   }
 
   // ── Tile variant assignment (called once after maze generation) ──────────

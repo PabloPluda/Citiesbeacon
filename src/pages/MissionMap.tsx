@@ -42,7 +42,7 @@ export default function MissionMap() {
         flexShrink: 0,
         display: 'flex',
         justifyContent: 'center',
-        padding: '12px 24px 8px',
+        padding: '12px 24px 4px',
       }}>
         <CityBuilderCard onPlay={() => navigate('/game/7')} />
       </div>
@@ -59,7 +59,7 @@ export default function MissionMap() {
           scrollSnapType: 'x mandatory',
           scrollPaddingLeft: 24,
           paddingLeft: 24,
-          paddingBottom: 20,
+          paddingBottom: 48,
           gap: 16,
           scrollbarWidth: 'none' as never,
         }}
@@ -172,8 +172,8 @@ function CityBuilderCard({ onPlay }: { onPlay: () => void }) {
 // ─── Mission Card ──────────────────────────────────────────────────────────────
 
 function MissionCard({ imageFile, onPlay }: { imageFile: string; onPlay: () => void }) {
-  const w = 'calc(100vw - 80px)';
-  const h = 'calc((100vw - 80px) * 1.5)';
+  const w = 'calc((100vw - 80px) * 0.97)';
+  const h = 'calc((100vw - 80px) * 0.97 * 1.5)';
 
   return (
     <motion.div

@@ -6,8 +6,8 @@ import { useProgressStore } from '../store/progressStore';
 import { useAdminStore, DEFAULT_MISSION_CONFIG } from '../store/adminStore';
 import { useUserStore } from '../store/userStore';
 
-// Mission 4 (Water Saver) hidden until ready
-const MISSION_IDS = DEFAULT_MISSION_CONFIG.map(m => m.id).filter(id => id !== 4);
+// Mission 4 (Water Saver) hidden until ready. Mission 7 (CityBuilder) lives in its own fixed card.
+const MISSION_IDS = DEFAULT_MISSION_CONFIG.map(m => m.id).filter(id => id !== 4 && id !== 7);
 
 // Explicit image filename per mission ID (files live in public/missions/)
 const MISSION_IMAGE: Record<number, string> = {
@@ -32,17 +32,26 @@ export default function MissionMap() {
     <div style={{
       height: '100%',
       display: 'flex',
-      alignItems: 'center',
+      flexDirection: 'column',
       overflow: 'hidden',
       background: 'url(/background_map.jpg) center/cover no-repeat #1a2a4a',
     }}>
+
+      {/* ── CityBuilder fixed card ─────────────────────────────────────────── */}
+      <div style={{
+        flexShrink: 0,
+        display: 'flex',
+        justifyContent: 'center',
+        padding: '12px 24px 8px',
+      }}>
+        <CityBuilderCard onPlay={() => navigate('/game/7')} />
+      </div>
 
       {/* ── Horizontal scroll strip ────────────────────────────────────────── */}
       <div
         className="hide-scrollbar"
         style={{
-          width: '100%',
-          height: '100%',
+          flex: 1,
           display: 'flex',
           alignItems: 'center',
           overflowX: 'auto',
@@ -99,7 +108,67 @@ export default function MissionMap() {
   );
 }
 
-// ─── Card ─────────────────────────────────────────────────────────────────────
+// ─── CityBuilder Card (fixed, landscape) ──────────────────────────────────────
+
+function CityBuilderCard({ onPlay }: { onPlay: () => void }) {
+  const w = 'calc(100vw - 48px)';
+  const h = 'calc((100vw - 48px) * 0.4)';
+
+  return (
+    <motion.div
+      whileTap={{ scale: 0.97 }}
+      style={{
+        width: w,
+        height: h,
+        borderRadius: 22,
+        overflow: 'hidden',
+        position: 'relative',
+        backgroundImage: 'url(/missions/citybuilderHORIZ.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundColor: '#1E3A5F',
+        border: '1.5px solid rgba(0,0,0,0.7)',
+        boxShadow: '0 12px 36px rgba(0,0,0,0.55)',
+      }}
+    >
+      <div style={{
+        position: 'absolute',
+        bottom: 0, left: 0, right: 0,
+        height: 70,
+        background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent)',
+        pointerEvents: 'none',
+      }} />
+
+      <motion.button
+        whileTap={{ scale: 0.93 }}
+        onClick={onPlay}
+        style={{
+          position: 'absolute',
+          bottom: 12,
+          right: 14,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          background: 'linear-gradient(135deg, #22C55E, #15803D)',
+          border: 'none',
+          borderRadius: 99,
+          padding: '9px 16px',
+          color: '#fff',
+          fontFamily: 'Fredoka One, cursive',
+          fontSize: '0.88rem',
+          letterSpacing: '0.04em',
+          cursor: 'pointer',
+          boxShadow: '0 5px 0 #14532D, 0 6px 20px rgba(21,128,61,0.5)',
+        }}
+      >
+        <Play size={15} fill="white" strokeWidth={0} />
+        PLAY NOW
+      </motion.button>
+    </motion.div>
+  );
+}
+
+// ─── Mission Card ──────────────────────────────────────────────────────────────
 
 function MissionCard({ imageFile, onPlay }: { imageFile: string; onPlay: () => void }) {
   const w = 'calc(100vw - 80px)';

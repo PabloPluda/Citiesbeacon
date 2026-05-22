@@ -276,56 +276,68 @@ export class NotMyDogScene extends Phaser.Scene {
     const roomsY = Math.floor((height - 1) / 2);
     const visited = Array(roomsY).fill(null).map(() => Array(roomsX).fill(false));
 
-    grid[1][1] = 0;
+    const adj: Record<string, string[]> = {};
+    for (let ry = 0; ry < roomsY; ry++)
+      for (let rx = 0; rx < roomsX; rx++)
+        adj[`${rx*2+1},${ry*2+1}`] = [];
+
+    // DFS spanning tree (single global pass → organic, interleaved paths)
+    const stack: { rx: number, ry: number }[] = [{ rx: 0, ry: 0 }];
     visited[0][0] = true;
-
-    grid[1][2] = 0; grid[2][1] = 0;
-    grid[1][3] = 0; grid[3][1] = 0;
-    visited[0][1] = true;
-    visited[1][0] = true;
-
-    const stackA: {rx: number, ry: number}[] = [{rx: 1, ry: 0}];
-    const stackB: {rx: number, ry: number}[] = [{rx: 0, ry: 1}];
-    let turnA = true;
+    grid[1][1] = 0;
 
     const dirs = [
-      {drx:1,dry:0,dwx:1,dwy:0},{drx:-1,dry:0,dwx:-1,dwy:0},
-      {drx:0,dry:1,dwx:0,dwy:1},{drx:0,dry:-1,dwx:0,dwy:-1}
+      { drx:1,dry:0,dwx:1,dwy:0 }, { drx:-1,dry:0,dwx:-1,dwy:0 },
+      { drx:0,dry:1,dwx:0,dwy:1 }, { drx:0,dry:-1,dwx:0,dwy:-1 }
     ];
 
-    while (stackA.length > 0 || stackB.length > 0) {
-      const stack = turnA ? stackA : stackB;
-      turnA = !turnA;
-      if (stack.length === 0) continue;
-
+    while (stack.length > 0) {
       const cur = stack[stack.length - 1];
-      const neighbors: {rx:number,ry:number,wallX:number,wallY:number}[] = [];
+      const neighbors: { rx:number, ry:number, wx:number, wy:number }[] = [];
 
       dirs.forEach(d => {
         const nrx = cur.rx + d.drx, nry = cur.ry + d.dry;
-        if (nrx >= 0 && nrx < roomsX && nry >= 0 && nry < roomsY && !visited[nry][nrx]) {
-          neighbors.push({
-            rx: nrx, ry: nry,
-            wallX: (cur.rx * 2 + 1) + d.dwx,
-            wallY: (cur.ry * 2 + 1) + d.dwy
-          });
-        }
+        if (nrx >= 0 && nrx < roomsX && nry >= 0 && nry < roomsY && !visited[nry][nrx])
+          neighbors.push({ rx:nrx, ry:nry, wx:(cur.rx*2+1)+d.dwx, wy:(cur.ry*2+1)+d.dwy });
       });
 
       if (neighbors.length > 0) {
         const next = neighbors[Math.floor(Math.random() * neighbors.length)];
-        grid[next.ry * 2 + 1][next.rx * 2 + 1] = 0;
-        grid[next.wallY][next.wallX] = 0;
+        const u = `${cur.rx*2+1},${cur.ry*2+1}`;
+        const v = `${next.rx*2+1},${next.ry*2+1}`;
+        grid[next.ry*2+1][next.rx*2+1] = 0;
+        grid[next.wy][next.wx] = 0;
+        adj[u].push(v); adj[v].push(u);
         visited[next.ry][next.rx] = true;
-        stack.push({rx: next.rx, ry: next.ry});
+        stack.push({ rx: next.rx, ry: next.ry });
       } else {
         stack.pop();
       }
     }
 
-    const ownerTile = { tx: (roomsX - 1) * 2 + 1, ty: (roomsY - 1) * 2 + 1 };
+    // Force both exits from start so two branches are always available
+    grid[1][2] = 0; grid[2][1] = 0;
+    grid[1][3] = 0; grid[3][1] = 0;
+    if (!adj['1,1'].includes('3,1')) { adj['1,1'].push('3,1'); adj['3,1'].push('1,1'); }
+    if (!adj['1,1'].includes('1,3')) { adj['1,1'].push('1,3'); adj['1,3'].push('1,1'); }
+
+    // BFS from start to find the farthest room → owner goes there
+    const dist: Record<string, number> = { '1,1': 0 };
+    const bq: string[] = ['1,1'];
+    let maxDist = -1, farthest = '1,1';
+    while (bq.length > 0) {
+      const curr = bq.shift()!;
+      if (dist[curr] > maxDist) { maxDist = dist[curr]; farthest = curr; }
+      for (const nb of (adj[curr] ?? [])) {
+        if (dist[nb] === undefined) { dist[nb] = dist[curr] + 1; bq.push(nb); }
+      }
+    }
+
+    const [ox, oy] = farthest.split(',').map(Number);
+    const ownerTile = { tx: ox, ty: oy };
     grid[ownerTile.ty][ownerTile.tx] = 0;
 
+    // Enforce perimeter walls
     for (let x = 0; x < width; x++) { grid[0][x] = 1; grid[height-1][x] = 1; }
     for (let y = 0; y < height; y++) { grid[y][0] = 1; grid[y][width-1] = 1; }
 

@@ -13,8 +13,6 @@ const MAX_SPEED       = 980;
 const GRAVITY         = 1000;
 const MAX_FLOOR_ITEMS = 10;
 const FLOOR_Y_RATIO   = 0.78;
-const SPAWN_BASE      = 4000;  // 1 s faster than before
-const SPAWN_MIN       = 1500;
 const LEVEL_UP_COINS  = 50;
 
 interface ThrownItem {
@@ -372,8 +370,9 @@ export class ThrowToBinScene extends Phaser.Scene {
   // ─── Spawn from side ─────────────────────────────────────────────────────────
 
   private get spawnInterval(): number {
-    const base = Math.max(SPAWN_MIN + 200, SPAWN_BASE - (this.level - 1) * 500);
-    return Math.max(SPAWN_MIN, base - Math.floor(this.totalScored / 5) * 150);
+    if (this.level <= 3) return 5000;   // levels 1-3: easy start
+    if (this.level === 4) return 4000;  // 3rd level-up
+    return 3000;                        // 4th level-up onward
   }
 
   private spawnFromSide() {
@@ -396,7 +395,7 @@ export class ThrowToBinScene extends Phaser.Scene {
     c.setSize(64, 64).setDepth(8);
 
     const rotDir  = fromLeft ? 1 : -1;
-    const settleY = this.floorY - Phaser.Math.Between(0, 114);
+    const settleY = this.floorY - Phaser.Math.Between(0, 131);
     this.fallingItems.push({ container: c, vx, vy, rotDir, bounces: 0, settleY });
   }
 
@@ -657,12 +656,18 @@ export class ThrowToBinScene extends Phaser.Scene {
     const flying = this.thrownItems.length + this.fallingItems.length;
     if (floor === 0 && flying === 0 && this.totalScored > 0) {
       this.levelUpPending = true;
-      this.time.delayedCall(400, () => {
+      this.time.delayedCall(600, () => {
         this.level++;
         this.sessionCoins += LEVEL_UP_COINS;
         useProgressStore.getState().addCityCoins(LEVEL_UP_COINS);
         this.updateHud();
         this.showLevelUp();
+        // Spawn fresh items so the floor isn't empty (prevents immediate re-trigger)
+        this.spawnTimer = 0;
+        const count = Math.min(2 + Math.floor((this.level - 1) / 2), 4);
+        for (let i = 0; i < count; i++) {
+          this.time.delayedCall(i * 350, () => { if (!this.gameOver) this.spawnFromSide(); });
+        }
         this.levelUpPending = false;
       });
     }
@@ -741,7 +746,7 @@ export class ThrowToBinScene extends Phaser.Scene {
 
       // Missed bin → convert to bouncing item at floor
       if (ti.vy > 0 && ti.container.y >= this.floorY) {
-        const settleY = this.floorY - Phaser.Math.Between(0, 114);
+        const settleY = this.floorY - Phaser.Math.Between(0, 131);
         this.fallingItems.push({ container: ti.container, vx: ti.vx * 0.5, vy: ti.vy, rotDir: ti.rotDir, bounces: 0, settleY });
         this.thrownItems.splice(i, 1); continue;
       }

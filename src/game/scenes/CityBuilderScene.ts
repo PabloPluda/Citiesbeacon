@@ -65,7 +65,7 @@ export class CityBuilderScene extends Phaser.Scene {
   // Road multi-drag
   private roadDragActive = false;
   private roadDragCells: { col: number; row: number }[] = [];
-  private lastRoadCell   = { col: -1, row: -1 };
+  private roadDragDir: 'h' | 'v' | null = null;
 
   constructor() { super('CityBuilderScene'); }
 
@@ -84,7 +84,7 @@ export class CityBuilderScene extends Phaser.Scene {
     this.lastTouchSy    = 0;
     this.roadDragActive = false;
     this.roadDragCells  = [];
-    this.lastRoadCell   = { col: -1, row: -1 };
+    this.roadDragDir    = null;
 
     // Restore saved city grid from progressStore
     const saved = useProgressStore.getState().cityGrid as SavedBuilding[];
@@ -155,12 +155,24 @@ export class CityBuilderScene extends Phaser.Scene {
     // ── EventBus listeners ─────────────────────────────────────────────────────
     const onRestart = (d?: { level?: number }) => setTimeout(() => this.scene.restart(d), 0);
     const onSelect  = (item: BuildItem | null) => {
-      this.selectedItem = item;
+      this.selectedItem   = item;
+      this.roadDragActive = false;
+      this.roadDragCells  = [];
+      this.roadDragDir    = null;
       if (!item) this.clearPreview();
       if (item) { this.demolishMode = false; this.demolishCol = -1; this.demolishRow = -1; this.previewGfx.clear(); }
     };
-    const onConfirm = () => this.confirmPlacement();
-    const onCancel  = () => { this.selectedItem = null; this.clearPreview(); };
+    const onConfirm = () => {
+      if (this.roadDragCells.length > 0) this.confirmRoadMulti();
+      else this.confirmPlacement();
+    };
+    const onCancel  = () => {
+      this.selectedItem   = null;
+      this.roadDragActive = false;
+      this.roadDragCells  = [];
+      this.roadDragDir    = null;
+      this.clearPreview();
+    };
 
     const onDemolishMode = (on: boolean) => {
       this.demolishMode = on;
@@ -542,14 +554,17 @@ export class CityBuilderScene extends Phaser.Scene {
 
       // Road multi-drag: begin collecting cells immediately on touch down
       if (this.selectedItem && this.isRoadItem(this.selectedItem)) {
+        // Clear any pending road preview from a previous drag
+        this.roadDragCells  = [];
+        this.roadDragDir    = null;
+        this.previewGfx.clear();
+        EventBus.emit('citybuilder-preview-ready', false);
         if (this.inBounds(col, row) && this.canPlace(col, row, this.selectedItem)) {
           this.roadDragActive = true;
           this.roadDragCells  = [{ col, row }];
-          this.lastRoadCell   = { col, row };
           this.drawRoadDragPreview();
         } else {
           this.roadDragActive = false;
-          this.roadDragCells  = [];
         }
       }
       // setPreview for non-road items is deferred to touchEnd (!touchMoved)
@@ -577,17 +592,17 @@ export class CityBuilderScene extends Phaser.Scene {
         }
       }
 
-      if (this.roadDragActive && this.selectedItem) {
-        // Collect road cells while dragging
+      if (this.roadDragActive && this.selectedItem && this.roadDragCells.length > 0) {
+        // Determine direction from the first movement away from start cell
         const wp = cam.getWorldPoint(sx, sy);
         const { col, row } = this.worldToIso(wp.x, wp.y);
-        if (this.inBounds(col, row) &&
-            (col !== this.lastRoadCell.col || row !== this.lastRoadCell.row) &&
-            this.canPlace(col, row, this.selectedItem) &&
-            !this.roadDragCells.some(c => c.col === col && c.row === row)) {
-          this.roadDragCells.push({ col, row });
-          this.lastRoadCell = { col, row };
-          this.drawRoadDragPreview();
+        const start = this.roadDragCells[0];
+        if (this.roadDragDir === null && (col !== start.col || row !== start.row)) {
+          this.roadDragDir = Math.abs(col - start.col) >= Math.abs(row - start.row) ? 'h' : 'v';
+        }
+        // Rebuild full straight line from start to current cell
+        if (this.roadDragDir !== null) {
+          this.rebuildRoadDragLine(col, row);
         }
         this.lastTouchSx = sx;
         this.lastTouchSy = sy;
@@ -607,10 +622,13 @@ export class CityBuilderScene extends Phaser.Scene {
 
     const onTouchEnd = (e: TouchEvent) => {
       if (this.roadDragActive) {
-        if (this.roadDragCells.length > 0) this.confirmRoadMulti();
         this.roadDragActive = false;
-        this.roadDragCells  = [];
-        this.previewGfx.clear();
+        if (this.roadDragCells.length > 0) {
+          // Keep preview visible; confirm/cancel buttons handle placement
+          EventBus.emit('citybuilder-preview-ready', true);
+        } else {
+          this.previewGfx.clear();
+        }
       } else if (!this.touchMoved && this.selectedItem) {
         // Pure tap: set preview at touch-down position
         const wp = cam.getWorldPoint(this.lastTouchSx, this.lastTouchSy);
@@ -652,6 +670,31 @@ export class CityBuilderScene extends Phaser.Scene {
     }
   }
 
+  // ─── Road multi-drag straight-line rebuild ────────────────────────────────────
+
+  private rebuildRoadDragLine(targetCol: number, targetRow: number) {
+    if (!this.selectedItem || this.roadDragCells.length === 0) return;
+    const start = this.roadDragCells[0];
+    const newCells: { col: number; row: number }[] = [];
+    if (this.roadDragDir === 'h') {
+      const minC = Math.min(start.col, targetCol);
+      const maxC = Math.max(start.col, targetCol);
+      for (let c = minC; c <= maxC; c++) {
+        if (this.inBounds(c, start.row) && this.canPlace(c, start.row, this.selectedItem))
+          newCells.push({ col: c, row: start.row });
+      }
+    } else if (this.roadDragDir === 'v') {
+      const minR = Math.min(start.row, targetRow);
+      const maxR = Math.max(start.row, targetRow);
+      for (let r = minR; r <= maxR; r++) {
+        if (this.inBounds(start.col, r) && this.canPlace(start.col, r, this.selectedItem))
+          newCells.push({ col: start.col, row: r });
+      }
+    }
+    this.roadDragCells = newCells.length > 0 ? newCells : [start];
+    this.drawRoadDragPreview();
+  }
+
   // ─── Road multi-drag confirm ──────────────────────────────────────────────────
 
   private confirmRoadMulti() {
@@ -659,26 +702,33 @@ export class CityBuilderScene extends Phaser.Scene {
     const item     = this.selectedItem;
     const perCell  = item.cost;
     const placeable = this.roadDragCells.filter(({ col, row }) => this.canPlace(col, row, item));
-    if (placeable.length === 0) return;
 
-    const totalCost = perCell * placeable.length;
-    if (useProgressStore.getState().cityCoins < totalCost) {
-      const affordable = Math.floor(useProgressStore.getState().cityCoins / Math.max(perCell, 1));
-      if (affordable === 0) { this.showToast(`Need 🪙${perCell} coins!`); return; }
-      placeable.splice(affordable); // place only what we can afford
+    const clear = () => {
+      this.roadDragCells  = [];
+      this.roadDragDir    = null;
+      this.previewGfx.clear();
+      EventBus.emit('citybuilder-preview-ready', false);
+    };
+
+    if (placeable.length === 0) { clear(); return; }
+
+    const coins = useProgressStore.getState().cityCoins;
+    if (perCell > 0 && coins < perCell) {
+      this.showToast(`Need 🪙${perCell} coins!`); clear(); return;
     }
+    const affordable = perCell > 0 ? Math.min(placeable.length, Math.floor(coins / perCell)) : placeable.length;
+    const toPlace = placeable.slice(0, affordable);
 
-    const firstCell = placeable[0];
-    for (const { col, row } of placeable) {
+    const firstCell = toPlace[0];
+    for (const { col, row } of toPlace) {
       this.grid[row][col] = { item, anchorCol: col, anchorRow: row };
     }
-    useProgressStore.getState().addCityCoins(-perCell * placeable.length);
-    for (const { col, row } of placeable) {
-      this.updateRoadConnectors(col, row);
-    }
+    if (perCell > 0) useProgressStore.getState().addCityCoins(-perCell * toPlace.length);
+    for (const { col, row } of toPlace) this.updateRoadConnectors(col, row);
     this.redrawBuildings();
-    this.showCostPopup(perCell * placeable.length, firstCell.col, firstCell.row);
+    this.showCostPopup(perCell * toPlace.length, firstCell.col, firstCell.row);
     useProgressStore.getState().setCityGrid(this.serializeGrid());
+    clear();
   }
 
   // ─── Cost popup ───────────────────────────────────────────────────────────────

@@ -248,7 +248,6 @@ export default function GameWindow() {
   const [cbCat, setCbCat] = useState(-1);
   const [cbItem, setCbItem] = useState<BuildItem | null>(null);
   const [cbPreview, setCbPreview] = useState(false);
-  const [cbPlacedLabel, setCbPlacedLabel] = useState<string | null>(null);
   const [cbDemolish, setCbDemolish] = useState(false);
   const [cbDemolishLabel, setCbDemolishLabel] = useState<string | null>(null);
 
@@ -354,14 +353,9 @@ export default function GameWindow() {
     EventBus.on('show-dog-message', onDogMessage);
 
     const onCBPreview    = (ready: boolean) => setCbPreview(ready);
-    const onCBPlaced     = (data: { label: string }) => {
-      setCbPlacedLabel(data.label);
-      setTimeout(() => setCbPlacedLabel(null), 2500);
-    };
     const onDemolishPrev = (data: { label: string } | null) => setCbDemolishLabel(data?.label ?? null);
     const onDemolishDone = () => { setCbDemolish(false); setCbDemolishLabel(null); };
     EventBus.on('citybuilder-preview-ready',     onCBPreview);
-    EventBus.on('citybuilder-placed',            onCBPlaced);
     EventBus.on('citybuilder-demolish-preview',  onDemolishPrev);
     EventBus.on('citybuilder-demolish-done',     onDemolishDone);
 
@@ -401,7 +395,6 @@ export default function GameWindow() {
       EventBus.off('show-dog-prelevel', onDogPreLevel);
       EventBus.off('show-dog-message', onDogMessage);
       EventBus.off('citybuilder-preview-ready',    onCBPreview);
-      EventBus.off('citybuilder-placed',           onCBPlaced);
       EventBus.off('citybuilder-demolish-preview', onDemolishPrev);
       EventBus.off('citybuilder-demolish-done',    onDemolishDone);
       EventBus.off('game-over-m1', onM1Over);
@@ -1014,30 +1007,6 @@ export default function GameWindow() {
             >🚜</button>
           </div>
 
-          {/* Placement celebration toast */}
-          {cbPlacedLabel && (
-            <div style={{
-              display: 'flex', justifyContent: 'center',
-              padding: '6px 12px 0',
-              pointerEvents: 'none',
-              animation: 'praise-pop 0.3s ease-out',
-            }}>
-              <div style={{
-                background: 'rgba(22,163,74,0.95)',
-                border: '2px solid #4ADE80',
-                borderRadius: 18,
-                padding: '8px 22px',
-                display: 'flex', alignItems: 'center', gap: 8,
-                boxShadow: '0 4px 18px rgba(0,0,0,0.35)',
-              }}>
-                <span style={{ fontSize: '1.3rem' }}>🎉</span>
-                <span style={{ fontFamily: 'Fredoka One', fontSize: '1.05rem', color: '#fff' }}>
-                  New {cbPlacedLabel} in the city!
-                </span>
-                <span style={{ fontSize: '1.3rem' }}>🎉</span>
-              </div>
-            </div>
-          )}
         </div>
       )}
 

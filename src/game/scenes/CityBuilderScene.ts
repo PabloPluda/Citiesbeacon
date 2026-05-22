@@ -46,7 +46,6 @@ export class CityBuilderScene extends Phaser.Scene {
   // Camera drag
   private dragStart  = { x: 0, y: 0 };
   private camStart   = { x: 0, y: 0 };
-  private dragging   = false;
 
   // Pinch-to-zoom
   private isPinching = false;
@@ -57,6 +56,16 @@ export class CityBuilderScene extends Phaser.Scene {
   private demolishMode = false;
   private demolishCol  = -1;
   private demolishRow  = -1;
+
+  // Touch tap-vs-drag disambiguation
+  private touchMoved  = false;
+  private lastTouchSx = 0;
+  private lastTouchSy = 0;
+
+  // Road multi-drag
+  private roadDragActive = false;
+  private roadDragCells: { col: number; row: number }[] = [];
+  private lastRoadCell   = { col: -1, row: -1 };
 
   constructor() { super('CityBuilderScene'); }
 
@@ -70,6 +79,12 @@ export class CityBuilderScene extends Phaser.Scene {
     this.demolishRow  = -1;
     this.buildingSprites = [];
     this.previewSprite = null;
+    this.touchMoved     = false;
+    this.lastTouchSx    = 0;
+    this.lastTouchSy    = 0;
+    this.roadDragActive = false;
+    this.roadDragCells  = [];
+    this.lastRoadCell   = { col: -1, row: -1 };
 
     // Restore saved city grid from progressStore
     const saved = useProgressStore.getState().cityGrid as SavedBuilding[];
@@ -423,6 +438,8 @@ export class CityBuilderScene extends Phaser.Scene {
     if (this.isRoadItem(item)) {
       this.updateRoadConnectors(this.previewCol, this.previewRow);
     }
+    const placedCol = this.previewCol;
+    const placedRow = this.previewRow;
     this.redrawBuildings();
     if (this.previewSprite) { this.previewSprite.destroy(); this.previewSprite = null; }
     this.previewGfx.clear();
@@ -430,7 +447,7 @@ export class CityBuilderScene extends Phaser.Scene {
     this.previewRow = -1;
     useProgressStore.getState().setCityGrid(this.serializeGrid());
     EventBus.emit('citybuilder-preview-ready', false);
-    EventBus.emit('citybuilder-placed', { label: item.label });
+    this.showCostPopup(item.cost, placedCol, placedRow);
   }
 
   // ─── Input ────────────────────────────────────────────────────────────────────
@@ -438,12 +455,12 @@ export class CityBuilderScene extends Phaser.Scene {
   private setupInput() {
     const cam    = this.cameras.main;
     const canvas = this.game.canvas;
+    const DRAG_THRESHOLD = 10;
 
-    // ── Phaser pointerdown: desktop (mouse) only — mobile uses native touchstart ──
+    // ── Phaser pointerdown: desktop (mouse) only ──
     this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
-      if (ptr.wasTouch) return;   // native touchstart already handled it
+      if (ptr.wasTouch) return;
       if (this.input.pointer2.isDown) {
-        this.dragging   = false;
         this.isPinching = true;
         this.pinchDist0 = Phaser.Math.Distance.Between(
           this.input.pointer1.x, this.input.pointer1.y,
@@ -458,17 +475,15 @@ export class CityBuilderScene extends Phaser.Scene {
         if (this.inBounds(col, row)) this.setPreview(col, row);
         return;
       }
-      this.dragging  = true;
       this.dragStart = { x: ptr.x, y: ptr.y };
       this.camStart  = { x: cam.scrollX, y: cam.scrollY };
     });
 
     this.input.on('pointerup', () => {
       if (!this.input.pointer1.isDown || !this.input.pointer2.isDown) this.isPinching = false;
-      this.dragging = false;
     });
 
-    // ── Native touch: primary path on mobile (bypasses Phaser delivery issues) ──
+    // ── Native touch: primary path on mobile ──
     const screenPt = (t: Touch) => {
       const rect = canvas.getBoundingClientRect();
       return {
@@ -479,15 +494,24 @@ export class CityBuilderScene extends Phaser.Scene {
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
-        this.dragging   = false;
-        this.isPinching = true;
+        this.roadDragActive = false;
+        this.isPinching     = true;
         const t1 = e.touches[0]; const t2 = e.touches[1];
         this.pinchDist0 = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
         this.pinchZoom0 = cam.zoom;
         return;
       }
       if (e.touches.length !== 1) return;
+
       const { x: sx, y: sy } = screenPt(e.touches[0]);
+      this.touchMoved  = false;
+      this.lastTouchSx = sx;
+      this.lastTouchSy = sy;
+
+      // Always store camera drag start — pan is always available
+      this.dragStart = { x: sx, y: sy };
+      this.camStart  = { x: cam.scrollX, y: cam.scrollY };
+
       const wp = cam.getWorldPoint(sx, sy);
       const { col, row } = this.worldToIso(wp.x, wp.y);
 
@@ -516,13 +540,19 @@ export class CityBuilderScene extends Phaser.Scene {
         return;
       }
 
-      if (this.selectedItem) {
-        if (this.inBounds(col, row)) this.setPreview(col, row);
-      } else {
-        this.dragging  = true;
-        this.dragStart = { x: sx, y: sy };
-        this.camStart  = { x: cam.scrollX, y: cam.scrollY };
+      // Road multi-drag: begin collecting cells immediately on touch down
+      if (this.selectedItem && this.isRoadItem(this.selectedItem)) {
+        if (this.inBounds(col, row) && this.canPlace(col, row, this.selectedItem)) {
+          this.roadDragActive = true;
+          this.roadDragCells  = [{ col, row }];
+          this.lastRoadCell   = { col, row };
+          this.drawRoadDragPreview();
+        } else {
+          this.roadDragActive = false;
+          this.roadDragCells  = [];
+        }
       }
+      // setPreview for non-road items is deferred to touchEnd (!touchMoved)
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -536,14 +566,61 @@ export class CityBuilderScene extends Phaser.Scene {
         e.preventDefault();
         return;
       }
-      if (!this.dragging || e.touches.length !== 1) return;
+      if (e.touches.length !== 1) return;
+
       const { x: sx, y: sy } = screenPt(e.touches[0]);
-      cam.scrollX = this.camStart.x - (sx - this.dragStart.x) / cam.zoom;
-      cam.scrollY = this.camStart.y - (sy - this.dragStart.y) / cam.zoom;
+
+      if (!this.touchMoved) {
+        if (Math.abs(sx - this.dragStart.x) > DRAG_THRESHOLD ||
+            Math.abs(sy - this.dragStart.y) > DRAG_THRESHOLD) {
+          this.touchMoved = true;
+        }
+      }
+
+      if (this.roadDragActive && this.selectedItem) {
+        // Collect road cells while dragging
+        const wp = cam.getWorldPoint(sx, sy);
+        const { col, row } = this.worldToIso(wp.x, wp.y);
+        if (this.inBounds(col, row) &&
+            (col !== this.lastRoadCell.col || row !== this.lastRoadCell.row) &&
+            this.canPlace(col, row, this.selectedItem) &&
+            !this.roadDragCells.some(c => c.col === col && c.row === row)) {
+          this.roadDragCells.push({ col, row });
+          this.lastRoadCell = { col, row };
+          this.drawRoadDragPreview();
+        }
+        this.lastTouchSx = sx;
+        this.lastTouchSy = sy;
+        e.preventDefault();
+        return;
+      }
+
+      // Camera pan — always available (even with selectedItem)
+      if (this.touchMoved) {
+        cam.scrollX = this.camStart.x - (sx - this.dragStart.x) / cam.zoom;
+        cam.scrollY = this.camStart.y - (sy - this.dragStart.y) / cam.zoom;
+      }
+      this.lastTouchSx = sx;
+      this.lastTouchSy = sy;
       e.preventDefault();
     };
 
-    const onTouchEnd = () => { this.dragging = false; this.isPinching = false; };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (this.roadDragActive) {
+        if (this.roadDragCells.length > 0) this.confirmRoadMulti();
+        this.roadDragActive = false;
+        this.roadDragCells  = [];
+        this.previewGfx.clear();
+      } else if (!this.touchMoved && this.selectedItem) {
+        // Pure tap: set preview at touch-down position
+        const wp = cam.getWorldPoint(this.lastTouchSx, this.lastTouchSy);
+        const { col, row } = this.worldToIso(wp.x, wp.y);
+        if (this.inBounds(col, row)) this.setPreview(col, row);
+      }
+      this.isPinching = false;
+      this.touchMoved = false;
+      e.preventDefault();
+    };
 
     canvas.addEventListener('touchstart', onTouchStart, { passive: false });
     canvas.addEventListener('touchmove',  onTouchMove,  { passive: false });
@@ -553,6 +630,70 @@ export class CityBuilderScene extends Phaser.Scene {
       canvas.removeEventListener('touchstart', onTouchStart);
       canvas.removeEventListener('touchmove',  onTouchMove);
       canvas.removeEventListener('touchend',   onTouchEnd);
+    });
+  }
+
+  // ─── Road multi-drag preview ──────────────────────────────────────────────────
+
+  private drawRoadDragPreview() {
+    this.previewGfx.clear();
+    for (const { col, row } of this.roadDragCells) {
+      const { x, y } = this.isoToScreen(col, row);
+      this.previewGfx.fillStyle(0xFFFFFF, 0.25);
+      this.previewGfx.fillPoints([
+        { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
+        { x, y: y + TILE_HH }, { x: x - TILE_HW, y },
+      ], true);
+      this.previewGfx.lineStyle(2, 0xFFFFFF, 0.85);
+      this.previewGfx.strokePoints([
+        { x, y: y - TILE_HH }, { x: x + TILE_HW, y },
+        { x, y: y + TILE_HH }, { x: x - TILE_HW, y },
+      ], true);
+    }
+  }
+
+  // ─── Road multi-drag confirm ──────────────────────────────────────────────────
+
+  private confirmRoadMulti() {
+    if (!this.selectedItem || this.roadDragCells.length === 0) return;
+    const item     = this.selectedItem;
+    const perCell  = item.cost;
+    const placeable = this.roadDragCells.filter(({ col, row }) => this.canPlace(col, row, item));
+    if (placeable.length === 0) return;
+
+    const totalCost = perCell * placeable.length;
+    if (useProgressStore.getState().cityCoins < totalCost) {
+      const affordable = Math.floor(useProgressStore.getState().cityCoins / Math.max(perCell, 1));
+      if (affordable === 0) { this.showToast(`Need 🪙${perCell} coins!`); return; }
+      placeable.splice(affordable); // place only what we can afford
+    }
+
+    const firstCell = placeable[0];
+    for (const { col, row } of placeable) {
+      this.grid[row][col] = { item, anchorCol: col, anchorRow: row };
+    }
+    useProgressStore.getState().addCityCoins(-perCell * placeable.length);
+    for (const { col, row } of placeable) {
+      this.updateRoadConnectors(col, row);
+    }
+    this.redrawBuildings();
+    this.showCostPopup(perCell * placeable.length, firstCell.col, firstCell.row);
+    useProgressStore.getState().setCityGrid(this.serializeGrid());
+  }
+
+  // ─── Cost popup ───────────────────────────────────────────────────────────────
+
+  private showCostPopup(cost: number, col: number, row: number) {
+    if (cost <= 0) return;
+    const { x, y } = this.isoToScreen(col, row);
+    const popup = this.add.text(x, y - 10, `-${cost} 🪙`, {
+      fontFamily: 'Fredoka One', fontSize: '22px', color: '#FACC15',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5, 1).setDepth(200);
+    this.tweens.add({
+      targets: popup, y: y - 80, alpha: 0,
+      duration: 1100, ease: 'Cubic.Out',
+      onComplete: () => popup.destroy(),
     });
   }
 

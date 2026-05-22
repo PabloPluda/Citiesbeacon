@@ -172,8 +172,8 @@ function CityBuilderCard({ onPlay }: { onPlay: () => void }) {
 // ─── Mission Card ──────────────────────────────────────────────────────────────
 
 function MissionCard({ imageFile, onPlay }: { imageFile: string; onPlay: () => void }) {
-  const w = 'calc((100vw - 80px) * 0.97)';
-  const h = 'calc((100vw - 80px) * 0.97 * 1.5)';
+  const w = 'calc((100vw - 80px) * 0.94)';
+  const h = 'calc((100vw - 80px) * 0.94 * 1.5)';
 
   return (
     <motion.div

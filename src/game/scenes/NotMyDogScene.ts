@@ -281,33 +281,29 @@ export class NotMyDogScene extends Phaser.Scene {
       for (let rx = 0; rx < roomsX; rx++)
         adj[`${rx*2+1},${ry*2+1}`] = [];
 
-    grid[1][1] = 0;
+    // 1. Full DFS spanning tree from (0,0)
+    const stack: {rx:number,ry:number}[] = [{rx:0,ry:0}];
     visited[0][0] = true;
+    grid[1][1] = 0;
 
     const dirs = [
       {drx:1,dry:0,dwx:1,dwy:0},{drx:-1,dry:0,dwx:-1,dwy:0},
       {drx:0,dry:1,dwx:0,dwy:1},{drx:0,dry:-1,dwx:0,dwy:-1}
     ];
 
-    // Weighted DFS: bias toward down and bottom-left to fill corners
-    const stack: {rx:number,ry:number}[] = [{rx:0,ry:0}];
     while (stack.length > 0) {
       const cur = stack[stack.length - 1];
       const ctx = cur.rx*2+1, cty = cur.ry*2+1;
-      const neighbors: {rx:number,ry:number,wx:number,wy:number,w:number}[] = [];
+      const neighbors: {rx:number,ry:number,wx:number,wy:number}[] = [];
 
       dirs.forEach(d => {
         const nrx = cur.rx+d.drx, nry = cur.ry+d.dry;
-        if (nrx<0||nrx>=roomsX||nry<0||nry>=roomsY||visited[nry][nrx]) return;
-        let w = Math.random();
-        if (d.dry === 1) w += 0.5;
-        if (d.drx === -1 && cur.ry > roomsY/2) w += 0.4;
-        neighbors.push({rx:nrx,ry:nry,wx:ctx+d.dwx,wy:cty+d.dwy,w});
+        if (nrx>=0&&nrx<roomsX&&nry>=0&&nry<roomsY&&!visited[nry][nrx])
+          neighbors.push({rx:nrx,ry:nry,wx:ctx+d.dwx,wy:cty+d.dwy});
       });
 
       if (neighbors.length > 0) {
-        neighbors.sort((a,b) => b.w - a.w);
-        const next = neighbors[0];
+        const next = neighbors[Math.floor(Math.random() * neighbors.length)];
         const ntx = next.rx*2+1, nty = next.ry*2+1;
         grid[nty][ntx] = 0;
         grid[next.wy][next.wx] = 0;
@@ -320,20 +316,55 @@ export class NotMyDogScene extends Phaser.Scene {
       }
     }
 
-    // Force both exits from start for the fork
+    // 2. Force both exits from start to create a cycle
     grid[1][2]=0; grid[2][1]=0; grid[1][3]=0; grid[3][1]=0;
+
+    // 3. BFS to find the cycle path between the two forced exits (avoiding start)
+    const parentMap: Record<string,string> = {'3,1':''};
+    const bfsQueue: string[] = ['3,1'];
+    let foundCycle = false;
+    while (bfsQueue.length > 0 && !foundCycle) {
+      const curr = bfsQueue.shift()!;
+      for (const nb of adj[curr]) {
+        if (nb === '1,1' || parentMap[nb] !== undefined) continue;
+        parentMap[nb] = curr;
+        if (nb === '1,3') { foundCycle = true; break; }
+        bfsQueue.push(nb);
+      }
+    }
+
+    // 4. Break the cycle at its midpoint to create one real dead-end branch
+    if (foundCycle) {
+      const cyclePath: string[] = [];
+      let cur = '1,3';
+      while (cur !== '') { cyclePath.push(cur); cur = parentMap[cur] ?? ''; }
+
+      const mid = Math.floor(cyclePath.length / 2);
+      const roomA = cyclePath[mid];
+      const roomB = cyclePath[mid + 1] ?? cyclePath[mid - 1];
+
+      if (roomA && roomB) {
+        const [ax,ay] = roomA.split(',').map(Number);
+        const [bx,by] = roomB.split(',').map(Number);
+        grid[(ay+by)/2][(ax+bx)/2] = 1; // close the wall between them
+        adj[roomA] = adj[roomA].filter(n => n !== roomB);
+        adj[roomB] = adj[roomB].filter(n => n !== roomA);
+      }
+    }
+
+    // Wire start into graph for both exits
     if (!adj['1,1'].includes('3,1')) { adj['1,1'].push('3,1'); adj['3,1'].push('1,1'); }
     if (!adj['1,1'].includes('1,3')) { adj['1,1'].push('1,3'); adj['1,3'].push('1,1'); }
 
-    // BFS to place owner at the farthest room
+    // 5. BFS from start → owner at farthest reachable room
     const dist: Record<string,number> = {'1,1':0};
-    const bq: string[] = ['1,1'];
+    const finalQ: string[] = ['1,1'];
     let maxDist = -1, farthest = '1,1';
-    while (bq.length > 0) {
-      const curr = bq.shift()!;
+    while (finalQ.length > 0) {
+      const curr = finalQ.shift()!;
       if (dist[curr] > maxDist) { maxDist = dist[curr]; farthest = curr; }
       for (const nb of adj[curr]) {
-        if (dist[nb] === undefined) { dist[nb] = dist[curr]+1; bq.push(nb); }
+        if (dist[nb] === undefined) { dist[nb] = dist[curr]+1; finalQ.push(nb); }
       }
     }
 

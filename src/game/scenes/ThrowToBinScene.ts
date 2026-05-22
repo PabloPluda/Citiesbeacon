@@ -3,15 +3,19 @@ import { EventBus } from '../EventBus';
 import { useProgressStore } from '../../store/progressStore';
 
 const MISSION_ID  = 1;
-const TRASH_KEYS  = ['paper_ball', 'newspaper', 'banana_peel', 'watermelon_rind', 'fish_bone', 'bottle'];
-const MAX_PULL       = 140;
-const MIN_SPEED      = 700;   // speed at minimum pull — always reaches the bin
-const MAX_SPEED      = 1200;  // speed at full pull — reaches ~top of screen
-const GRAVITY        = 1000;
+const TRASH_KEYS  = [
+  'organic_1','organic_2','organic_3','organic_4','organic_5','organic_6',
+  'plastic_1','plastic_2','plastic_3','plastic_4','plastic_5',
+];
+const MAX_PULL        = 140;
+const MIN_SPEED       = 700;
+const MAX_SPEED       = 1200;
+const GRAVITY         = 1000;
 const MAX_FLOOR_ITEMS = 10;
-const FLOOR_Y_RATIO  = 0.78;
-const SPAWN_BASE     = 5000;   // ms — 5 seconds initially
-const SPAWN_MIN      = 1500;   // ms
+const FLOOR_Y_RATIO   = 0.78;
+const SPAWN_BASE      = 4000;  // 1 s faster than before
+const SPAWN_MIN       = 1500;
+const LEVEL_UP_COINS  = 50;
 
 interface ThrownItem {
   container: Phaser.GameObjects.Container;
@@ -52,9 +56,11 @@ export class ThrowToBinScene extends Phaser.Scene {
   private hudCoins!:          Phaser.GameObjects.Text;
   // static label references not needed — created in buildHud, no updates required
 
-  private spawnTimer    = 0;
-  private sessionCoins  = 0;
-  private gameStarted   = false;
+  private spawnTimer      = 0;
+  private sessionCoins    = 0;
+  private gameStarted     = false;
+  private level           = 1;
+  private levelUpPending  = false;
 
   constructor() { super('ThrowToBinScene'); }
 
@@ -68,16 +74,17 @@ export class ThrowToBinScene extends Phaser.Scene {
     this.fallingItems  = [];
     this.binContainer  = null;
     this.floorY        = 0;
-    this.spawnTimer    = 0;
-    this.sessionCoins  = 0;
-    this.gameStarted   = false;
+    this.spawnTimer     = 0;
+    this.sessionCoins   = 0;
+    this.gameStarted    = false;
+    this.level          = 1;
+    this.levelUpPending = false;
   }
 
   preload() {
     this.load.image('back_trash', '/trash/Background_trash.jpg');
-    for (const key of TRASH_KEYS) {
-      this.load.svg(key, `/trash/${key}.svg`, { width: 64, height: 64 });
-    }
+    for (let i = 1; i <= 6; i++) this.load.image(`organic_${i}`, `/recycling/organic_${i}.png`);
+    for (let i = 1; i <= 5; i++) this.load.image(`plastic_${i}`, `/recycling/Plastic_${i}.png`);
   }
 
   create() {
@@ -364,7 +371,8 @@ export class ThrowToBinScene extends Phaser.Scene {
   // ─── Spawn from side ─────────────────────────────────────────────────────────
 
   private get spawnInterval(): number {
-    return Math.max(SPAWN_MIN, SPAWN_BASE - Math.floor(this.totalScored / 5) * 200);
+    const base = Math.max(SPAWN_MIN + 200, SPAWN_BASE - (this.level - 1) * 500);
+    return Math.max(SPAWN_MIN, base - Math.floor(this.totalScored / 5) * 150);
   }
 
   private spawnFromSide() {
@@ -393,8 +401,7 @@ export class ThrowToBinScene extends Phaser.Scene {
   private settleItem(c: Phaser.GameObjects.Container) {
     const W       = this.cameras.main.width;
     const sx      = Phaser.Math.Clamp(c.x, 65, W - 65);
-    // floorY is the lowest point; items can sit up to 38px above it
-    const yOff    = Phaser.Math.Between(0, 38);
+    const yOff    = Phaser.Math.Between(0, 114);
     const settleY = this.floorY - yOff;
 
     c.setPosition(sx, settleY);
@@ -641,6 +648,45 @@ export class ThrowToBinScene extends Phaser.Scene {
     });
   }
 
+  // ─── Level system ────────────────────────────────────────────────────────────
+
+  private checkLevelClear() {
+    if (this.levelUpPending || this.gameOver) return;
+    const floor  = this.trashItems.filter(t => t.active).length;
+    const flying = this.thrownItems.length + this.fallingItems.length;
+    if (floor === 0 && flying === 0 && this.totalScored > 0) {
+      this.levelUpPending = true;
+      this.time.delayedCall(400, () => {
+        this.level++;
+        this.sessionCoins += LEVEL_UP_COINS;
+        useProgressStore.getState().addCityCoins(LEVEL_UP_COINS);
+        this.updateHud();
+        this.showLevelUp();
+        this.levelUpPending = false;
+      });
+    }
+  }
+
+  private showLevelUp() {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const t = this.add.text(W / 2, H * 0.42, `⭐ LEVEL UP! ⭐\n+${LEVEL_UP_COINS} 🪙`, {
+      fontFamily: 'Fredoka One, sans-serif',
+      fontSize: '38px',
+      color: '#FFD700',
+      stroke: '#000000',
+      strokeThickness: 6,
+      align: 'center',
+    }).setOrigin(0.5).setDepth(60).setScale(0.3);
+    this.tweens.add({
+      targets: t, scale: 1.1, duration: 280, ease: 'Back.easeOut',
+      onComplete: () => this.tweens.add({
+        targets: t, y: t.y - 70, alpha: 0, duration: 1100, delay: 700,
+        onComplete: () => t.destroy(),
+      }),
+    });
+  }
+
   // ─── Update ──────────────────────────────────────────────────────────────────
 
   update(_time: number, delta: number) {
@@ -722,6 +768,11 @@ export class ThrowToBinScene extends Phaser.Scene {
           this.fallingItems.splice(i, 1); continue;
         }
       }
+    }
+
+    // Check level clear
+    if (floorCount === 0 && this.thrownItems.length === 0 && this.fallingItems.length === 0) {
+      this.checkLevelClear();
     }
 
     // Check game over (in case items piled up)

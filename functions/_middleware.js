@@ -59,7 +59,7 @@ export async function onRequest({ request, next }) {
   // Only intercept HTML document requests (not assets, API calls, etc.)
   const accept = request.headers.get('Accept') || '';
   const isHtml = accept.includes('text/html') || url.pathname === '/' || url.pathname.endsWith('.html');
-  const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|json|webp|mp4|webm)$/i.test(url.pathname);
+  const isAsset = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|json|webp|mp4|webm|txt|xml|pdf)$/i.test(url.pathname);
 
   if (!isHtml || isAsset) {
     return next();

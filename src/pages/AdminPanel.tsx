@@ -234,6 +234,9 @@ interface SeoForm { meta_title: string; meta_description: string; og_image_url: 
 function SeoTab() {
   const [form, setForm] = useState<SeoForm>({ meta_title: '', meta_description: '', og_image_url: '' });
   const [status, setStatus] = useState<'loading' | 'idle' | 'saving' | 'saved' | 'error'>('loading');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     supabase.from('site_settings').select('key, value').then(({ data }) => {
@@ -252,6 +255,25 @@ function SeoTab() {
   const set = (k: keyof SeoForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError('');
+    const ext  = file.name.split('.').pop();
+    const path = `og-image.${ext}`;
+    const { error } = await supabase.storage.from('seo-assets').upload(path, file, { upsert: true });
+    if (error) {
+      setUploadError('Error al subir. Verificá que el bucket "seo-assets" existe y es público en Supabase Storage.');
+      setUploading(false);
+      return;
+    }
+    const { data } = supabase.storage.from('seo-assets').getPublicUrl(path);
+    setForm(f => ({ ...f, og_image_url: data.publicUrl }));
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = '';
+  };
 
   const save = async () => {
     setStatus('saving');
@@ -303,10 +325,22 @@ function SeoTab() {
           </div>
 
           <div style={fw}>
-            <span style={fl}>OG Image URL</span>
-            <input value={form.og_image_url} onChange={set('og_image_url')} type="url"
-              placeholder="https://cityheroacademy.com/og-image.jpg" style={fi} />
+            <span style={fl}>OG Image</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={form.og_image_url} onChange={set('og_image_url')} type="url"
+                placeholder="https://cityheroacademy.com/ImageforSEO.jpg" style={{ ...fi, flex: 1 }} />
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+                onChange={handleImageUpload} />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                style={{ ...btnStyle, background: '#F1F5F9', color: '#374151', border: '1px solid #E2E8F0',
+                  whiteSpace: 'nowrap', opacity: uploading ? 0.6 : 1 }}>
+                {uploading ? 'Subiendo…' : '📁 Explorar'}
+              </button>
+            </div>
             <span style={fn}>Imagen al compartir por WhatsApp / LinkedIn / Twitter (recomendado: 1200×630 px).</span>
+            {uploadError && <span style={{ ...fn, color: '#EF4444' }}>{uploadError}</span>}
             {form.og_image_url && (
               <img src={form.og_image_url} alt="OG preview"
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}

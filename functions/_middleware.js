@@ -4,7 +4,7 @@ const SUPABASE_KEY = 'sb_publishable_ujF_WvkXfx_4sbW_gN8dWg_UWroCm3K';
 const DEFAULTS = {
   meta_title:       'CityHero Academy',
   meta_description: 'Mini-juegos educativos para chicos de 5 a 8 años. ¡Completá misiones y ganá puntos!',
-  og_image_url:     '',
+  og_image_url:     'https://cityheroacademy.com/ImageforSEO.jpg',
 };
 
 async function fetchSeoSettings() {
@@ -35,26 +35,22 @@ async function fetchSeoSettings() {
 function buildMetaTags(seo) {
   const title = seo.meta_title;
   const desc  = seo.meta_description;
-  const img   = seo.og_image_url;
+  const img   = seo.og_image_url || DEFAULTS.og_image_url;
   const url   = 'https://cityheroacademy.com';
-
-  const ogImage = img
-    ? `<meta property="og:image" content="${img}">
-    <meta name="twitter:image" content="${img}">`
-    : '';
 
   return `
     <title>${title}</title>
     <meta name="description" content="${desc}">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="${url}">
-    <meta property="og:title" content="${title}">
-    <meta property="og:description" content="${desc}">
-    <meta property="og:site_name" content="CityHero Academy">
-    ${ogImage}
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="${url}" />
+    <meta property="og:title" content="${title}" />
+    <meta property="og:description" content="${desc}" />
+    <meta property="og:image" content="${img}" />
+    <meta property="og:site_name" content="CityHero Academy" />
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="${title}">
-    <meta name="twitter:description" content="${desc}">`;
+    <meta name="twitter:description" content="${desc}">
+    <meta name="twitter:image" content="${img}">`;
 }
 
 export async function onRequest({ request, next }) {
@@ -86,8 +82,13 @@ export async function onRequest({ request, next }) {
   const tags = buildMetaTags(seo);
   html = html.replace('</head>', `${tags}\n  </head>`);
 
+  const newHeaders = new Headers(response.headers);
+  newHeaders.set('Content-Type', 'text/html; charset=utf-8');
+  // Tell WhatsApp / other scrapers not to use a stale cached version
+  newHeaders.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+
   return new Response(html, {
     status: response.status,
-    headers: response.headers,
+    headers: newHeaders,
   });
 }

@@ -23,9 +23,10 @@ async function fetchSeoSettings() {
     const rows = await res.json();
     const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
     return {
-      meta_title:       map.meta_title       || DEFAULTS.meta_title,
-      meta_description: map.meta_description || DEFAULTS.meta_description,
-      og_image_url:     map.og_image_url     || DEFAULTS.og_image_url,
+      meta_title:               map.meta_title               || DEFAULTS.meta_title,
+      meta_description:         map.meta_description         || DEFAULTS.meta_description,
+      og_image_url:             map.og_image_url             || DEFAULTS.og_image_url,
+      google_site_verification: map.google_site_verification || '',
     };
   } catch {
     return DEFAULTS;
@@ -38,7 +39,11 @@ function buildMetaTags(seo) {
   const img   = seo.og_image_url || DEFAULTS.og_image_url;
   const url   = 'https://cityheroacademy.com';
 
-  return `
+  const gsvTag = seo.google_site_verification
+    ? `\n    <meta name="google-site-verification" content="${seo.google_site_verification}" />`
+    : '';
+
+  return `${gsvTag}
     <title>${title}</title>
     <meta name="description" content="${desc}">
     <meta property="og:type" content="website" />

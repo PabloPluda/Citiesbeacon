@@ -229,10 +229,10 @@ function ServiceKeyBanner({ serviceKey, onSave }: { serviceKey: string; onSave: 
 
 // ─── SEO Tab ─────────────────────────────────────────────────────────────────
 
-interface SeoForm { meta_title: string; meta_description: string; og_image_url: string; }
+interface SeoForm { meta_title: string; meta_description: string; og_image_url: string; google_site_verification: string; }
 
 function SeoTab() {
-  const [form, setForm] = useState<SeoForm>({ meta_title: '', meta_description: '', og_image_url: '' });
+  const [form, setForm] = useState<SeoForm>({ meta_title: '', meta_description: '', og_image_url: '', google_site_verification: '' });
   const [status, setStatus] = useState<'loading' | 'idle' | 'saving' | 'saved' | 'error'>('loading');
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -243,9 +243,10 @@ function SeoTab() {
       if (data) {
         const m = Object.fromEntries((data as { key: string; value: string }[]).map(r => [r.key, r.value]));
         setForm({
-          meta_title:       m.meta_title       ?? '',
-          meta_description: m.meta_description ?? '',
-          og_image_url:     m.og_image_url     ?? '',
+          meta_title:              m.meta_title              ?? '',
+          meta_description:        m.meta_description        ?? '',
+          og_image_url:            m.og_image_url            ?? '',
+          google_site_verification: m.google_site_verification ?? '',
         });
       }
       setStatus('idle');
@@ -346,6 +347,14 @@ function SeoTab() {
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 style={{ marginTop: 6, maxWidth: 320, borderRadius: 8, border: '1px solid #E2E8F0' }} />
             )}
+          </div>
+
+          <div style={fw}>
+            <span style={fl}>Google Site Verification Token</span>
+            <input value={form.google_site_verification} onChange={set('google_site_verification')}
+              placeholder="Pegá aquí el token de Google Search Console"
+              style={fi} />
+            <span style={fn}>Se inyecta como <code>{'<meta name="google-site-verification">'}</code> en el head. Dejalo vacío si no lo necesitás.</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

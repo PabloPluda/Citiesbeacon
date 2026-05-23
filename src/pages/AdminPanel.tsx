@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase';
 
 const SUPABASE_URL = 'https://ielaccsufrrafhcssqpu.supabase.co';
 
-type Tab = 'missions' | 'builder' | 'analytics' | 'users';
+type Tab = 'missions' | 'builder' | 'analytics' | 'users' | 'seo';
 type AdminClient = ReturnType<typeof createClient>;
 
 const GAME_LABEL: Record<string, string> = {
@@ -221,6 +221,113 @@ function ServiceKeyBanner({ serviceKey, onSave }: { serviceKey: string; onSave: 
               {serviceKey ? 'Actualizar' : 'Guardar'}
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SEO Tab ─────────────────────────────────────────────────────────────────
+
+interface SeoForm { meta_title: string; meta_description: string; og_image_url: string; }
+
+function SeoTab() {
+  const [form, setForm] = useState<SeoForm>({ meta_title: '', meta_description: '', og_image_url: '' });
+  const [status, setStatus] = useState<'loading' | 'idle' | 'saving' | 'saved' | 'error'>('loading');
+
+  useEffect(() => {
+    supabase.from('site_settings').select('key, value').then(({ data }) => {
+      if (data) {
+        const m = Object.fromEntries((data as { key: string; value: string }[]).map(r => [r.key, r.value]));
+        setForm({
+          meta_title:       m.meta_title       ?? '',
+          meta_description: m.meta_description ?? '',
+          og_image_url:     m.og_image_url     ?? '',
+        });
+      }
+      setStatus('idle');
+    });
+  }, []);
+
+  const set = (k: keyof SeoForm) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const save = async () => {
+    setStatus('saving');
+    const rows = Object.entries(form).map(([key, value]) => ({ key, value }));
+    const { error } = await supabase.from('site_settings').upsert(rows, { onConflict: 'key' });
+    setStatus(error ? 'error' : 'saved');
+    if (!error) setTimeout(() => setStatus('idle'), 2000);
+  };
+
+  const fw: React.CSSProperties  = { display: 'flex', flexDirection: 'column', gap: 5 };
+  const fl: React.CSSProperties  = { fontSize: 13, fontWeight: 600, color: '#1E293B' };
+  const fn: React.CSSProperties  = { fontSize: 11, color: '#94A3B8' };
+  const fi: React.CSSProperties  = { ...{ border:'1px solid #E2E8F0', borderRadius:6, fontFamily:'Outfit,sans-serif',
+    boxSizing:'border-box' as const, outline:'none', width:'100%' }, padding:'8px 10px', fontSize:'0.875rem' };
+
+  return (
+    <div>
+      <h2 style={{ margin: '0 0 6px', fontSize: 16, color: '#1E293B' }}>SEO &amp; Social</h2>
+      <p style={{ margin: '0 0 24px', fontSize: 13, color: '#64748B' }}>
+        Controlá cómo aparece el juego en Google y al compartirlo por WhatsApp, LinkedIn o Twitter.
+      </p>
+      {status === 'loading' ? <p style={{ color: '#94A3B8' }}>Cargando…</p> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          <div style={fw}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={fl}>Meta Title</span>
+              <span style={{ ...fn, color: form.meta_title.length > 60 ? '#EF4444' : '#94A3B8' }}>
+                {form.meta_title.length}/60
+              </span>
+            </div>
+            <input value={form.meta_title} onChange={set('meta_title')} maxLength={70}
+              placeholder="CityHero Academy" style={fi} />
+            <span style={fn}>Título de la pestaña del navegador y resultado en Google.</span>
+          </div>
+
+          <div style={fw}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={fl}>Meta Description</span>
+              <span style={{ ...fn, color: form.meta_description.length > 155 ? '#EF4444' : '#94A3B8' }}>
+                {form.meta_description.length}/155
+              </span>
+            </div>
+            <textarea value={form.meta_description} onChange={set('meta_description')}
+              maxLength={180} rows={3}
+              placeholder="Juego educativo de ciudad para niños de 5 a 8 años…"
+              style={{ ...fi, resize: 'vertical', lineHeight: 1.5 }} />
+            <span style={fn}>Resumen que muestra el buscador bajo el link del resultado.</span>
+          </div>
+
+          <div style={fw}>
+            <span style={fl}>OG Image URL</span>
+            <input value={form.og_image_url} onChange={set('og_image_url')} type="url"
+              placeholder="https://cityheroacademy.com/og-image.jpg" style={fi} />
+            <span style={fn}>Imagen al compartir por WhatsApp / LinkedIn / Twitter (recomendado: 1200×630 px).</span>
+            {form.og_image_url && (
+              <img src={form.og_image_url} alt="OG preview"
+                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                style={{ marginTop: 6, maxWidth: 320, borderRadius: 8, border: '1px solid #E2E8F0' }} />
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button onClick={save} disabled={status === 'saving'} style={{
+              ...btnStyle, background: '#6366F1', color: '#fff',
+              opacity: status === 'saving' ? 0.7 : 1,
+            }}>
+              {status === 'saving' ? 'Guardando…' : status === 'saved' ? '✓ Guardado' : 'Guardar cambios'}
+            </button>
+            {status === 'error' && (
+              <p style={{ color: '#EF4444', fontSize: 13, margin: 0 }}>
+                Error al guardar. Verificá los permisos de la tabla <code>site_settings</code> en Supabase.
+              </p>
+            )}
+          </div>
+
         </div>
       )}
     </div>
@@ -793,6 +900,7 @@ export default function AdminPanel() {
           ['builder',   '🏗️ City Builder'],
           ['analytics', '📊 Analytics'],
           ['users',     '👥 Usuarios'],
+          ['seo',       '🔍 SEO'],
         ] as [Tab, string][]).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer',
@@ -911,6 +1019,9 @@ export default function AdminPanel() {
 
         {/* ── USERS TAB ────────────────────────────────────────────────────── */}
         {tab === 'users' && <UsersTab adminClient={adminClient} />}
+
+        {/* ── SEO TAB ──────────────────────────────────────────────────────── */}
+        {tab === 'seo' && <SeoTab />}
 
         {/* ── DANGER ZONE ──────────────────────────────────────────────────── */}
         <div style={{ marginTop: 40, borderTop: '1px solid #E2E8F0', paddingTop: 20 }}>

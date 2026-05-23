@@ -8,7 +8,7 @@ export default function Home() {
   const resetProgress = useProgressStore((state) => state.resetProgress);
 
   return (
-    <div style={{
+    <main id="main-content" style={{
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -79,6 +79,6 @@ export default function Home() {
           Dev Reset Stats
         </button>
       </div>
-    </div>
+    </main>
   );
 }

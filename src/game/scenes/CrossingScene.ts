@@ -185,12 +185,29 @@ function buildWorldChunks(
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+interface PedAnimState {
+  key:         string;
+  div:         HTMLDivElement;
+  anim:        AnimationItem;
+  canvas:      HTMLCanvasElement | undefined;
+  frameAccum:  number;
+  totalFrames: number;
+  ip:          number;
+  fps:         number;
+  canvasW:     number;
+  canvasH:     number;
+}
+
 interface WorldObj {
-  worldX: number;
-  lane:   number;
-  gfx:    Phaser.GameObjects.Image;
-  type:   string;
-  alive:  boolean;
+  worldX:       number;
+  lane:         number;
+  gfx:          Phaser.GameObjects.Image;
+  type:         string;
+  alive:        boolean;
+  animated?:    boolean;
+  walkDir?:     1 | -1;
+  walkSpeed?:   number;
+  walkOriginX?: number;
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
@@ -229,6 +246,7 @@ export class CrossingScene extends Phaser.Scene {
   carGroup!: Phaser.Physics.Arcade.Group;
   carTextureKeys: Record<string, string> = {};
 
+  pedAnims:        PedAnimState[] = [];
   worldObstacles:  WorldObj[] = [];
   worldBooks:      WorldObj[] = [];
 
@@ -250,8 +268,11 @@ export class CrossingScene extends Phaser.Scene {
     this.load.image('backnew_2', '/Crossing/backnew_2.png');
     this.load.image('backdown_1', '/Crossing/backdown_1.png');
     this.load.image('backdown_2', '/Crossing/backdown_2.png');
-    ['obst_1a','obst_1b','obst_2a','obst_2b','obst_2c','obst_2d','obst3_a','obst3_b']
+    ['obst_1a','obst_1b','obst3_a','obst3_b']
       .forEach(k => this.load.image(k, `/Crossing/${k}.png`));
+    if (!this.cache.json.has('ped_walk_data')) {
+      this.load.json('ped_walk_data', '/Crossing/manWalk1.json');
+    }
   }
 
   init(data?: { level?: number }) {
@@ -466,6 +487,7 @@ export class CrossingScene extends Phaser.Scene {
     });
     // ────────────────────────────────────────────────────────────────────────
 
+    this.initPedAnims();
     this.buildLifeIndicators();
     this.setupSwipeControls();
     this.setupObjects(cfg.crossings, firstCrossX, SPACING);
@@ -649,6 +671,40 @@ export class CrossingScene extends Phaser.Scene {
     bake('coin_tex', g => this.drawCoinGfx(g));
   }
 
+  // ── Pedestrian Lottie animations ──────────────────────────────────────────────
+
+  private initPedAnims() {
+    const rawData = this.cache.json.get('ped_walk_data');
+    if (rawData) {
+      try {
+        // Deep-clone so Lottie's internal mutation doesn't corrupt the cached object on restart
+        const animData = JSON.parse(JSON.stringify(rawData));
+        const canvasW = 100, canvasH = 180;
+        const div = document.createElement('div');
+        div.style.cssText = `position:fixed;left:-9999px;top:-9999px;width:${canvasW}px;height:${canvasH}px;`;
+        document.body.appendChild(div);
+        const anim = lottie.loadAnimation({
+          container:     div,
+          renderer:      'canvas',
+          loop:          true,
+          autoplay:      false,
+          animationData: animData,
+        });
+        const canvas = div.querySelector('canvas') as HTMLCanvasElement ?? undefined;
+        if (this.textures.exists('ped_walk')) this.textures.remove('ped_walk');
+        this.textures.createCanvas('ped_walk', canvasW, canvasH);
+        this.pedAnims.push({
+          key: 'ped_walk', div, anim, canvas,
+          frameAccum: 0, totalFrames: 28, ip: 0, fps: 30, canvasW, canvasH,
+        });
+      } catch { /* skip if Lottie fails — scene falls back to static obstacles */ }
+    }
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      for (const p of this.pedAnims) { p.anim.destroy(); p.div.remove(); }
+      this.pedAnims = [];
+    });
+  }
+
   // ── Obstacle spawning ─────────────────────────────────────────────────────────
 
   spawnObstacle(worldX: number, forceLane?: number) {
@@ -660,21 +716,34 @@ export class CrossingScene extends Phaser.Scene {
     // Anchor bottom of obstacle to bottom of lane; lane 2 shifted 15px up
     const y    = H / 2 + LANE_OFFSETS[lane] + (lane === 2 ? 5 : 20);
 
-    const LANE12_KEYS = ['obst_1a','obst_1b','obst_2a','obst_2b','obst_2c','obst_2d'];
-    const LANE3_KEYS  = ['obst3_a','obst3_b'];
-    const HEIGHTS: Record<string, number> = {
-      'obst_1a':90,'obst_1b':132,'obst_2a':164,'obst_2b':164,'obst_2c':164,'obst_2d':164,
-      'obst3_a':177,'obst3_b':143,
-    };
-    const keys   = lane === 2 ? LANE3_KEYS : LANE12_KEYS;
-    const texKey = keys[Phaser.Math.Between(0, keys.length - 1)];
-    const targetH = lane === 2 ? 120 : 60;
-    const scale   = (targetH / HEIGHTS[texKey]) * 0.85;
-
-    // Lane 2 (bottom row) obstacles appear in front of Tommy; lanes 0/1 behind
     const depth = lane === 2 ? 7 : 4;
-    const img = this.add.image(worldX, y, texKey).setOrigin(0.5, 1).setScale(scale).setDepth(depth);
-    this.worldObstacles.push({ worldX, lane, gfx: img, type: texKey, alive: true });
+
+    if (lane !== 2 && this.pedAnims.length > 0 && Math.random() < 0.55) {
+      // Animated pedestrian — pick from whatever actually loaded
+      const p         = this.pedAnims[Phaser.Math.Between(0, this.pedAnims.length - 1)];
+      const sizeVar   = Phaser.Math.FloatBetween(0.85, 1.15);
+      const scale     = (60 / p.canvasH) * 0.85 * sizeVar;
+      const walkDir   = (Math.random() > 0.5 ? 1 : -1) as 1 | -1;
+      const img = this.add.image(worldX, y, p.key)
+        .setOrigin(0.5, 1).setScale(scale).setDepth(depth).setFlipX(walkDir < 0);
+      this.worldObstacles.push({
+        worldX, lane, gfx: img, type: p.key, alive: true,
+        animated: true, walkDir, walkSpeed: Phaser.Math.Between(25, 45), walkOriginX: worldX,
+      });
+    } else {
+      // Static obstacle
+      const LANE12_KEYS = ['obst_1a', 'obst_1b'];
+      const LANE3_KEYS  = ['obst3_a', 'obst3_b'];
+      const HEIGHTS: Record<string, number> = {
+        'obst_1a': 90, 'obst_1b': 132, 'obst3_a': 177, 'obst3_b': 143,
+      };
+      const keys   = lane === 2 ? LANE3_KEYS : LANE12_KEYS;
+      const texKey = keys[Phaser.Math.Between(0, keys.length - 1)];
+      const targetH = lane === 2 ? 120 : 60;
+      const scale   = (targetH / HEIGHTS[texKey]) * 0.85;
+      const img = this.add.image(worldX, y, texKey).setOrigin(0.5, 1).setScale(scale).setDepth(depth);
+      this.worldObstacles.push({ worldX, lane, gfx: img, type: texKey, alive: true });
+    }
   }
 
   spawnBook(worldX: number) {
@@ -846,6 +915,28 @@ export class CrossingScene extends Phaser.Scene {
     );
     const holding = this.input.activePointer.isDown && !this.swipeUsed && nearCrossing;
     this.tommy.setVelocityX(holding ? 0 : speed);
+
+    // Update pedestrian Lottie textures and move pedestrians
+    for (const p of this.pedAnims) {
+      p.frameAccum = (p.frameAccum + p.fps * delta / 1000) % p.totalFrames;
+      p.anim.goToAndStop(p.ip + Math.floor(p.frameAccum), true);
+      if (p.canvas && this.textures.exists(p.key)) {
+        const ct  = this.textures.get(p.key) as Phaser.Textures.CanvasTexture;
+        const ctx = ct.getContext();
+        ctx.clearRect(0, 0, p.canvasW, p.canvasH);
+        ctx.drawImage(p.canvas, 0, 0, p.canvasW, p.canvasH);
+        ct.refresh();
+      }
+    }
+    for (const obs of this.worldObstacles) {
+      if (!obs.alive || !obs.animated) continue;
+      obs.gfx.x += obs.walkDir! * obs.walkSpeed! * delta / 1000;
+      obs.worldX = obs.gfx.x;
+      if (Math.abs(obs.gfx.x - obs.walkOriginX!) > 100) {
+        obs.walkDir = (obs.walkDir! * -1) as 1 | -1;
+        obs.gfx.setFlipX(obs.walkDir < 0);
+      }
+    }
 
     // Cleanup
     this.worldObstacles = this.worldObstacles.filter(o => {

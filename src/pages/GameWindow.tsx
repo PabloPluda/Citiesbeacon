@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, useBlocker } from 'react-router-dom';
 import Phaser from 'phaser';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
@@ -230,6 +230,15 @@ export default function GameWindow() {
   const [scored, setScored] = useState('0/7');
   const [m2LevelBase, setM2LevelBase] = useState(0);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const confirmedLeaveRef = useRef(false);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => {
+    if (confirmedLeaveRef.current) return false;
+    if (phase !== 'playing') return false;
+    return currentLocation.pathname !== nextLocation.pathname;
+  });
+  useEffect(() => {
+    if (blocker.state === 'blocked') setShowQuitConfirm(true);
+  }, [blocker.state]);
   const [timeLeft, setTimeLeft] = useState(50);
   const [maxTimeLeft, setMaxTimeLeft] = useState(50); // tracks the starting time for ring
   const [phase, setPhase] = useState<Phase>('playing');
@@ -872,7 +881,10 @@ export default function GameWindow() {
             </p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button
-                onClick={() => setShowQuitConfirm(false)}
+                onClick={() => {
+                  if (blocker.state === 'blocked') blocker.reset();
+                  setShowQuitConfirm(false);
+                }}
                 style={{
                   flex: 1, fontFamily: 'Fredoka One', fontSize: '1rem',
                   background: 'rgba(255,255,255,0.1)', color: '#fff',
@@ -881,7 +893,11 @@ export default function GameWindow() {
                 }}
               >Keep playing</button>
               <button
-                onClick={() => navigate('/map', { state: { scrollToMission: mId } })}
+                onClick={() => {
+                  confirmedLeaveRef.current = true;
+                  if (blocker.state === 'blocked') blocker.reset();
+                  navigate('/map', { state: { scrollToMission: mId } });
+                }}
                 style={{
                   flex: 1, fontFamily: 'Fredoka One', fontSize: '1rem',
                   background: '#EF4444', color: '#fff',

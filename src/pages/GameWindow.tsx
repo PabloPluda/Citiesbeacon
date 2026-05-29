@@ -830,7 +830,7 @@ export default function GameWindow() {
             setM1Over(false); setM1Data(null);
             EventBus.emit('restart-scene', { level: 1 });
           }}
-          onMap={() => navigate('/map')}
+          onMap={() => navigate('/map', { state: { scrollToMission: mId } })}
         />
       )}
 
@@ -844,7 +844,7 @@ export default function GameWindow() {
             setM5Complete(false); setM5Data(null);
             EventBus.emit('restart-scene', { level: next });
           }}
-          onMap={() => navigate('/map')}
+          onMap={() => navigate('/map', { state: { scrollToMission: mId } })}
         />
       )}
 
@@ -856,7 +856,7 @@ export default function GameWindow() {
             setM8Over(false); setM8Data(null);
             EventBus.emit('restart-scene', { level: 1 });
           }}
-          onMap={() => navigate('/map')}
+          onMap={() => navigate('/map', { state: { scrollToMission: mId } })}
         />
       )}
 
@@ -920,7 +920,7 @@ export default function GameWindow() {
         {/* Back */}
         <button
           id="btn-back"
-          onClick={() => { if (phase !== 'playing') { navigate('/map'); return; } setShowQuitConfirm(true); }}
+          onClick={() => { if (phase !== 'playing') { navigate('/map', { state: { scrollToMission: mId } }); return; } setShowQuitConfirm(true); }}
           style={{
             pointerEvents: 'auto',
             background: 'rgba(255,255,255,0.92)', border: 'none',
@@ -1166,12 +1166,12 @@ export default function GameWindow() {
             heroName={heroName}
             coinsEarned={levelCoins}
             totalCoins={cityCoins}
-            onBackToMap={() => navigate('/map')}
+            onBackToMap={() => navigate('/map', { state: { scrollToMission: mId } })}
             onContinue={level >= 20 ? handlePlayAgain : handleNextLevel}
           />
         )}
         {phase === 'timeUp' && (
-          <TimeUpOverlay key="timeup" scored={scored} onRetry={handleRetry} onQuit={() => navigate('/map')} />
+          <TimeUpOverlay key="timeup" scored={scored} onRetry={handleRetry} onQuit={() => navigate('/map', { state: { scrollToMission: mId } })} />
         )}
       </AnimatePresence>
     </div>

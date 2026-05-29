@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams, useLocation, useBlocker } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Phaser from 'phaser';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
@@ -231,17 +231,24 @@ export default function GameWindow() {
   const [m2LevelBase, setM2LevelBase] = useState(0);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const confirmedLeaveRef = useRef(false);
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => {
-    if (confirmedLeaveRef.current) return false;
-    if (phase !== 'playing') return false;
-    return currentLocation.pathname !== nextLocation.pathname;
-  });
-  useEffect(() => {
-    if (blocker.state === 'blocked') setShowQuitConfirm(true);
-  }, [blocker.state]);
   const [timeLeft, setTimeLeft] = useState(50);
   const [maxTimeLeft, setMaxTimeLeft] = useState(50); // tracks the starting time for ring
   const [phase, setPhase] = useState<Phase>('playing');
+  const phaseRef = useRef<Phase>('playing');
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+
+  // Intercept browser back button without requiring a data router
+  useEffect(() => {
+    window.history.pushState(null, '', window.location.href);
+    const handlePop = () => {
+      if (!confirmedLeaveRef.current && phaseRef.current === 'playing') {
+        window.history.pushState(null, '', window.location.href);
+        setShowQuitConfirm(true);
+      }
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []); // eslint-disable-line
   const [levelCoins, setLevelCoins] = useState(0);
   const profile  = useUserStore(s => s.profile);
   const heroName = profile?.username || localStorage.getItem('cityhero-hero-name') || '';
@@ -882,7 +889,6 @@ export default function GameWindow() {
             <div style={{ display: 'flex', gap: 10 }}>
               <button
                 onClick={() => {
-                  if (blocker.state === 'blocked') blocker.reset();
                   setShowQuitConfirm(false);
                 }}
                 style={{
@@ -895,7 +901,6 @@ export default function GameWindow() {
               <button
                 onClick={() => {
                   confirmedLeaveRef.current = true;
-                  if (blocker.state === 'blocked') blocker.reset();
                   navigate('/map', { state: { scrollToMission: mId } });
                 }}
                 style={{

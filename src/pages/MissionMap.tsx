@@ -1,5 +1,5 @@
-import { useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
 import { Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useProgressStore } from '../store/progressStore';
@@ -22,11 +22,22 @@ const MISSION_IMAGE: Record<number, string> = {
 
 export default function MissionMap() {
   const navigate            = useNavigate();
+  const location = useLocation();
+  const scrollRef = useRef<HTMLDivElement>(null);
   const { getHighestLevel } = useProgressStore();
   const getEffectiveMission = useAdminStore(s => s.getEffectiveMission);
   const { isNewUser, clearNewUser, profile, streakReward, clearStreakReward } = useUserStore();
 
   const MISSIONS = MISSION_IDS.map(id => ({ id, ...getEffectiveMission(id) }));
+
+  useEffect(() => {
+    const target = (location.state as { scrollToMission?: number } | null)?.scrollToMission;
+    if (!target || !scrollRef.current) return;
+    const idx = MISSIONS.findIndex(m => m.id === target);
+    if (idx < 0) return;
+    const child = scrollRef.current.children[idx] as HTMLElement | undefined;
+    child?.scrollIntoView({ behavior: 'instant', inline: 'start', block: 'nearest' });
+  }, []); // eslint-disable-line
 
   return (
     <div style={{
@@ -49,6 +60,7 @@ export default function MissionMap() {
 
       {/* ── Horizontal scroll strip ────────────────────────────────────────── */}
       <div
+        ref={scrollRef}
         className="hide-scrollbar"
         style={{
           flex: 1,

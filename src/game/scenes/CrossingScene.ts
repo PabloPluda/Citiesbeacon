@@ -11,7 +11,7 @@ const LANE_OFFSETS = [-40, 0, 40];   // Y from H/2 for lanes 0 (top), 1 (mid), 2
 // ─── Level config ──────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
   const crossings    = level === 1 ? 4 : Math.min(4 + Math.floor(level * 0.8), 18);
-  const speed        = Math.round(190 + (level - 1) * 192 / 19); // px/s: 190 at lvl1 → 382 at lvl20
+  const speed        = Math.round((190 + (level - 1) * 192 / 19) * 0.8); // px/s: 152 at lvl1 → 306 at lvl20
   const obstInterval = Math.max(155, 380 - level * 12); // px between obstacle spawns
   return { crossings, speed, obstInterval };
 }
@@ -233,7 +233,6 @@ export class CrossingScene extends Phaser.Scene {
   worldBooks:      WorldObj[] = [];
 
   lifeIndicators: Phaser.GameObjects.Graphics[] = [];
-  bookTxt!: Phaser.GameObjects.Text;
 
   private hintBg?: Phaser.GameObjects.Graphics;
   private hintTxt?: Phaser.GameObjects.Text;
@@ -469,7 +468,6 @@ export class CrossingScene extends Phaser.Scene {
 
     this.buildLifeIndicators();
     this.setupSwipeControls();
-    this.buildBookDisplay();
     this.setupObjects(cfg.crossings, firstCrossX, SPACING);
 
     if (this.level === 1) {
@@ -573,14 +571,6 @@ export class CrossingScene extends Phaser.Scene {
     }
   }
 
-  buildBookDisplay() {
-    const W = this.cameras.main.width;
-    this.bookTxt = this.add.text(W / 2, 18, '🪙 0', {
-      fontFamily: 'Fredoka One', fontSize: '18px',
-      color: '#FFFFFF', stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(25);
-  }
-
   // ── Lane change ───────────────────────────────────────────────────────────────
 
   changeLane(dir: -1 | 1) {
@@ -632,7 +622,7 @@ export class CrossingScene extends Phaser.Scene {
       onComplete: () => book.gfx.destroy() });
 
     this.coinsEarned += 3;
-    this.bookTxt.setText(`🪙 ${this.coinsEarned}`);
+    useProgressStore.getState().addCityCoins(3);
 
     const plusTxt = this.add.text(this.tommy.x, this.tommy.y - 30, '+3 🪙', {
       fontFamily: 'Fredoka One', fontSize: '16px',
@@ -846,7 +836,7 @@ export class CrossingScene extends Phaser.Scene {
     if (tommyX >= this.schoolX - 30) {
       this.done = true;
       this.tommy.setVelocityX(0);
-      this.time.delayedCall(500, () => EventBus.emit('game-level-complete', { level: this.level, coinsEarned: this.coinsEarned }));
+      this.time.delayedCall(500, () => EventBus.emit('game-level-complete', { level: this.level, coinsEarned: this.coinsEarned, crossings: this.crossCount }));
       return;
     }
 

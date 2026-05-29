@@ -217,7 +217,7 @@ export default function GameWindow() {
   const gameRef = useRef<Phaser.Game | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { completeLevel, getHighestLevel, addCityCoins, cityCoins } = useProgressStore();
+  const { completeLevel, getHighestLevel, addCityCoins, cityCoins, updateHighScore, highScores } = useProgressStore();
   const builderCats = useAdminStore(s => s.builderCats);
   const CATS = builderCats ?? DEFAULT_CATS;
 
@@ -228,12 +228,17 @@ export default function GameWindow() {
   const levelRef = useRef(initial);
   const [level, setLevel] = useState(initial);
   const [scored, setScored] = useState('0/7');
+  const [m2LevelBase, setM2LevelBase] = useState(0);
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [timeLeft, setTimeLeft] = useState(50);
   const [maxTimeLeft, setMaxTimeLeft] = useState(50); // tracks the starting time for ring
   const [phase, setPhase] = useState<Phase>('playing');
   const [levelCoins, setLevelCoins] = useState(0);
   const profile  = useUserStore(s => s.profile);
   const heroName = profile?.username || localStorage.getItem('cityhero-hero-name') || '';
+
+  const m2CurrentCrossings = mId === 2 ? (parseInt(scored.split('/')[0]) || 0) : 0;
+  const m2Total = m2LevelBase + m2CurrentCrossings;
   const [showTutorial, setShowTutorial] = useState(false);
   const [showPreLevel, setShowPreLevel] = useState(false);
   const [showCrossingPenalty, setShowCrossingPenalty] = useState(false);
@@ -297,9 +302,11 @@ export default function GameWindow() {
     const onLevelComplete = (payload: number | { level: number; coinsEarned?: number }) => {
       const completedLevel = typeof payload === 'number' ? payload : payload.level;
       const coins = typeof payload === 'object' ? (payload.coinsEarned ?? 0) : 0;
+      const crossings = typeof payload === 'object' ? ((payload as any).crossings ?? 0) : 0;
       levelRef.current = completedLevel;
       completeLevel(mId, completedLevel);
-      if (coins > 0) addCityCoins(coins);
+      if (coins > 0 && mId !== 2) addCityCoins(coins);
+      if (mId === 2 && crossings > 0) setM2LevelBase(prev => prev + crossings);
       setLevelCoins(coins);
       setPhase('wellDone');
     };
@@ -407,6 +414,10 @@ export default function GameWindow() {
       }
     };
   }, [mId]);  // eslint-disable-line
+
+  useEffect(() => {
+    if (mId === 2 && m2Total > 0) updateHighScore(2, m2Total);
+  }, [m2Total]); // eslint-disable-line
 
   // From well done: go to next level
   const handleNextLevel = () => {
@@ -840,6 +851,49 @@ export default function GameWindow() {
         />
       )}
 
+      {/* ─ Quit confirmation ────────────────────────────────────────────────── */}
+      {showQuitConfirm && (
+        <div style={{
+          position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)',
+          zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: '#1E293B', borderRadius: 24, padding: '28px 24px',
+            textAlign: 'center', width: 'min(300px, calc(100vw - 48px))',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+            border: '1px solid rgba(255,255,255,0.1)',
+          }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🚪</div>
+            <h3 style={{ fontFamily: 'Fredoka One', color: '#fff', fontSize: '1.5rem', margin: '0 0 8px' }}>
+              Leave the game?
+            </h3>
+            <p style={{ fontFamily: 'Fredoka', color: '#94A3B8', fontSize: '0.9rem', margin: '0 0 22px', lineHeight: 1.4 }}>
+              Your progress and coins this session will be saved.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setShowQuitConfirm(false)}
+                style={{
+                  flex: 1, fontFamily: 'Fredoka One', fontSize: '1rem',
+                  background: 'rgba(255,255,255,0.1)', color: '#fff',
+                  border: '1px solid rgba(255,255,255,0.2)', borderRadius: 20,
+                  padding: '12px 0', cursor: 'pointer',
+                }}
+              >Keep playing</button>
+              <button
+                onClick={() => navigate('/map', { state: { scrollToMission: mId } })}
+                style={{
+                  flex: 1, fontFamily: 'Fredoka One', fontSize: '1rem',
+                  background: '#EF4444', color: '#fff',
+                  border: 'none', borderRadius: 20,
+                  padding: '12px 0', cursor: 'pointer',
+                }}
+              >Leave 🗺️</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─ HUD ─────────────────────────────────────────────────────────────── */}
       <div style={{
         position: 'absolute', top: 0, left: 0, width: '100%',
@@ -850,7 +904,7 @@ export default function GameWindow() {
         {/* Back */}
         <button
           id="btn-back"
-          onClick={() => navigate('/map')}
+          onClick={() => { if (phase !== 'playing') { navigate('/map'); return; } setShowQuitConfirm(true); }}
           style={{
             pointerEvents: 'auto',
             background: 'rgba(255,255,255,0.92)', border: 'none',
@@ -869,10 +923,26 @@ export default function GameWindow() {
             <img src="/Logo_CHA_header.png?v=2" alt="CityHero Academy"
               style={{ height: 34, display: 'block', filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.45))' }} />
           )}
+          {mId === 2 && (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ background: 'rgba(255,255,255,0.92)', borderRadius: 16, padding: '4px 10px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', minWidth: 54 }}>
+                <div style={{ fontFamily: 'Fredoka One', fontSize: '1rem', color: '#F59E0B', lineHeight: 1 }}>🪙 {cityCoins}</div>
+                <div style={{ fontFamily: 'Fredoka', fontSize: '0.55rem', color: '#94A3B8' }}>COINS</div>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.92)', borderRadius: 16, padding: '4px 10px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', minWidth: 54 }}>
+                <div style={{ fontFamily: 'Fredoka One', fontSize: '1rem', color: 'var(--primary)', lineHeight: 1 }}>🚸 {m2Total}</div>
+                <div style={{ fontFamily: 'Fredoka', fontSize: '0.55rem', color: '#94A3B8' }}>CROSSED</div>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.92)', borderRadius: 16, padding: '4px 10px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', minWidth: 54 }}>
+                <div style={{ fontFamily: 'Fredoka One', fontSize: '1rem', color: '#FFD700', lineHeight: 1 }}>🏆 {highScores[2] ?? 0}</div>
+                <div style={{ fontFamily: 'Fredoka', fontSize: '0.55rem', color: '#94A3B8' }}>RECORD</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Scored — hidden for ThrowToBin (1), LightsOutScene (3), CityBuilder (7), Recycling (8) */}
-        {mId !== 1 && mId !== 3 && mId !== 7 && mId !== 8 && (
+        {mId !== 1 && mId !== 2 && mId !== 3 && mId !== 7 && mId !== 8 && (
           <div style={{
             background: 'rgba(255,255,255,0.92)', borderRadius: 20,
             padding: '6px 14px', textAlign: 'center',

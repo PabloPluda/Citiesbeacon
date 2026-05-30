@@ -6,7 +6,9 @@ const MISSION_ID      = 8;
 const MAX_MISTAKES    = 5;
 const COINS_PER_CATCH = 4;
 const ITEM_DISPLAY    = 64;
-const HINT_COUNT      = 15;   // show category label above item for first N spawns
+const HINT_COUNT      = 15;    // show category label above item for first N spawns
+const INITIAL_ACTIVE  = 3;     // bins active at start
+const ITEMS_PER_LEVEL = 4;     // correct items needed to unlock next bin
 
 const CATS = [
   { key: 'ewaste',  label: 'E-Waste',  binTex: 'bin-grey',   itemPrefix: 'ewaste',  itemCount: 5 },
@@ -18,6 +20,9 @@ const CATS = [
 ] as const;
 
 type CatKey = typeof CATS[number]['key'];
+
+// Order in which bins are unlocked (first INITIAL_ACTIVE are active from the start)
+const BIN_ORDER: CatKey[] = ['organic', 'paper', 'glass', 'plastic', 'metal', 'ewaste'];
 
 interface BeltItem {
   container: Phaser.GameObjects.Container;
@@ -33,6 +38,8 @@ export class RecyclingScene extends Phaser.Scene {
   private sessionCoins = 0;
   private gameOver     = false;
   private spawnedTotal = 0;
+  private activeBinCount = INITIAL_ACTIVE;
+  private nextLevelScore = ITEMS_PER_LEVEL;
 
   private W  = 0;
   private H  = 0;
@@ -65,16 +72,18 @@ export class RecyclingScene extends Phaser.Scene {
   constructor() { super('RecyclingScene'); }
 
   init() {
-    this.score        = 0;
-    this.mistakes     = 0;
-    this.sessionCoins = 0;
-    this.gameOver     = false;
-    this.isDragging   = false;
-    this.spawnedTotal = 0;
-    this.items         = [];
-    this.binImages     = [];
-    this.binLabelTexts = [];
-    this.livesTexts    = [];
+    this.score          = 0;
+    this.mistakes       = 0;
+    this.sessionCoins   = 0;
+    this.gameOver       = false;
+    this.isDragging     = false;
+    this.spawnedTotal   = 0;
+    this.activeBinCount = INITIAL_ACTIVE;
+    this.nextLevelScore = ITEMS_PER_LEVEL;
+    this.items          = [];
+    this.binImages      = [];
+    this.binLabelTexts  = [];
+    this.livesTexts     = [];
   }
 
   preload() {
@@ -101,7 +110,6 @@ export class RecyclingScene extends Phaser.Scene {
     const H = this.cameras.main.height;
     this.W = W; this.H = H;
 
-    // 2.5-track conveyor layout
     this.belt1Y = H * 0.11;
     this.belt2Y = H * 0.22;
     this.belt3Y = H * 0.33;
@@ -127,7 +135,6 @@ export class RecyclingScene extends Phaser.Scene {
     this.buildLives();
     this.setupInput();
 
-    // First item after a short intro pause, then timer drives subsequent spawns
     this.time.delayedCall(1400, () => this.spawnTick());
   }
 
@@ -145,7 +152,7 @@ export class RecyclingScene extends Phaser.Scene {
           item.phase = 'belt2';
           item.container.x = ITEM_DISPLAY / 2;
           item.container.y = this.belt2Y;
-          item.vX = Math.abs(item.vX);   // reverse: now goes right
+          item.vX = Math.abs(item.vX);
         }
       } else if (item.phase === 'belt2') {
         item.container.x += item.vX * dt;
@@ -154,7 +161,7 @@ export class RecyclingScene extends Phaser.Scene {
           item.phase = 'belt3';
           item.container.x = this.W - ITEM_DISPLAY / 2;
           item.container.y = this.belt3Y;
-          item.vX = -Math.abs(item.vX);  // reverse: now goes left
+          item.vX = -Math.abs(item.vX);
         }
       } else if (item.phase === 'belt3') {
         item.container.x += item.vX * dt;
@@ -213,27 +220,21 @@ export class RecyclingScene extends Phaser.Scene {
       }
     };
 
-    // Track 1 – full width, right → left
-    drawBelt(0,     this.belt1Y, W,     true);
-    // Track 2 – full width, left → right
-    drawBelt(0,     this.belt2Y, W,     false);
-    // Track 3 – right half, right → left (ends at centre drop)
-    drawBelt(W / 2, this.belt3Y, W / 2, true);
+    drawBelt(0,     this.belt1Y, W,     true);   // full width, right→left
+    drawBelt(0,     this.belt2Y, W,     false);  // full width, left→right
+    drawBelt(W / 2, this.belt3Y, W / 2, true);   // right half, right→centre
 
-    // Left chute connecting track 1 → track 2
+    // Left chute (belt1 → belt2)
     g.fillStyle(0x374151, 1);
     g.fillRect(0, this.belt1Y + BELT_H / 2 - 2, 18, this.belt2Y - this.belt1Y - BELT_H + 4);
-
-    // Right chute connecting track 2 → track 3
+    // Right chute (belt2 → belt3)
     g.fillRect(W - 18, this.belt2Y + BELT_H / 2 - 2, 18, this.belt3Y - this.belt2Y - BELT_H + 4);
 
-    // Instruction label above belt 1
     this.add.text(W / 2, this.belt1Y - 28, '♻️  Sort the waste into the right bin!', {
       fontFamily: 'Fredoka One, cursive', fontSize: '13px',
       color: '#94A3B8', stroke: '#000', strokeThickness: 2, align: 'center',
     }).setOrigin(0.5).setDepth(6).setResolution(2);
 
-    // Direction arrows
     this.add.text(W - 10, this.belt1Y, '←', { fontFamily: 'Fredoka One', fontSize: '18px', color: '#9CA3AF' })
       .setOrigin(1, 0.5).setDepth(6).setResolution(2);
     this.add.text(10,     this.belt2Y, '→', { fontFamily: 'Fredoka One', fontSize: '18px', color: '#9CA3AF' })
@@ -259,20 +260,23 @@ export class RecyclingScene extends Phaser.Scene {
 
   private buildBins() {
     this.highlightGfx = this.add.graphics().setDepth(29);
+    const activeCats = new Set(BIN_ORDER.slice(0, INITIAL_ACTIVE));
 
     for (let i = 0; i < 6; i++) {
-      const cat = CATS[i];
+      const cat      = CATS[i];
+      const isActive = activeCats.has(cat.key);
 
       const img = this.add.image(0, this.binsY, cat.binTex)
         .setOrigin(0.5, 0)
         .setDisplaySize(this.BW * 0.88, this.BH)
-        .setDepth(30);
+        .setDepth(30)
+        .setAlpha(isActive ? 1 : 0.28);
       this.binImages.push(img);
 
       const lbl = this.add.text(0, this.binsY + this.BH - 18, cat.label, {
         fontFamily: 'Fredoka One, cursive', fontSize: '13px',
         color: '#fff', stroke: '#000', strokeThickness: 2.5, align: 'center',
-      }).setOrigin(0.5, 1).setDepth(32).setResolution(2);
+      }).setOrigin(0.5, 1).setDepth(32).setResolution(2).setAlpha(isActive ? 1 : 0.28);
       this.binLabelTexts.push(lbl);
     }
     this.repositionBins();
@@ -429,8 +433,9 @@ export class RecyclingScene extends Phaser.Scene {
   // ─── Spawning ────────────────────────────────────────────────────────────────
 
   private getSpawnInterval(): number {
-    if (this.score >= 14) return 3000;
-    if (this.score >= 7)  return 4000;
+    if (this.activeBinCount >= 6) return 3000;
+    if (this.activeBinCount >= 5) return 3500;
+    if (this.activeBinCount >= 4) return 4000;
     return 5000;
   }
 
@@ -443,7 +448,9 @@ export class RecyclingScene extends Phaser.Scene {
   private spawnItem() {
     if (this.gameOver) return;
 
-    const cat = CATS[Math.floor(Math.random() * CATS.length)];
+    // Only pick from currently active categories
+    const activeCats = CATS.filter(c => (BIN_ORDER.slice(0, this.activeBinCount) as string[]).includes(c.key));
+    const cat = activeCats[Math.floor(Math.random() * activeCats.length)];
     const idx = Math.floor(Math.random() * cat.itemCount) + 1;
     const tex = `${cat.key}-${idx}`;
 
@@ -489,6 +496,13 @@ export class RecyclingScene extends Phaser.Scene {
       this.sessionCoins += COINS_PER_CATCH;
       useProgressStore.getState().addCityCoins(COINS_PER_CATCH);
       this.showFeedback(true, hitIdx);
+
+      // Level-up check: unlock next bin after every ITEMS_PER_LEVEL correct items
+      if (this.activeBinCount < 6 && this.score >= this.nextLevelScore) {
+        this.nextLevelScore += ITEMS_PER_LEVEL;
+        this.activeBinCount++;
+        this.unlockNextBin();
+      }
     } else {
       this.mistakes++;
       this.refreshLives();
@@ -505,6 +519,39 @@ export class RecyclingScene extends Phaser.Scene {
       if (this.mistakes >= MAX_MISTAKES) this.triggerGameOver();
     });
   }
+
+  // ─── Level-up ────────────────────────────────────────────────────────────────
+
+  private unlockNextBin() {
+    const newKey = BIN_ORDER[this.activeBinCount - 1];
+    const cat    = CATS.find(c => c.key === newKey);
+    const catIdx = CATS.findIndex(c => c.key === newKey);
+
+    // Animate the newly unlocked bin from dimmed to full colour
+    if (catIdx >= 0) {
+      this.tweens.add({ targets: this.binImages[catIdx],     alpha: 1, duration: 500, ease: 'Power2' });
+      this.tweens.add({ targets: this.binLabelTexts[catIdx], alpha: 1, duration: 500, ease: 'Power2' });
+    }
+
+    // Golden flash across the whole screen
+    const flash = this.add.rectangle(this.W / 2, this.H / 2, this.W, this.H, 0xF6C90E, 0.18).setDepth(89);
+    this.tweens.add({ targets: flash, alpha: 0, duration: 600, onComplete: () => flash.destroy() });
+
+    // "Level Up!" floating text
+    const label = cat?.label ?? newKey;
+    const t = this.add.text(this.W / 2, this.H * 0.46, `⬆️ Level Up!\n${label} bin added!`, {
+      fontFamily: 'Fredoka One, cursive', fontSize: '26px',
+      color: '#F6C90E', stroke: '#000000', strokeThickness: 4,
+      align: 'center',
+    }).setOrigin(0.5).setDepth(100).setResolution(2);
+    this.tweens.add({
+      targets: t, y: this.H * 0.34, alpha: 0,
+      duration: 1300, ease: 'Power2',
+      onComplete: () => t.destroy(),
+    });
+  }
+
+  // ─── Feedback ────────────────────────────────────────────────────────────────
 
   private showFeedback(correct: boolean, binIdx: number) {
     const x = this.W / 2, y = this.binsY - 26;

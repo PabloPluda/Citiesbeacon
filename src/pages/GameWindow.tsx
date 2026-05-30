@@ -171,6 +171,74 @@ function WellDoneOverlay({
   );
 }
 
+// ─── Crossing lose overlay (Mission 2) ────────────────────────────────────────
+function CrossingLoseOverlay({
+  crossings, coinsEarned, totalCoins, onRetry, onQuit,
+}: {
+  crossings: number; coinsEarned: number; totalCoins: number;
+  onRetry: () => void; onQuit: () => void;
+}) {
+  const [displayCoins, setDisplayCoins] = useState(totalCoins - coinsEarned);
+  useEffect(() => {
+    if (coinsEarned <= 0) return;
+    const steps = Math.min(coinsEarned, 20);
+    const t = setTimeout(() => {
+      let count = 0;
+      const id = setInterval(() => {
+        count++;
+        setDisplayCoins(Math.round((totalCoins - coinsEarned) + coinsEarned * (count / steps)));
+        if (count >= steps) clearInterval(id);
+      }, 60);
+    }, 600);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line
+  return (
+    <motion.div
+      initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -40, opacity: 0 }}
+      style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(10,20,60,0.90)', zIndex: 40, gap: 14, padding: '0 24px',
+      }}
+    >
+      <div style={{ fontSize: '3.2rem' }}>🚦</div>
+      <h2 style={{ fontFamily: 'Fredoka One', color: '#F6C90E', fontSize: '1.8rem', margin: 0, textAlign: 'center' }}>
+        Good effort!
+      </h2>
+      <p style={{
+        fontFamily: 'Fredoka One', color: '#CBD5E0', fontSize: '1rem',
+        textAlign: 'center', lineHeight: 1.45, margin: 0, maxWidth: 300,
+      }}>
+        Keep practicing! Always pay attention when walking on sidewalks and crossing the street safely. 🚶
+      </p>
+      <div style={{
+        background: 'rgba(255,255,255,0.08)', borderRadius: 16,
+        padding: '14px 28px', textAlign: 'center', marginTop: 4,
+      }}>
+        <div style={{ fontFamily: 'Fredoka One', color: '#68D391', fontSize: '1.1rem' }}>
+          ✅ {crossings} crossing{crossings !== 1 ? 's' : ''} this round
+        </div>
+        {coinsEarned > 0 && (
+          <div style={{ fontFamily: 'Fredoka One', color: '#F6C90E', fontSize: '1rem', marginTop: 6 }}>
+            🪙 {displayCoins} coins total
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+        <motion.button whileTap={{ scale: 0.93 }} className="btn btn-primary" onClick={onRetry}
+          style={{ fontSize: '1rem', padding: '12px 22px' }}>
+          Play Again 💪
+        </motion.button>
+        <motion.button whileTap={{ scale: 0.93 }} className="btn" onClick={onQuit}
+          style={{ background: 'rgba(255,255,255,0.1)', color: 'white', fontSize: '1rem', padding: '12px 22px' }}>
+          Back to Map 🗺️
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+}
+
 // ─── Time-up overlay ──────────────────────────────────────────────────────────
 function TimeUpOverlay({ scored, onRetry, onQuit }: { scored: string; onRetry: () => void; onQuit: () => void }) {
   return (
@@ -250,6 +318,7 @@ export default function GameWindow() {
     return () => window.removeEventListener('popstate', handlePop);
   }, []); // eslint-disable-line
   const [levelCoins, setLevelCoins] = useState(0);
+  const [m2LoseData, setM2LoseData] = useState<{ crossings: number; coins: number } | null>(null);
   const profile  = useUserStore(s => s.profile);
   const heroName = profile?.username || localStorage.getItem('cityhero-hero-name') || '';
 
@@ -326,7 +395,15 @@ export default function GameWindow() {
       setLevelCoins(coins);
       setPhase('wellDone');
     };
-    const onTimeUp = () => setPhase('timeUp');
+    const onTimeUp = (crossings?: number) => {
+      if (mId === 2) {
+        const c = typeof crossings === 'number' ? crossings : 0;
+        const coins = c * 5;
+        if (coins > 0) addCityCoins(coins);
+        setM2LoseData({ crossings: c, coins });
+      }
+      setPhase('timeUp');
+    };
 
     EventBus.on('game-timer', onTimer);
     EventBus.on('game-scored-update', onScored);
@@ -466,6 +543,7 @@ export default function GameWindow() {
     setTimeLeft(50);
     setMaxTimeLeft(50);
     setLevelCoins(0);
+    setM2LoseData(null);
     setPhase('playing');
     EventBus.emit('restart-scene', { level: levelRef.current });
   };
@@ -1175,9 +1253,18 @@ export default function GameWindow() {
             onContinue={level >= 20 ? handlePlayAgain : handleNextLevel}
           />
         )}
-        {phase === 'timeUp' && (
+        {phase === 'timeUp' && mId === 2 ? (
+          <CrossingLoseOverlay
+            key="crossing-lose"
+            crossings={m2LoseData?.crossings ?? 0}
+            coinsEarned={m2LoseData?.coins ?? 0}
+            totalCoins={cityCoins}
+            onRetry={handleRetry}
+            onQuit={() => navigate('/map', { state: { scrollToMission: mId } })}
+          />
+        ) : phase === 'timeUp' ? (
           <TimeUpOverlay key="timeup" scored={scored} onRetry={handleRetry} onQuit={() => navigate('/map', { state: { scrollToMission: mId } })} />
-        )}
+        ) : null}
       </AnimatePresence>
     </div>
   );

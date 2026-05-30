@@ -210,6 +210,7 @@ interface WorldObj {
   walkDir?:     1 | -1;
   walkSpeed?:   number;
   walkOriginX?: number;
+  flipDefault?: boolean;
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
@@ -734,6 +735,7 @@ export class CrossingScene extends Phaser.Scene {
       this.worldObstacles.push({
         worldX, lane, gfx: img, type: p.key, alive: true,
         animated: true, walkDir, walkSpeed: Phaser.Math.Between(25, 45), walkOriginX: worldX,
+        flipDefault: p.flipDefault,
       });
     } else {
       // Static obstacle
@@ -939,7 +941,7 @@ export class CrossingScene extends Phaser.Scene {
       obs.worldX = obs.gfx.x;
       if (Math.abs(obs.gfx.x - obs.walkOriginX!) > 100) {
         obs.walkDir = (obs.walkDir! * -1) as 1 | -1;
-        obs.gfx.setFlipX(obs.walkDir < 0);
+        obs.gfx.setFlipX(obs.flipDefault ? obs.walkDir > 0 : obs.walkDir < 0);
       }
     }
 

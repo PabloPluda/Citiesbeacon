@@ -5,7 +5,8 @@ import { useProgressStore } from '../../store/progressStore';
 const MISSION_ID      = 8;
 const MAX_MISTAKES    = 5;
 const COINS_PER_CATCH = 4;
-const ITEM_DISPLAY    = 64; // px for item sprite
+const ITEM_DISPLAY    = 64;
+const HINT_COUNT      = 15;   // show category label above item for first N spawns
 
 const CATS = [
   { key: 'ewaste',  label: 'E-Waste',  binTex: 'bin-grey',   itemPrefix: 'ewaste',  itemCount: 5 },
@@ -21,7 +22,9 @@ type CatKey = typeof CATS[number]['key'];
 interface BeltItem {
   container: Phaser.GameObjects.Container;
   cat: CatKey;
-  phase: 'belt1' | 'belt2' | 'falling' | 'done';
+  phase: 'belt1' | 'belt2' | 'belt3' | 'falling' | 'done';
+  vX: number;
+  vY: number;
 }
 
 export class RecyclingScene extends Phaser.Scene {
@@ -29,6 +32,7 @@ export class RecyclingScene extends Phaser.Scene {
   private mistakes     = 0;
   private sessionCoins = 0;
   private gameOver     = false;
+  private spawnedTotal = 0;
 
   private W  = 0;
   private H  = 0;
@@ -37,18 +41,17 @@ export class RecyclingScene extends Phaser.Scene {
 
   private belt1Y = 0;
   private belt2Y = 0;
+  private belt3Y = 0;
   private binsY  = 0;
 
-  private binGroupX  = 0;
-  private binMinX    = 0;
-  private binMaxX    = 0;
+  private binGroupX     = 0;
+  private binMinX       = 0;
+  private binMaxX       = 0;
   private isDragging    = false;
   private dragStartX    = 0;
   private dragStartBinX = 0;
 
-  private currentItem: BeltItem | null = null;
-  private itemVX = 0;
-  private itemVY = 0;
+  private items: BeltItem[] = [];
 
   private binImages:     Phaser.GameObjects.Image[] = [];
   private binLabelTexts: Phaser.GameObjects.Text[]  = [];
@@ -67,18 +70,17 @@ export class RecyclingScene extends Phaser.Scene {
     this.sessionCoins = 0;
     this.gameOver     = false;
     this.isDragging   = false;
-    this.currentItem  = null;
+    this.spawnedTotal = 0;
+    this.items         = [];
     this.binImages     = [];
     this.binLabelTexts = [];
     this.livesTexts    = [];
   }
 
   preload() {
-    // Bin images
     for (const c of ['blue','green','grey','orange','red','yellow'] as const) {
       this.load.image(`bin-${c}`, `/recycling/Bin_${c}.png`);
     }
-    // Item images by category
     const itemDefs: Array<{ key: CatKey; prefix: string; count: number }> = [
       { key: 'ewaste',  prefix: 'electric', count: 5 },
       { key: 'glass',   prefix: 'glass',    count: 5 },
@@ -97,13 +99,15 @@ export class RecyclingScene extends Phaser.Scene {
   create() {
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
-    this.W = W;  this.H = H;
+    this.W = W; this.H = H;
 
-    this.belt1Y = H * 0.14;
-    this.belt2Y = H * 0.28;
-    this.binsY  = H * 0.62;
+    // 2.5-track conveyor layout
+    this.belt1Y = H * 0.11;
+    this.belt2Y = H * 0.22;
+    this.belt3Y = H * 0.33;
+    this.binsY  = H * 0.60;
     this.BW     = Math.floor(W / 3);
-    this.BH     = Math.min(H * 0.24, 200);
+    this.BH     = Math.min(H * 0.22, 185);
 
     this.binMinX   = W / 2 - 5 * this.BW - this.BW / 2;
     this.binMaxX   = W / 2 - this.BW / 2;
@@ -123,44 +127,57 @@ export class RecyclingScene extends Phaser.Scene {
     this.buildLives();
     this.setupInput();
 
-    this.scheduleItem(1400);
+    // First item after a short intro pause, then timer drives subsequent spawns
+    this.time.delayedCall(1400, () => this.spawnTick());
   }
 
   update(_t: number, delta: number) {
-    if (this.gameOver || !this.currentItem) return;
-    const dt   = delta / 1000;
-    const item = this.currentItem;
+    if (this.gameOver || this.items.length === 0) return;
+    const dt = delta / 1000;
 
-    if (item.phase === 'belt1') {
-      item.container.x += this.itemVX * dt;
-      item.container.angle -= 0.9;
-      if (item.container.x <= ITEM_DISPLAY / 2) {
-        item.phase = 'belt2';
-        item.container.x = ITEM_DISPLAY / 2;
-        item.container.y = this.belt2Y;
-        this.itemVX = -this.itemVX;
-      }
-    } else if (item.phase === 'belt2') {
-      item.container.x += this.itemVX * dt;
-      item.container.angle -= 0.5;
-      if (item.container.x >= this.W / 2) {
-        item.phase = 'falling';
-        item.container.x = this.W / 2;
-        this.itemVX = 0;
-        this.itemVY = 460;
-      }
-    } else if (item.phase === 'falling') {
-      this.itemVY += 360 * dt;
-      item.container.y += this.itemVY * dt;
-      item.container.angle += 2;
-      if (item.container.y >= this.binsY - 10) {
-        item.phase = 'done';
-        this.resolveItem(item);
+    for (const item of this.items) {
+      if (item.phase === 'done') continue;
+
+      if (item.phase === 'belt1') {
+        item.container.x += item.vX * dt;
+        item.container.angle -= 0.9;
+        if (item.container.x <= ITEM_DISPLAY / 2) {
+          item.phase = 'belt2';
+          item.container.x = ITEM_DISPLAY / 2;
+          item.container.y = this.belt2Y;
+          item.vX = Math.abs(item.vX);   // reverse: now goes right
+        }
+      } else if (item.phase === 'belt2') {
+        item.container.x += item.vX * dt;
+        item.container.angle -= 0.5;
+        if (item.container.x >= this.W - ITEM_DISPLAY / 2) {
+          item.phase = 'belt3';
+          item.container.x = this.W - ITEM_DISPLAY / 2;
+          item.container.y = this.belt3Y;
+          item.vX = -Math.abs(item.vX);  // reverse: now goes left
+        }
+      } else if (item.phase === 'belt3') {
+        item.container.x += item.vX * dt;
+        item.container.angle -= 0.9;
+        if (item.container.x <= this.W / 2) {
+          item.phase = 'falling';
+          item.container.x = this.W / 2;
+          item.vX = 0;
+          item.vY = 460;
+        }
+      } else if (item.phase === 'falling') {
+        item.vY += 360 * dt;
+        item.container.y += item.vY * dt;
+        item.container.angle += 2;
+        if (item.container.y >= this.binsY - 10) {
+          item.phase = 'done';
+          this.resolveItem(item);
+        }
       }
     }
   }
 
-  // ─── Background ─────────────────────────────────────────────────────────────
+  // ─── Background ──────────────────────────────────────────────────────────────
 
   private drawBackground() {
     const g = this.add.graphics().setDepth(-10);
@@ -185,30 +202,43 @@ export class RecyclingScene extends Phaser.Scene {
       g.lineBetween(x, y - BELT_H / 2, x + w, y - BELT_H / 2);
       g.lineBetween(x, y + BELT_H / 2, x + w, y + BELT_H / 2);
       const step = 54;
-      for (let tx = goLeft ? x + w - 20 : x + 20; goLeft ? tx > x + 10 : tx < x + w - 10; goLeft ? tx -= step : tx += step) {
+      for (
+        let tx = goLeft ? x + w - 20 : x + 20;
+        goLeft ? tx > x + 10 : tx < x + w - 10;
+        goLeft ? tx -= step : tx += step
+      ) {
         g.fillStyle(0x6B7280, 0.45);
         if (goLeft) g.fillTriangle(tx - 9, y, tx + 7, y - 7, tx + 7, y + 7);
         else        g.fillTriangle(tx + 9, y, tx - 7, y - 7, tx - 7, y + 7);
       }
     };
 
-    drawBelt(0, this.belt1Y, W,     true);   // full width, right→left
-    drawBelt(0, this.belt2Y, W / 2, false);  // left half, left→right
+    // Track 1 – full width, right → left
+    drawBelt(0,     this.belt1Y, W,     true);
+    // Track 2 – full width, left → right
+    drawBelt(0,     this.belt2Y, W,     false);
+    // Track 3 – right half, right → left (ends at centre drop)
+    drawBelt(W / 2, this.belt3Y, W / 2, true);
 
-    // Chute linking the two belts at the left edge
+    // Left chute connecting track 1 → track 2
     g.fillStyle(0x374151, 1);
-    g.fillRect(0, this.belt1Y + BELT_H / 2 - 2, 18, this.belt2Y - this.belt1Y - BELT_H / 2 + 4);
+    g.fillRect(0, this.belt1Y + BELT_H / 2 - 2, 18, this.belt2Y - this.belt1Y - BELT_H + 4);
 
-    // Instruction label
+    // Right chute connecting track 2 → track 3
+    g.fillRect(W - 18, this.belt2Y + BELT_H / 2 - 2, 18, this.belt3Y - this.belt2Y - BELT_H + 4);
+
+    // Instruction label above belt 1
     this.add.text(W / 2, this.belt1Y - 28, '♻️  Sort the waste into the right bin!', {
       fontFamily: 'Fredoka One, cursive', fontSize: '13px',
       color: '#94A3B8', stroke: '#000', strokeThickness: 2, align: 'center',
     }).setOrigin(0.5).setDepth(6).setResolution(2);
 
-    // Direction labels
-    this.add.text(W - 10,     this.belt1Y, '←', { fontFamily: 'Fredoka One', fontSize: '18px', color: '#9CA3AF' })
+    // Direction arrows
+    this.add.text(W - 10, this.belt1Y, '←', { fontFamily: 'Fredoka One', fontSize: '18px', color: '#9CA3AF' })
       .setOrigin(1, 0.5).setDepth(6).setResolution(2);
-    this.add.text(W / 2 - 6, this.belt2Y, '→', { fontFamily: 'Fredoka One', fontSize: '18px', color: '#9CA3AF' })
+    this.add.text(10,     this.belt2Y, '→', { fontFamily: 'Fredoka One', fontSize: '18px', color: '#9CA3AF' })
+      .setOrigin(0, 0.5).setDepth(6).setResolution(2);
+    this.add.text(W - 10, this.belt3Y, '←', { fontFamily: 'Fredoka One', fontSize: '18px', color: '#9CA3AF' })
       .setOrigin(1, 0.5).setDepth(6).setResolution(2);
   }
 
@@ -217,7 +247,7 @@ export class RecyclingScene extends Phaser.Scene {
   private drawDropZoneLine() {
     const g = this.add.graphics().setDepth(8);
     const x = this.W / 2;
-    let y = this.belt2Y + 27;
+    let y = this.belt3Y + 27;
     while (y < this.binsY - 24) {
       g.lineStyle(1.5, 0xFFFFFF, 0.18);
       g.lineBetween(x, y, x, y + 12);
@@ -258,7 +288,6 @@ export class RecyclingScene extends Phaser.Scene {
       this.binLabelTexts[i].setX(cx);
     }
 
-    // Active bin highlight + drop arrow
     const ax = this.W / 2, ay = this.binsY - 18;
     this.highlightGfx.fillStyle(0xFFFFFF, 0.55);
     this.highlightGfx.fillTriangle(ax - 11, ay - 10, ax + 11, ay - 10, ax, ay);
@@ -278,7 +307,7 @@ export class RecyclingScene extends Phaser.Scene {
     return -1;
   }
 
-  // ─── HUD (bottom strip) ──────────────────────────────────────────────────────
+  // ─── HUD ─────────────────────────────────────────────────────────────────────
 
   private buildHud() {
     const W = this.W, H = this.H;
@@ -399,17 +428,25 @@ export class RecyclingScene extends Phaser.Scene {
 
   // ─── Spawning ────────────────────────────────────────────────────────────────
 
-  private scheduleItem(delay: number) {
+  private getSpawnInterval(): number {
+    if (this.score >= 14) return 3000;
+    if (this.score >= 7)  return 4000;
+    return 5000;
+  }
+
+  private spawnTick() {
     if (this.gameOver) return;
-    this.time.delayedCall(delay, () => { if (!this.gameOver) this.spawnItem(); });
+    this.spawnItem();
+    this.time.delayedCall(this.getSpawnInterval(), () => this.spawnTick());
   }
 
   private spawnItem() {
+    if (this.gameOver) return;
+
     const cat = CATS[Math.floor(Math.random() * CATS.length)];
     const idx = Math.floor(Math.random() * cat.itemCount) + 1;
     const tex = `${cat.key}-${idx}`;
 
-    // Drop shadow circle
     const g = this.add.graphics();
     g.fillStyle(0x000000, 0.28);
     g.fillEllipse(0, ITEM_DISPLAY * 0.52, ITEM_DISPLAY * 0.9, ITEM_DISPLAY * 0.28);
@@ -418,18 +455,32 @@ export class RecyclingScene extends Phaser.Scene {
       .setDisplaySize(ITEM_DISPLAY, ITEM_DISPLAY)
       .setOrigin(0.5);
 
-    const container = this.add.container(this.W + ITEM_DISPLAY, this.belt1Y, [g, img]);
+    const children: Phaser.GameObjects.GameObject[] = [g, img];
+
+    // Category hint label for first HINT_COUNT items
+    if (this.spawnedTotal < HINT_COUNT) {
+      const hint = this.add.text(0, -ITEM_DISPLAY * 0.64, cat.label, {
+        fontFamily: 'Fredoka One, cursive', fontSize: '13px',
+        color: '#FFFFFF', stroke: '#000000', strokeThickness: 3,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        padding: { x: 6, y: 3 },
+      }).setOrigin(0.5, 1).setResolution(2).setDepth(1);
+      children.push(hint);
+    }
+    this.spawnedTotal++;
+
+    const container = this.add.container(this.W + ITEM_DISPLAY, this.belt1Y, children);
     container.setDepth(40);
 
-    this.currentItem = { container, cat: cat.key as CatKey, phase: 'belt1' };
-    const speed = Phaser.Math.Clamp(85 + this.score * 7, 85, 210);
-    this.itemVX = -speed;
-    this.itemVY = 0;
+    const speed = Phaser.Math.Clamp(80 + this.score * 4, 80, 160);
+    this.items.push({ container, cat: cat.key as CatKey, phase: 'belt1', vX: -speed, vY: 0 });
   }
 
   // ─── Resolution ──────────────────────────────────────────────────────────────
 
   private resolveItem(item: BeltItem) {
+    if (this.gameOver) { item.container.destroy(); return; }
+
     const hitIdx = this.binAtDrop();
     const correct = hitIdx >= 0 && CATS[hitIdx].key === item.cat;
 
@@ -447,14 +498,11 @@ export class RecyclingScene extends Phaser.Scene {
     this.refreshHud();
 
     this.time.delayedCall(450, () => {
-      item.container.destroy();
-      this.currentItem = null;
+      const idx = this.items.indexOf(item);
+      if (idx >= 0) this.items.splice(idx, 1);
+      if (item.container?.active) item.container.destroy();
       if (this.gameOver) return;
-      if (this.mistakes >= MAX_MISTAKES) {
-        this.triggerGameOver();
-      } else {
-        this.scheduleItem(Phaser.Math.Clamp(1700 - this.score * 38, 600, 1700));
-      }
+      if (this.mistakes >= MAX_MISTAKES) this.triggerGameOver();
     });
   }
 
@@ -485,7 +533,11 @@ export class RecyclingScene extends Phaser.Scene {
   private triggerGameOver() {
     if (this.gameOver) return;
     this.gameOver = true;
-    if (this.currentItem) { this.currentItem.container.destroy(); this.currentItem = null; }
+
+    for (const item of this.items) {
+      if (item.container?.active) item.container.destroy();
+    }
+    this.items = [];
 
     const state = useProgressStore.getState();
     state.updateHighScore(MISSION_ID, this.score);

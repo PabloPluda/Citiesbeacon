@@ -197,7 +197,7 @@ export class RecyclingScene extends Phaser.Scene {
   // ─── HUD (top strip — matches ThrowToBin layout) ─────────────────────────────
 
   private buildHud() {
-    const W = this.W, H = this.H;
+    const W = this.W;
     const BACK_END = 64, stripH = 78;
     const hudW  = W - BACK_END;
     const hudCX = BACK_END + hudW / 2;

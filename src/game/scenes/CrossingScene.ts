@@ -270,9 +270,9 @@ export class CrossingScene extends Phaser.Scene {
     this.load.image('backdown_2', '/Crossing/backdown_2.png');
     ['obst_1a','obst_1b','obst3_a','obst3_b']
       .forEach(k => this.load.image(k, `/Crossing/${k}.png`));
-    if (!this.cache.json.has('ped_walk_data')) {
-      this.load.json('ped_walk_data', '/Crossing/manWalk1.json');
-    }
+    if (!this.cache.json.has('ped_walk_data'))  this.load.json('ped_walk_data',  '/Crossing/manWalk1.json');
+    if (!this.cache.json.has('girl_walk_data')) this.load.json('girl_walk_data', '/Crossing/girlwalk2.json');
+    if (!this.cache.json.has('dog_walk_data'))  this.load.json('dog_walk_data',  '/Crossing/manwalkdog.json');
   }
 
   init(data?: { level?: number }) {
@@ -674,30 +674,32 @@ export class CrossingScene extends Phaser.Scene {
   // ── Pedestrian Lottie animations ──────────────────────────────────────────────
 
   private initPedAnims() {
-    const rawData = this.cache.json.get('ped_walk_data');
-    if (rawData) {
+    const CONFIGS = [
+      { cacheKey: 'ped_walk_data',  texKey: 'ped_walk',    W: 100, H: 180, totalF: 28,  ip: 0,  fps: 30 },
+      { cacheKey: 'girl_walk_data', texKey: 'girl_walk',   W: 100, H: 100, totalF: 200, ip: 0,  fps: 25 },
+      { cacheKey: 'dog_walk_data',  texKey: 'dogman_walk', W: 90,  H: 160, totalF: 96,  ip: 24, fps: 24 },
+    ];
+    for (const cfg of CONFIGS) {
+      const rawData = this.cache.json.get(cfg.cacheKey);
+      if (!rawData) continue;
       try {
-        // Deep-clone so Lottie's internal mutation doesn't corrupt the cached object on restart
         const animData = JSON.parse(JSON.stringify(rawData));
-        const canvasW = 100, canvasH = 180;
         const div = document.createElement('div');
-        div.style.cssText = `position:fixed;left:-9999px;top:-9999px;width:${canvasW}px;height:${canvasH}px;`;
+        div.style.cssText = `position:fixed;left:-9999px;top:-9999px;width:${cfg.W}px;height:${cfg.H}px;`;
         document.body.appendChild(div);
         const anim = lottie.loadAnimation({
-          container:     div,
-          renderer:      'canvas',
-          loop:          true,
-          autoplay:      false,
-          animationData: animData,
+          container: div, renderer: 'canvas', loop: true,
+          autoplay: false, animationData: animData,
         });
         const canvas = div.querySelector('canvas') as HTMLCanvasElement ?? undefined;
-        if (this.textures.exists('ped_walk')) this.textures.remove('ped_walk');
-        this.textures.createCanvas('ped_walk', canvasW, canvasH);
+        if (this.textures.exists(cfg.texKey)) this.textures.remove(cfg.texKey);
+        this.textures.createCanvas(cfg.texKey, cfg.W, cfg.H);
         this.pedAnims.push({
-          key: 'ped_walk', div, anim, canvas,
-          frameAccum: 0, totalFrames: 28, ip: 0, fps: 30, canvasW, canvasH,
+          key: cfg.texKey, div, anim, canvas,
+          frameAccum: 0, totalFrames: cfg.totalF, ip: cfg.ip, fps: cfg.fps,
+          canvasW: cfg.W, canvasH: cfg.H,
         });
-      } catch { /* skip if Lottie fails — scene falls back to static obstacles */ }
+      } catch { /* skip if Lottie fails for this animation */ }
     }
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       for (const p of this.pedAnims) { p.anim.destroy(); p.div.remove(); }

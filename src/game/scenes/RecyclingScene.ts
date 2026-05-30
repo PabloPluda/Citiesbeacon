@@ -6,9 +6,9 @@ const MISSION_ID      = 8;
 const MAX_MISTAKES    = 5;
 const COINS_PER_CATCH = 4;
 const ITEM_DISPLAY    = 64;
-const HINT_COUNT      = 15;    // show category label above item for first N spawns
-const INITIAL_ACTIVE  = 3;     // bins active at start
-const ITEMS_PER_LEVEL = 4;     // correct items needed to unlock next bin
+const HINT_COUNT      = 15;
+const INITIAL_ACTIVE  = 3;
+const ITEMS_PER_LEVEL = 4;
 
 const CATS = [
   { key: 'ewaste',  label: 'E-Waste',  binTex: 'bin-grey',   itemPrefix: 'ewaste',  itemCount: 5 },
@@ -21,7 +21,7 @@ const CATS = [
 
 type CatKey = typeof CATS[number]['key'];
 
-// Order in which bins are unlocked (first INITIAL_ACTIVE are active from the start)
+// Order in which bins are unlocked; first INITIAL_ACTIVE are active from the start
 const BIN_ORDER: CatKey[] = ['organic', 'paper', 'glass', 'plastic', 'metal', 'ewaste'];
 
 interface BeltItem {
@@ -30,6 +30,7 @@ interface BeltItem {
   phase: 'belt1' | 'belt2' | 'belt3' | 'falling' | 'done';
   vX: number;
   vY: number;
+  hintText?: Phaser.GameObjects.Text; // separate (non-rotating) label
 }
 
 export class RecyclingScene extends Phaser.Scene {
@@ -64,10 +65,10 @@ export class RecyclingScene extends Phaser.Scene {
   private binLabelTexts: Phaser.GameObjects.Text[]  = [];
   private highlightGfx!: Phaser.GameObjects.Graphics;
 
-  private livesTexts: Phaser.GameObjects.Text[] = [];
   private hudCoins!:  Phaser.GameObjects.Text;
   private hudScored!: Phaser.GameObjects.Text;
   private hudBest!:   Phaser.GameObjects.Text;
+  private hudLives!:  Phaser.GameObjects.Text;
 
   constructor() { super('RecyclingScene'); }
 
@@ -83,7 +84,6 @@ export class RecyclingScene extends Phaser.Scene {
     this.items          = [];
     this.binImages      = [];
     this.binLabelTexts  = [];
-    this.livesTexts     = [];
   }
 
   preload() {
@@ -110,29 +110,26 @@ export class RecyclingScene extends Phaser.Scene {
     const H = this.cameras.main.height;
     this.W = W; this.H = H;
 
-    this.belt1Y = H * 0.11;
-    this.belt2Y = H * 0.22;
-    this.belt3Y = H * 0.33;
-    this.binsY  = H * 0.60;
+    this.belt1Y = H * 0.22;   // pushed down to leave room for top HUD
+    this.belt2Y = H * 0.36;
+    this.belt3Y = H * 0.50;
+    this.binsY  = H * 0.72;
     this.BW     = Math.floor(W / 3);
-    this.BH     = Math.min(H * 0.22, 185);
+    this.BH     = Math.min(H * 0.20, 175);
 
-    this.binMinX   = W / 2 - 5 * this.BW - this.BW / 2;
-    this.binMaxX   = W / 2 - this.BW / 2;
-    this.binGroupX = Phaser.Math.Clamp(W / 2 - 2 * this.BW - this.BW / 2, this.binMinX, this.binMaxX);
+    this.binGroupX = 0;       // centre bin of initial 3 at the drop point
+    this.updateBinLayout();   // sets binMin/MaxX and clamps binGroupX
 
     EventBus.emit('current-scene-ready', this);
-
     const onRestart = () => setTimeout(() => this.scene.restart(), 0);
     EventBus.on('restart-scene', onRestart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off('restart-scene', onRestart));
 
     this.drawBackground();
+    this.buildHud();
     this.drawBelts();
     this.drawDropZoneLine();
     this.buildBins();
-    this.buildHud();
-    this.buildLives();
     this.setupInput();
 
     this.time.delayedCall(1400, () => this.spawnTick());
@@ -181,6 +178,11 @@ export class RecyclingScene extends Phaser.Scene {
           this.resolveItem(item);
         }
       }
+
+      // Keep hint label horizontal above the spinning container
+      if (item.hintText?.active) {
+        item.hintText.setPosition(item.container.x, item.container.y - ITEM_DISPLAY * 0.70);
+      }
     }
   }
 
@@ -192,11 +194,108 @@ export class RecyclingScene extends Phaser.Scene {
     g.fillRect(0, 0, this.W, this.H);
   }
 
+  // ─── HUD (top strip — matches ThrowToBin layout) ─────────────────────────────
+
+  private buildHud() {
+    const W = this.W, H = this.H;
+    const BACK_END = 64, stripH = 78;
+    const hudW  = W - BACK_END;
+    const hudCX = BACK_END + hudW / 2;
+
+    this.add.rectangle(hudCX, stripH / 2, hudW, stripH, 0x000000, 0.52)
+      .setDepth(48).setScrollFactor(0);
+    this.add.rectangle(hudCX, stripH, hudW, 1.5, 0xFFFFFF, 0.10)
+      .setDepth(49).setScrollFactor(0);
+
+    this.ensureHudTextures();
+
+    const col1 = BACK_END + hudW * 0.14;
+    const col2 = BACK_END + hudW * 0.48;
+    const col3 = BACK_END + hudW * 0.76;
+    const labelY = 17, valueY = 53;
+
+    const mkLabel = (x: number, txt: string, col: string) =>
+      this.add.text(x, labelY, txt, {
+        fontFamily: 'Fredoka One, cursive', fontSize: '16px',
+        color: col, stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+
+    mkLabel(col1, 'City Coins', '#93C5FD');
+    mkLabel(col2, 'Score',      '#86EFAC');
+    mkLabel(col3, 'My Record',  '#FDE68A');
+
+    const iconSize = 22, iconOffX = 13;
+    const valStyle = { fontFamily: 'Fredoka One, cursive', fontSize: '22px', color: '#fff', stroke: '#000', strokeThickness: 3 };
+
+    this.add.image(col1 - iconOffX, valueY, 'hud-coin').setDisplaySize(iconSize, iconSize).setDepth(50).setScrollFactor(0);
+    this.add.image(col2 - iconOffX, valueY, 'hud-bin' ).setDisplaySize(iconSize, iconSize).setDepth(50).setScrollFactor(0);
+    this.add.image(col3 - iconOffX, valueY, 'hud-star').setDisplaySize(iconSize, iconSize).setDepth(50).setScrollFactor(0);
+
+    this.hudCoins  = this.add.text(col1 + iconOffX - 8, valueY, '0', valStyle).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+    this.hudScored = this.add.text(col2 + iconOffX - 8, valueY, '0', valStyle).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+    this.hudBest   = this.add.text(col3 + iconOffX - 8, valueY, '0', valStyle).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+
+    // Lives: compact indicator at far right of top strip
+    this.hudLives = this.add.text(W - 10, valueY, `❤️ ×${MAX_MISTAKES}`, {
+      fontFamily: 'Fredoka One, cursive', fontSize: '18px', color: '#FCA5A5',
+      stroke: '#000', strokeThickness: 2,
+    }).setOrigin(1, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+
+    this.refreshHud();
+
+    // Instruction label just below the HUD strip
+    this.add.text(W / 2, stripH + 8, '♻️  Sort the waste into the right bin!', {
+      fontFamily: 'Fredoka One, cursive', fontSize: '12px',
+      color: '#94A3B8', stroke: '#000', strokeThickness: 2, align: 'center',
+    }).setOrigin(0.5, 0).setDepth(6).setResolution(2);
+  }
+
+  private ensureHudTextures() {
+    if (!this.textures.exists('hud-coin')) {
+      const g = this.make.graphics({ x: 0, y: 0 });
+      g.fillStyle(0xFFD700); g.fillCircle(13, 13, 12);
+      g.lineStyle(2, 0xC49A00); g.strokeCircle(13, 13, 12);
+      g.fillStyle(0xFFFFFF, 0.30); g.fillCircle(9, 9, 4.5);
+      g.generateTexture('hud-coin', 26, 26); g.destroy();
+    }
+    if (!this.textures.exists('hud-bin')) {
+      const g = this.make.graphics({ x: 0, y: 0 });
+      g.fillStyle(0x15803D); g.fillRoundedRect(9, 1, 8, 5, 2.5);
+      g.fillStyle(0x16A34A); g.fillRoundedRect(2, 4, 22, 5, 2.5);
+      g.fillStyle(0x15803D); g.fillRoundedRect(3, 9, 20, 17, { tl: 0, tr: 0, bl: 4, br: 4 });
+      [7, 12, 17].forEach(x => { g.fillStyle(0xFFFFFF, 0.22); g.fillRect(x, 11, 3, 13); });
+      g.generateTexture('hud-bin', 26, 28); g.destroy();
+    }
+    if (!this.textures.exists('hud-star')) {
+      const g = this.make.graphics({ x: 0, y: 0 });
+      g.fillStyle(0xFFD700);
+      const cx = 13, cy = 13, R = 11, r = 4.5, pts = 5;
+      g.beginPath();
+      for (let i = 0; i < pts * 2; i++) {
+        const a   = (i * Math.PI / pts) - Math.PI / 2;
+        const rad = i % 2 === 0 ? R : r;
+        if (i === 0) g.moveTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+        else         g.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+      }
+      g.closePath(); g.fillPath();
+      g.generateTexture('hud-star', 26, 26); g.destroy();
+    }
+  }
+
+  private refreshHud() {
+    const state = useProgressStore.getState();
+    this.hudCoins .setText(String(state.cityCoins ?? 0));
+    this.hudScored.setText(String(this.score));
+    this.hudBest  .setText(String(Math.max(state.highScores?.[MISSION_ID] ?? 0, this.score)));
+    const rem = MAX_MISTAKES - this.mistakes;
+    this.hudLives .setText(rem > 0 ? `❤️ ×${rem}` : '💔 ×0');
+  }
+
   // ─── Belts ───────────────────────────────────────────────────────────────────
 
   private drawBelts() {
     const g = this.add.graphics().setDepth(5);
-    const BELT_H = 46, W = this.W;
+    const BELT_H = 44, W = this.W;
 
     const drawBelt = (x: number, y: number, w: number, goLeft: boolean) => {
       g.fillStyle(0x000000, 0.30);
@@ -224,17 +323,12 @@ export class RecyclingScene extends Phaser.Scene {
     drawBelt(0,     this.belt2Y, W,     false);  // full width, left→right
     drawBelt(W / 2, this.belt3Y, W / 2, true);   // right half, right→centre
 
-    // Left chute (belt1 → belt2)
+    // Left chute (belt1→belt2) and right chute (belt2→belt3)
     g.fillStyle(0x374151, 1);
-    g.fillRect(0, this.belt1Y + BELT_H / 2 - 2, 18, this.belt2Y - this.belt1Y - BELT_H + 4);
-    // Right chute (belt2 → belt3)
+    g.fillRect(0,      this.belt1Y + BELT_H / 2 - 2, 18, this.belt2Y - this.belt1Y - BELT_H + 4);
     g.fillRect(W - 18, this.belt2Y + BELT_H / 2 - 2, 18, this.belt3Y - this.belt2Y - BELT_H + 4);
 
-    this.add.text(W / 2, this.belt1Y - 28, '♻️  Sort the waste into the right bin!', {
-      fontFamily: 'Fredoka One, cursive', fontSize: '13px',
-      color: '#94A3B8', stroke: '#000', strokeThickness: 2, align: 'center',
-    }).setOrigin(0.5).setDepth(6).setResolution(2);
-
+    // Direction arrows
     this.add.text(W - 10, this.belt1Y, '←', { fontFamily: 'Fredoka One', fontSize: '18px', color: '#9CA3AF' })
       .setOrigin(1, 0.5).setDepth(6).setResolution(2);
     this.add.text(10,     this.belt2Y, '→', { fontFamily: 'Fredoka One', fontSize: '18px', color: '#9CA3AF' })
@@ -248,8 +342,8 @@ export class RecyclingScene extends Phaser.Scene {
   private drawDropZoneLine() {
     const g = this.add.graphics().setDepth(8);
     const x = this.W / 2;
-    let y = this.belt3Y + 27;
-    while (y < this.binsY - 24) {
+    let y = this.belt3Y + 26;
+    while (y < this.binsY - 22) {
       g.lineStyle(1.5, 0xFFFFFF, 0.18);
       g.lineBetween(x, y, x, y + 12);
       y += 20;
@@ -260,33 +354,38 @@ export class RecyclingScene extends Phaser.Scene {
 
   private buildBins() {
     this.highlightGfx = this.add.graphics().setDepth(29);
-    const activeCats = new Set(BIN_ORDER.slice(0, INITIAL_ACTIVE));
-
-    for (let i = 0; i < 6; i++) {
-      const cat      = CATS[i];
-      const isActive = activeCats.has(cat.key);
-
-      const img = this.add.image(0, this.binsY, cat.binTex)
-        .setOrigin(0.5, 0)
-        .setDisplaySize(this.BW * 0.88, this.BH)
-        .setDepth(30)
-        .setAlpha(isActive ? 1 : 0.28);
-      this.binImages.push(img);
-
-      const lbl = this.add.text(0, this.binsY + this.BH - 18, cat.label, {
-        fontFamily: 'Fredoka One, cursive', fontSize: '13px',
-        color: '#fff', stroke: '#000', strokeThickness: 2.5, align: 'center',
-      }).setOrigin(0.5, 1).setDepth(32).setResolution(2).setAlpha(isActive ? 1 : 0.28);
-      this.binLabelTexts.push(lbl);
-    }
+    for (let i = 0; i < INITIAL_ACTIVE; i++) this.createBinAt(i);
     this.repositionBins();
+  }
+
+  private createBinAt(orderIdx: number) {
+    const key = BIN_ORDER[orderIdx];
+    const cat = CATS.find(c => c.key === key)!;
+
+    const img = this.add.image(0, this.binsY, cat.binTex)
+      .setOrigin(0.5, 0).setDisplaySize(this.BW * 0.88, this.BH).setDepth(30);
+    this.binImages.push(img);
+
+    const lbl = this.add.text(0, this.binsY + this.BH - 16, cat.label, {
+      fontFamily: 'Fredoka One, cursive', fontSize: '13px',
+      color: '#fff', stroke: '#000', strokeThickness: 2.5, align: 'center',
+    }).setOrigin(0.5, 1).setDepth(32).setResolution(2);
+    this.binLabelTexts.push(lbl);
+  }
+
+  private updateBinLayout() {
+    const N = this.binImages.length || INITIAL_ACTIVE;
+    this.binMaxX   = this.W / 2 - this.BW / 2;
+    this.binMinX   = this.W / 2 - (N - 0.5) * this.BW;
+    this.binGroupX = Phaser.Math.Clamp(this.binGroupX, this.binMinX, this.binMaxX);
+    if (this.highlightGfx) this.repositionBins();
   }
 
   private repositionBins() {
     this.highlightGfx.clear();
     const dropIdx = this.binAtDrop();
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < this.binImages.length; i++) {
       const cx = this.binGroupX + i * this.BW + this.BW / 2;
       this.binImages[i].setX(cx);
       this.binLabelTexts[i].setX(cx);
@@ -305,109 +404,10 @@ export class RecyclingScene extends Phaser.Scene {
 
   private binAtDrop(): number {
     const drop = this.W / 2;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < this.binImages.length; i++) {
       if (Math.abs(this.binGroupX + i * this.BW + this.BW / 2 - drop) < this.BW * 0.55) return i;
     }
     return -1;
-  }
-
-  // ─── HUD ─────────────────────────────────────────────────────────────────────
-
-  private buildHud() {
-    const W = this.W, H = this.H;
-    const BACK_END = 64, stripH = 72;
-    const hudW  = W - BACK_END;
-    const hudCX = BACK_END + hudW / 2;
-
-    this.add.rectangle(hudCX, H - stripH / 2, hudW, stripH, 0x000000, 0.62)
-      .setDepth(48).setScrollFactor(0);
-    this.add.rectangle(hudCX, H - stripH, hudW, 1.5, 0xFFFFFF, 0.12)
-      .setDepth(49).setScrollFactor(0);
-
-    this.ensureHudTextures();
-
-    const col1 = BACK_END + hudW * 0.14;
-    const col2 = BACK_END + hudW * 0.52;
-    const col3 = BACK_END + hudW * 0.83;
-    const lY   = H - stripH + 17;
-    const vY   = H - stripH + 53;
-
-    const lbl = (x: number, txt: string, col: string) =>
-      this.add.text(x, lY, txt, {
-        fontFamily: 'Fredoka One, cursive', fontSize: '18px',
-        color: col, stroke: '#000', strokeThickness: 2,
-      }).setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2);
-
-    lbl(col1, 'Coins:',  '#93C5FD');
-    lbl(col2, 'Score:',  '#86EFAC');
-    lbl(col3, 'Record:', '#FDE68A');
-
-    const IS = 24, IO = 14;
-    const vs = { fontFamily: 'Fredoka One, cursive', fontSize: '22px', color: '#fff', stroke: '#000', strokeThickness: 3 };
-    this.add.image(col1 - IO, vY, 'hud-coin').setDisplaySize(IS, IS).setDepth(50).setScrollFactor(0);
-    this.add.image(col2 - IO, vY, 'hud-bin').setDisplaySize(IS, IS).setDepth(50).setScrollFactor(0);
-    this.add.image(col3 - IO, vY, 'hud-star').setDisplaySize(IS, IS).setDepth(50).setScrollFactor(0);
-
-    this.hudCoins  = this.add.text(col1 + IO - 10, vY, '0', vs).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
-    this.hudScored = this.add.text(col2 + IO - 10, vY, '0', vs).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
-    this.hudBest   = this.add.text(col3 + IO - 10, vY, '0', vs).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
-
-    this.refreshHud();
-  }
-
-  private ensureHudTextures() {
-    if (!this.textures.exists('hud-coin')) {
-      const g = this.make.graphics({ x: 0, y: 0 });
-      g.fillStyle(0xFFD700); g.fillCircle(13, 13, 12);
-      g.lineStyle(2, 0xC49A00); g.strokeCircle(13, 13, 12);
-      g.fillStyle(0xFFFFFF, 0.30); g.fillCircle(9, 9, 4.5);
-      g.generateTexture('hud-coin', 26, 26); g.destroy();
-    }
-    if (!this.textures.exists('hud-bin')) {
-      const g = this.make.graphics({ x: 0, y: 0 });
-      g.fillStyle(0x15803D); g.fillRoundedRect(9, 1, 8, 5, 2.5);
-      g.fillStyle(0x16A34A); g.fillRoundedRect(2, 4, 22, 5, 2.5);
-      g.fillStyle(0x15803D); g.fillRoundedRect(3, 9, 20, 17, { tl: 0, tr: 0, bl: 4, br: 4 });
-      [7, 12, 17].forEach(x => { g.fillStyle(0xFFFFFF, 0.22); g.fillRect(x, 11, 3, 13); });
-      g.generateTexture('hud-bin', 26, 28); g.destroy();
-    }
-    if (!this.textures.exists('hud-star')) {
-      const g = this.make.graphics({ x: 0, y: 0 });
-      g.fillStyle(0xFFD700);
-      const cx = 13, cy = 13, R = 11, r = 4.5, pts = 5;
-      g.beginPath();
-      for (let i = 0; i < pts * 2; i++) {
-        const a = (i * Math.PI / pts) - Math.PI / 2;
-        const rad = i % 2 === 0 ? R : r;
-        if (i === 0) g.moveTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
-        else         g.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
-      }
-      g.closePath(); g.fillPath();
-      g.generateTexture('hud-star', 26, 26); g.destroy();
-    }
-  }
-
-  private refreshHud() {
-    const state = useProgressStore.getState();
-    this.hudCoins.setText(String(state.cityCoins ?? 0));
-    this.hudScored.setText(String(this.score));
-    this.hudBest.setText(String(Math.max(state.highScores?.[MISSION_ID] ?? 0, this.score)));
-  }
-
-  // ─── Lives ───────────────────────────────────────────────────────────────────
-
-  private buildLives() {
-    for (let i = MAX_MISTAKES - 1; i >= 0; i--) {
-      this.livesTexts.push(
-        this.add.text(this.W - 14 - (MAX_MISTAKES - 1 - i) * 28, 34, '❤️', {
-          fontSize: '22px',
-        }).setOrigin(0.5).setDepth(50).setScrollFactor(0).setResolution(2)
-      );
-    }
-  }
-
-  private refreshLives() {
-    this.livesTexts.forEach((t, i) => t.setText(i < this.mistakes ? '🖤' : '❤️'));
   }
 
   // ─── Input ───────────────────────────────────────────────────────────────────
@@ -433,10 +433,9 @@ export class RecyclingScene extends Phaser.Scene {
   // ─── Spawning ────────────────────────────────────────────────────────────────
 
   private getSpawnInterval(): number {
-    if (this.activeBinCount >= 6) return 3000;
-    if (this.activeBinCount >= 5) return 3500;
-    if (this.activeBinCount >= 4) return 4000;
-    return 5000;
+    if (this.score >= 14) return 4000;
+    if (this.score >= 7)  return 5000;
+    return 6000;
   }
 
   private spawnTick() {
@@ -448,48 +447,60 @@ export class RecyclingScene extends Phaser.Scene {
   private spawnItem() {
     if (this.gameOver) return;
 
-    // Only pick from currently active categories
-    const activeCats = CATS.filter(c => (BIN_ORDER.slice(0, this.activeBinCount) as string[]).includes(c.key));
-    const cat = activeCats[Math.floor(Math.random() * activeCats.length)];
-    const idx = Math.floor(Math.random() * cat.itemCount) + 1;
-    const tex = `${cat.key}-${idx}`;
+    // Only spawn from currently active categories
+    const activeCatKeys = BIN_ORDER.slice(0, this.activeBinCount) as string[];
+    const activeCats    = CATS.filter(c => activeCatKeys.includes(c.key));
+    const cat  = activeCats[Math.floor(Math.random() * activeCats.length)];
+    const idx  = Math.floor(Math.random() * cat.itemCount) + 1;
+    const tex  = `${cat.key}-${idx}`;
 
-    const g = this.add.graphics();
-    g.fillStyle(0x000000, 0.28);
-    g.fillEllipse(0, ITEM_DISPLAY * 0.52, ITEM_DISPLAY * 0.9, ITEM_DISPLAY * 0.28);
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x000000, 0.28);
+    shadow.fillEllipse(0, ITEM_DISPLAY * 0.52, ITEM_DISPLAY * 0.9, ITEM_DISPLAY * 0.28);
 
     const img = this.add.image(0, 0, tex)
-      .setDisplaySize(ITEM_DISPLAY, ITEM_DISPLAY)
-      .setOrigin(0.5);
+      .setDisplaySize(ITEM_DISPLAY, ITEM_DISPLAY).setOrigin(0.5);
 
-    const children: Phaser.GameObjects.GameObject[] = [g, img];
-
-    // Category hint label for first HINT_COUNT items
-    if (this.spawnedTotal < HINT_COUNT) {
-      const hint = this.add.text(0, -ITEM_DISPLAY * 0.64, cat.label, {
-        fontFamily: 'Fredoka One, cursive', fontSize: '13px',
-        color: '#FFFFFF', stroke: '#000000', strokeThickness: 3,
-        backgroundColor: 'rgba(0,0,0,0.55)',
-        padding: { x: 6, y: 3 },
-      }).setOrigin(0.5, 1).setResolution(2).setDepth(1);
-      children.push(hint);
-    }
-    this.spawnedTotal++;
-
-    const container = this.add.container(this.W + ITEM_DISPLAY, this.belt1Y, children);
+    const container = this.add.container(this.W + ITEM_DISPLAY, this.belt1Y, [shadow, img]);
     container.setDepth(40);
 
     const speed = Phaser.Math.Clamp(80 + this.score * 4, 80, 160);
-    this.items.push({ container, cat: cat.key as CatKey, phase: 'belt1', vX: -speed, vY: 0 });
+    const item: BeltItem = { container, cat: cat.key as CatKey, phase: 'belt1', vX: -speed, vY: 0 };
+
+    // Category hint: separate text (not in container) so it doesn't rotate
+    if (this.spawnedTotal < HINT_COUNT) {
+      item.hintText = this.add.text(
+        this.W + ITEM_DISPLAY,
+        this.belt1Y - ITEM_DISPLAY * 0.70,
+        cat.label,
+        {
+          fontFamily: 'Fredoka One, cursive', fontSize: '13px',
+          color: '#FFFFFF', stroke: '#000000', strokeThickness: 3,
+          backgroundColor: 'rgba(0,0,0,0.55)',
+          padding: { x: 6, y: 3 },
+        }
+      ).setOrigin(0.5, 1).setResolution(2).setDepth(42);
+    }
+    this.spawnedTotal++;
+
+    this.items.push(item);
   }
 
   // ─── Resolution ──────────────────────────────────────────────────────────────
 
   private resolveItem(item: BeltItem) {
-    if (this.gameOver) { item.container.destroy(); return; }
+    if (this.gameOver) {
+      item.hintText?.destroy();
+      item.container.destroy();
+      return;
+    }
+
+    // Hide hint immediately on resolution
+    if (item.hintText?.active) item.hintText.destroy();
 
     const hitIdx = this.binAtDrop();
-    const correct = hitIdx >= 0 && CATS[hitIdx].key === item.cat;
+    // Correctness: check against BIN_ORDER (bin images are in BIN_ORDER sequence)
+    const correct = hitIdx >= 0 && BIN_ORDER[hitIdx] === item.cat;
 
     if (correct) {
       this.score++;
@@ -497,7 +508,6 @@ export class RecyclingScene extends Phaser.Scene {
       useProgressStore.getState().addCityCoins(COINS_PER_CATCH);
       this.showFeedback(true, hitIdx);
 
-      // Level-up check: unlock next bin after every ITEMS_PER_LEVEL correct items
       if (this.activeBinCount < 6 && this.score >= this.nextLevelScore) {
         this.nextLevelScore += ITEMS_PER_LEVEL;
         this.activeBinCount++;
@@ -505,7 +515,6 @@ export class RecyclingScene extends Phaser.Scene {
       }
     } else {
       this.mistakes++;
-      this.refreshLives();
       this.showFeedback(false, hitIdx);
       this.cameras.main.shake(200, 0.011);
     }
@@ -525,29 +534,35 @@ export class RecyclingScene extends Phaser.Scene {
   private unlockNextBin() {
     const newKey = BIN_ORDER[this.activeBinCount - 1];
     const cat    = CATS.find(c => c.key === newKey);
-    const catIdx = CATS.findIndex(c => c.key === newKey);
 
-    // Animate the newly unlocked bin from dimmed to full colour
-    if (catIdx >= 0) {
-      this.tweens.add({ targets: this.binImages[catIdx],     alpha: 1, duration: 500, ease: 'Power2' });
-      this.tweens.add({ targets: this.binLabelTexts[catIdx], alpha: 1, duration: 500, ease: 'Power2' });
-    }
+    // Add new bin to the layout
+    this.createBinAt(this.activeBinCount - 1);
+    this.updateBinLayout();
 
-    // Golden flash across the whole screen
-    const flash = this.add.rectangle(this.W / 2, this.H / 2, this.W, this.H, 0xF6C90E, 0.18).setDepth(89);
-    this.tweens.add({ targets: flash, alpha: 0, duration: 600, onComplete: () => flash.destroy() });
+    // Golden screen flash
+    const flash = this.add.rectangle(this.W / 2, this.H / 2, this.W, this.H, 0xF6C90E, 0.20).setDepth(89);
+    this.tweens.add({ targets: flash, alpha: 0, duration: 700, onComplete: () => flash.destroy() });
 
-    // "Level Up!" floating text
+    // "LEVEL UP!" message — fades in, holds ~3 s, fades out
     const label = cat?.label ?? newKey;
-    const t = this.add.text(this.W / 2, this.H * 0.46, `⬆️ Level Up!\n${label} bin added!`, {
-      fontFamily: 'Fredoka One, cursive', fontSize: '26px',
-      color: '#F6C90E', stroke: '#000000', strokeThickness: 4,
-      align: 'center',
-    }).setOrigin(0.5).setDepth(100).setResolution(2);
+    const t = this.add.text(
+      this.W / 2, this.H * 0.44,
+      `⬆️ LEVEL UP!\nNew category unlocked:\n${label}`,
+      {
+        fontFamily: 'Fredoka One, cursive', fontSize: '28px',
+        color: '#F6C90E', stroke: '#000000', strokeThickness: 5,
+        align: 'center', lineSpacing: 4,
+      }
+    ).setOrigin(0.5).setDepth(100).setResolution(2).setAlpha(0);
+
     this.tweens.add({
-      targets: t, y: this.H * 0.34, alpha: 0,
-      duration: 1300, ease: 'Power2',
-      onComplete: () => t.destroy(),
+      targets: t, alpha: 1, duration: 350,
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, alpha: 0, delay: 2500, duration: 600,
+          onComplete: () => t.destroy(),
+        });
+      },
     });
   }
 
@@ -582,6 +597,7 @@ export class RecyclingScene extends Phaser.Scene {
     this.gameOver = true;
 
     for (const item of this.items) {
+      if (item.hintText?.active) item.hintText.destroy();
       if (item.container?.active) item.container.destroy();
     }
     this.items = [];

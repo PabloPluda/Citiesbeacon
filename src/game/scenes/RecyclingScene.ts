@@ -24,6 +24,16 @@ type CatKey = typeof CATS[number]['key'];
 // Order in which bins are unlocked; first INITIAL_ACTIVE are active from the start
 const BIN_ORDER: CatKey[] = ['organic', 'paper', 'glass', 'plastic', 'metal', 'ewaste'];
 
+// Hint label background colour matching each bin's colour
+const CAT_HINT_BG: Record<CatKey, string> = {
+  ewaste:  'rgba(100,116,139,0.88)',  // grey
+  glass:   'rgba(22,163,74,0.88)',    // green
+  metal:   'rgba(220,38,38,0.88)',    // red
+  organic: 'rgba(234,88,12,0.88)',    // orange
+  paper:   'rgba(37,99,235,0.88)',    // blue
+  plastic: 'rgba(202,138,4,0.88)',    // amber/yellow
+};
+
 interface BeltItem {
   container: Phaser.GameObjects.Container;
   cat: CatKey;
@@ -235,11 +245,11 @@ export class RecyclingScene extends Phaser.Scene {
     this.hudScored = this.add.text(col2 + iconOffX - 8, valueY, '0', valStyle).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
     this.hudBest   = this.add.text(col3 + iconOffX - 8, valueY, '0', valStyle).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
 
-    // Lives: compact indicator at far right of top strip
-    this.hudLives = this.add.text(W - 10, valueY, `❤️ ×${MAX_MISTAKES}`, {
+    // Lives: left gap area, halfway between HUD strip and first belt — never overlaps HUD columns
+    this.hudLives = this.add.text(10, stripH + Math.round((this.belt1Y - stripH) / 2), `❤️ ×${MAX_MISTAKES}`, {
       fontFamily: 'Fredoka One, cursive', fontSize: '18px', color: '#FCA5A5',
       stroke: '#000', strokeThickness: 2,
-    }).setOrigin(1, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
+    }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0).setResolution(2);
 
     this.refreshHud();
 
@@ -476,7 +486,7 @@ export class RecyclingScene extends Phaser.Scene {
         {
           fontFamily: 'Fredoka One, cursive', fontSize: '13px',
           color: '#FFFFFF', stroke: '#000000', strokeThickness: 3,
-          backgroundColor: 'rgba(0,0,0,0.55)',
+          backgroundColor: CAT_HINT_BG[cat.key],
           padding: { x: 6, y: 3 },
         }
       ).setOrigin(0.5, 1).setResolution(2).setDepth(42);

@@ -196,6 +196,8 @@ interface PedAnimState {
   fps:         number;
   canvasW:     number;
   canvasH:     number;
+  scaleH:      number;  // effective height used for scale calc (< canvasH = appears bigger)
+  flipDefault: boolean; // true = animation faces left by default (flip when walking right)
 }
 
 interface WorldObj {
@@ -675,9 +677,9 @@ export class CrossingScene extends Phaser.Scene {
 
   private initPedAnims() {
     const CONFIGS = [
-      { cacheKey: 'ped_walk_data',  texKey: 'ped_walk',    W: 100, H: 180, totalF: 28,  ip: 0,  fps: 30 },
-      { cacheKey: 'girl_walk_data', texKey: 'girl_walk',   W: 100, H: 100, totalF: 200, ip: 0,  fps: 25 },
-      { cacheKey: 'dog_walk_data',  texKey: 'dogman_walk', W: 90,  H: 160, totalF: 96,  ip: 24, fps: 24 },
+      { cacheKey: 'ped_walk_data',  texKey: 'ped_walk',    W: 100, H: 180, totalF: 28,  ip: 0,  fps: 30, scaleH: 180, flipDefault: false },
+      { cacheKey: 'girl_walk_data', texKey: 'girl_walk',   W: 100, H: 100, totalF: 200, ip: 0,  fps: 25, scaleH: 100, flipDefault: true  },
+      { cacheKey: 'dog_walk_data',  texKey: 'dogman_walk', W: 90,  H: 160, totalF: 96,  ip: 24, fps: 24, scaleH: 100, flipDefault: false },
     ];
     for (const cfg of CONFIGS) {
       const rawData = this.cache.json.get(cfg.cacheKey);
@@ -697,7 +699,7 @@ export class CrossingScene extends Phaser.Scene {
         this.pedAnims.push({
           key: cfg.texKey, div, anim, canvas,
           frameAccum: 0, totalFrames: cfg.totalF, ip: cfg.ip, fps: cfg.fps,
-          canvasW: cfg.W, canvasH: cfg.H,
+          canvasW: cfg.W, canvasH: cfg.H, scaleH: cfg.scaleH, flipDefault: cfg.flipDefault,
         });
       } catch { /* skip if Lottie fails for this animation */ }
     }
@@ -724,10 +726,11 @@ export class CrossingScene extends Phaser.Scene {
       // Animated pedestrian — pick from whatever actually loaded
       const p         = this.pedAnims[Phaser.Math.Between(0, this.pedAnims.length - 1)];
       const sizeVar   = Phaser.Math.FloatBetween(0.85, 1.15);
-      const scale     = (60 / p.canvasH) * 0.85 * sizeVar;
+      const scale     = (60 / p.scaleH) * 0.85 * sizeVar;
       const walkDir   = (Math.random() > 0.5 ? 1 : -1) as 1 | -1;
       const img = this.add.image(worldX, y, p.key)
-        .setOrigin(0.5, 1).setScale(scale).setDepth(depth).setFlipX(walkDir < 0);
+        .setOrigin(0.5, 1).setScale(scale).setDepth(depth)
+        .setFlipX(p.flipDefault ? walkDir > 0 : walkDir < 0);
       this.worldObstacles.push({
         worldX, lane, gfx: img, type: p.key, alive: true,
         animated: true, walkDir, walkSpeed: Phaser.Math.Between(25, 45), walkOriginX: worldX,

@@ -38,12 +38,12 @@ const EMPTY_KEYS = ['empty_1', 'empty_2'];
 // ─── Level helpers ────────────────────────────────────────────────────────────
 function getLevelCfg(level: number) {
   let minFloors: number, maxFloors: number, winCols: number;
-  if (level <= 3)       { minFloors = 2; maxFloors = 4; winCols = 2; }
-  else if (level <= 8)  { minFloors = 3; maxFloors = 5; winCols = 3; }
-  else if (level <= 15) { minFloors = 4; maxFloors = 8; winCols = 3; }
-  else                  { minFloors = 6; maxFloors = 8; winCols = 4; }
-  const minSpeed = 68;
-  const maxSpeed = Math.min(74 + level * 5, 135);
+  if (level <= 4)        { minFloors = 4; maxFloors = 5; winCols = 3; }
+  else if (level <= 10)  { minFloors = 5; maxFloors = 7; winCols = 3; }
+  else if (level <= 16)  { minFloors = 6; maxFloors = 8; winCols = 4; }
+  else                   { minFloors = 7; maxFloors = 9; winCols = 4; }
+  const minSpeed = 75;
+  const maxSpeed = Math.min(81 + level * 5.5, 149);
   const litRate  = 0.13 + level * 0.008;
   return { minFloors, maxFloors, winCols, minSpeed, maxSpeed, litRate };
 }

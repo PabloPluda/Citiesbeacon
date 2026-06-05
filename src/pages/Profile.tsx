@@ -144,7 +144,7 @@ export default function Profile() {
   const avatarEmoji = AVATARS.find(a => a.id === avatarId)?.emoji ?? '👦🏻';
 
   return (
-    <div style={{ minHeight: '100%', overflowY: 'auto', background: '#EEF2FF' }}>
+    <div style={{ height: '100%', overflowY: 'auto', background: '#EEF2FF' }}>
 
       {/* ── Banner ───────────────────────────────────────────────────────── */}
       <div style={{

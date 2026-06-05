@@ -870,9 +870,7 @@ function DiplomasPanel() {
     setDrafts(defaults);
   };
 
-  const lvlStyle = (color: string): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', gap: 6,
-  });
+  const lvlStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6 };
 
   return (
     <div>
@@ -907,7 +905,7 @@ function DiplomasPanel() {
                   { label: '🥈 Silver', val: s, idx: 1 as const, color: '#94A3B8' },
                   { label: '🥇 Gold',   val: gold, idx: 2 as const, color: '#D97706' },
                 ].map(({ label, val, idx, color }) => (
-                  <div key={idx} style={lvlStyle(color)}>
+                  <div key={idx} style={lvlStyle}>
                     <span style={{ fontSize: 12, fontWeight: 600, color, minWidth: 62 }}>{label}</span>
                     <input
                       type="number" min={0} max={9999} value={val}

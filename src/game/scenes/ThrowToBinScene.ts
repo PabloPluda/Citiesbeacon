@@ -8,8 +8,8 @@ const TRASH_KEYS  = [
   'plastic_1','plastic_2','plastic_3','plastic_4','plastic_5',
 ];
 const MAX_PULL        = 140;
-const MIN_SPEED       = 700;
-const MAX_SPEED       = 980;
+const MIN_SPEED       = 735;
+const MAX_SPEED       = 1029;
 const GRAVITY         = 1000;
 const MAX_FLOOR_ITEMS = 10;
 const FLOOR_Y_RATIO   = 0.78;

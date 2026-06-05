@@ -1,62 +1,194 @@
-import { motion } from 'framer-motion';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useProgressStore } from '../store/progressStore';
 import { useUserStore } from '../store/userStore';
+import { useAdminStore } from '../store/adminStore';
 
-const HERO_NAME_KEY = 'cityhero-hero-name';
 const FF = 'Fredoka One, cursive';
+const AVATAR_KEY = 'cityhero-avatar';
 
-const SCRAPBOOK = [
-  { id: 1, title: 'The Golden Broom',     emoji: '🧹', from: '#FDE68A', to: '#F59E0B', accent: '#D97706', dark: '#92400E' },
-  { id: 2, title: 'Safety Guardian',       emoji: '🚦', from: '#A7F3D0', to: '#10B981', accent: '#059669', dark: '#064E3B' },
-  { id: 3, title: 'Planet Brightener',     emoji: '💡', from: '#FED7AA', to: '#F97316', accent: '#EA580C', dark: '#7C2D12' },
-  { id: 4, title: 'Blue River Protector',  emoji: '💧', from: '#BAE6FD', to: '#0EA5E9', accent: '#0284C7', dark: '#0C4A6E' },
-  { id: 5, title: "Sparky's Best Friend",  emoji: '🐕', from: '#FBCFE8', to: '#EC4899', accent: '#DB2777', dark: '#831843' },
+// ─── Avatar options ───────────────────────────────────────────────────────────
+const AVATARS = [
+  { id: 'boy-light',   emoji: '👦🏻', label: 'Boy'  },
+  { id: 'boy-medium',  emoji: '👦🏽', label: 'Boy'  },
+  { id: 'boy-dark',    emoji: '👦🏿', label: 'Boy'  },
+  { id: 'girl-light',  emoji: '👧🏻', label: 'Girl' },
+  { id: 'girl-medium', emoji: '👧🏽', label: 'Girl' },
+  { id: 'girl-dark',   emoji: '👧🏿', label: 'Girl' },
 ];
 
+// ─── Games list ───────────────────────────────────────────────────────────────
+const GAMES = [
+  { id: 1, icon: '🗑️', title: 'Keeping Clean'  },
+  { id: 2, icon: '🚶', title: 'Safe Crossing'  },
+  { id: 3, icon: '💡', title: 'Save Energy'    },
+  { id: 4, icon: '💧', title: 'Water Saver'    },
+  { id: 5, icon: '🐕', title: 'Not My Dog'     },
+  { id: 6, icon: '🚲', title: 'Biking'         },
+  { id: 7, icon: '🏙️', title: 'City Builder'  },
+  { id: 8, icon: '♻️', title: 'Recycling'      },
+];
+
+const DIPLOMA_LEVELS = [
+  { label: 'Bronze', emoji: '🥉', bgOn: '#CD7F32', bgOff: '#E2E8F0' },
+  { label: 'Silver', emoji: '🥈', bgOn: '#94A3B8', bgOff: '#E2E8F0' },
+  { label: 'Gold',   emoji: '🥇', bgOn: '#F59E0B', bgOff: '#E2E8F0' },
+];
+
+// ─── Avatar Picker ────────────────────────────────────────────────────────────
+function AvatarPicker({
+  current, onSelect, onClose,
+}: {
+  current: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(10,10,40,0.75)',
+        display: 'flex', alignItems: 'flex-end',
+      }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 200 }}
+        animate={{ y: 0 }}
+        exit={{ y: 200 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', background: '#fff',
+          borderTopLeftRadius: 32, borderTopRightRadius: 32,
+          padding: '24px 20px 40px',
+        }}
+      >
+        <h3 style={{ fontFamily: FF, fontSize: '1.2rem', color: '#1E293B', textAlign: 'center', margin: '0 0 20px' }}>
+          Choose your avatar
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          {AVATARS.map(av => (
+            <button
+              key={av.id}
+              onClick={() => { onSelect(av.id); onClose(); }}
+              style={{
+                border: current === av.id ? '3px solid #6366F1' : '3px solid transparent',
+                borderRadius: 20, background: current === av.id ? '#EDE9FE' : '#F8FAFC',
+                padding: '14px 0', cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              }}
+            >
+              <span style={{ fontSize: '2.8rem' }}>{av.emoji}</span>
+              <span style={{ fontFamily: FF, fontSize: '0.75rem', color: '#64748B' }}>{av.label}</span>
+            </button>
+          ))}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Diploma Badge ────────────────────────────────────────────────────────────
+function DiplomaRow({ missionId, score }: { missionId: number; score: number }) {
+  const getDiplomaThresholds = useAdminStore(s => s.getDiplomaThresholds);
+  const thresholds = getDiplomaThresholds(missionId);
+
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      {DIPLOMA_LEVELS.map((lvl, i) => {
+        const earned = score >= thresholds[i];
+        return (
+          <div
+            key={lvl.label}
+            title={earned ? `${lvl.label} — ${score} / ${thresholds[i]}` : `Need ${thresholds[i]} pts for ${lvl.label}`}
+            style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: earned ? lvl.bgOn : lvl.bgOff,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.1rem',
+              filter: earned ? 'none' : 'grayscale(1)',
+              opacity: earned ? 1 : 0.4,
+              transition: 'all 0.2s',
+            }}
+          >
+            {lvl.emoji}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main Profile ─────────────────────────────────────────────────────────────
 export default function Profile() {
-  const { highestLevel, getRankInfo } = useProgressStore();
+  const { cityCoins, highScores, getRankInfo } = useProgressStore();
   const { rank, nextRank, progress, currentCP, nextCP } = getRankInfo();
   const { signOut, profile } = useUserStore();
 
-  const heroName = profile?.username || localStorage.getItem(HERO_NAME_KEY) || 'CityHero';
-  const missionsMastered = SCRAPBOOK.filter(m => (highestLevel[m.id] || 0) >= 12).length;
+  const heroName = profile?.username || localStorage.getItem('cityhero-hero-name') || 'CityHero';
+
+  const [avatarId, setAvatarId] = useState(
+    () => localStorage.getItem(AVATAR_KEY) || 'boy-light'
+  );
+  const [showPicker, setShowPicker] = useState(false);
+
+  const selectAvatar = (id: string) => {
+    setAvatarId(id);
+    localStorage.setItem(AVATAR_KEY, id);
+  };
+
+  const avatarEmoji = AVATARS.find(a => a.id === avatarId)?.emoji ?? '👦🏻';
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto" style={{ background: '#EEF2FF' }}>
+    <div style={{ minHeight: '100%', overflowY: 'auto', background: '#EEF2FF' }}>
 
-      {/* ── Hero banner ─────────────────────────────────────────────── */}
-      <div
-        className="flex flex-col items-center px-6 pt-10 pb-16 space-y-3 flex-shrink-0"
-        style={{ background: 'linear-gradient(160deg,#1E3A8A 0%,#4F46E5 50%,#7C3AED 100%)' }}
-      >
-        {/* Avatar */}
+      {/* ── Banner ───────────────────────────────────────────────────────── */}
+      <div style={{
+        background: 'linear-gradient(160deg,#1E3A8A 0%,#4F46E5 50%,#7C3AED 100%)',
+        paddingTop: 48, paddingBottom: 56,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+      }}>
+        {/* Avatar (editable) */}
         <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: 'spring', bounce: 0.55, duration: 0.6 }}
-          className="relative"
+          initial={{ scale: 0 }} animate={{ scale: 1 }}
+          transition={{ type: 'spring', bounce: 0.5, duration: 0.6 }}
+          style={{ position: 'relative' }}
         >
-          <div
-            className="absolute -inset-3 rounded-full"
-            style={{ background: 'radial-gradient(circle, rgba(253,224,71,0.45) 0%, transparent 70%)' }}
-          />
-          <div
-            className="relative w-24 h-24 rounded-full border-4 border-white flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(135deg,#FFD93D 0%,#FF8C42 100%)',
-              fontSize: '3.2rem',
-              boxShadow: '0 8px 28px rgba(0,0,0,0.3)',
-            }}
+          <div style={{
+            width: 96, height: 96, borderRadius: '50%',
+            border: '4px solid white',
+            background: 'linear-gradient(135deg,#FFD93D,#FF8C42)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '3.2rem',
+            boxShadow: '0 8px 28px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
+          }}
+            onClick={() => setShowPicker(true)}
           >
-            👦
+            {avatarEmoji}
           </div>
+          {/* Edit pencil */}
+          <button
+            onClick={() => setShowPicker(true)}
+            style={{
+              position: 'absolute', bottom: -2, right: -2,
+              width: 28, height: 28, borderRadius: '50%',
+              background: '#F6C90E', border: '2px solid white',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.85rem', cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+            }}
+          >✏️</button>
         </motion.div>
 
         {/* Name */}
         <motion.h2
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-          className="text-3xl text-white font-bold text-center"
-          style={{ fontFamily: FF, textShadow: '0 2px 8px rgba(0,0,0,0.25)' }}
+          style={{ fontFamily: FF, fontSize: '1.9rem', color: '#fff', margin: 0, textShadow: '0 2px 8px rgba(0,0,0,0.25)' }}
         >
           {heroName}
         </motion.h2>
@@ -64,206 +196,140 @@ export default function Profile() {
         {/* Rank badge */}
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
-          className="rounded-full px-5 py-2"
-          style={{ background: '#FCD34D', boxShadow: '0 4px 0 #D97706' }}
+          style={{ background: '#FCD34D', borderRadius: 999, padding: '6px 18px', boxShadow: '0 4px 0 #D97706' }}
         >
-          <span className="font-bold text-sm" style={{ fontFamily: FF, color: '#78350F' }}>{rank}</span>
+          <span style={{ fontFamily: FF, fontSize: '0.85rem', color: '#78350F' }}>{rank}</span>
         </motion.div>
       </div>
 
-      {/* ── Slide-up white content ───────────────────────────────────── */}
-      <div
-        className="flex-1 px-4 pt-6 pb-10 space-y-5"
-        style={{
-          background: '#EEF2FF',
-          borderTopLeftRadius: '32px',
-          borderTopRightRadius: '32px',
-          marginTop: '-28px',
-          boxShadow: '0 -6px 24px rgba(79,70,229,0.18)',
-        }}
-      >
-        {/* ── Stat cards ── */}
-        <div className="grid grid-cols-2 gap-3">
-          {/* CP */}
-          <motion.div
-            initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15 }}
-            className="rounded-3xl p-4 text-center space-y-1 overflow-hidden relative"
-            style={{ background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', boxShadow: '0 4px 0 #FCD34D, 0 8px 20px rgba(245,158,11,0.2)' }}
-          >
-            <div className="text-4xl">⭐</div>
-            <div className="text-3xl font-bold" style={{ fontFamily: FF, color: '#D97706' }}>
-              {currentCP}
-            </div>
-            <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#92400E' }}>
-              Hero Points
-            </div>
-          </motion.div>
+      {/* ── White card area ───────────────────────────────────────────────── */}
+      <div style={{
+        background: '#EEF2FF',
+        borderTopLeftRadius: 32, borderTopRightRadius: 32,
+        marginTop: -28,
+        padding: '24px 16px 32px',
+        boxShadow: '0 -6px 24px rgba(79,70,229,0.18)',
+        display: 'flex', flexDirection: 'column', gap: 16,
+      }}>
 
-          {/* Mastered */}
-          <motion.div
-            initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.22 }}
-            className="rounded-3xl p-4 text-center space-y-1"
-            style={{ background: 'linear-gradient(135deg,#EDE9FE,#DDD6FE)', boxShadow: '0 4px 0 #8B5CF6, 0 8px 20px rgba(109,40,217,0.2)' }}
-          >
-            <div className="text-4xl">🏆</div>
-            <div className="text-3xl font-bold" style={{ fontFamily: FF, color: '#6D28D9' }}>
-              {missionsMastered}
-              <span className="text-base font-semibold" style={{ color: '#A78BFA' }}>/5</span>
-            </div>
-            <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#4C1D95' }}>
-              Mastered
-            </div>
-          </motion.div>
-        </div>
-
-        {/* ── Rank progress ── */}
+        {/* ── Coins + Progress ─────────────────────────────────────────── */}
         <motion.div
-          initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }}
-          className="rounded-3xl p-4 space-y-2"
-          style={{ background: '#FFFFFF', boxShadow: '0 4px 16px rgba(79,70,229,0.12)' }}
+          initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15 }}
+          style={{
+            background: '#fff', borderRadius: 24, padding: '18px 20px',
+            boxShadow: '0 4px 16px rgba(79,70,229,0.10)',
+            display: 'flex', flexDirection: 'column', gap: 14,
+          }}
         >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#94A3B8' }}>Rank Progress</span>
-            <span className="text-xs font-bold" style={{ color: '#6D28D9' }}>
-              {progress >= 100 ? '👑 MAX RANK!' : `${Math.round(progress)}%`}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-base">{rank.split(' ')[0]}</span>
-            <div className="flex-1 h-4 rounded-full overflow-hidden" style={{ background: '#E0E7FF' }}>
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 1.3, ease: 'easeOut', delay: 0.5 }}
-                className="h-full rounded-full"
-                style={{ background: 'linear-gradient(90deg,#6366F1,#7C3AED)' }}
-              />
+          {/* City Coins */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: '50%',
+              background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)',
+              border: '3px solid #FCD34D',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.6rem',
+              boxShadow: '0 3px 0 #FCD34D',
+            }}>🪙</div>
+            <div>
+              <div style={{ fontFamily: FF, fontSize: '1.6rem', color: '#D97706', lineHeight: 1 }}>
+                {cityCoins}
+              </div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400E', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                City Coins
+              </div>
             </div>
-            <span className="text-base">{progress >= 100 ? '👑' : nextRank.split(' ')[0]}</span>
           </div>
-          <p className="text-xs text-right font-semibold" style={{ color: '#94A3B8' }}>
-            {progress >= 100
-              ? 'You reached the top! 🎉'
-              : `${currentCP} / ${nextCP} CP  ·  Next: ${nextRank}`}
-          </p>
+
+          {/* Hero progress */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Hero Path
+              </span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6D28D9' }}>
+                {progress >= 100 ? '👑 MAX!' : `${Math.round(progress)}%`}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '1rem' }}>{rank.split(' ')[0]}</span>
+              <div style={{ flex: 1, height: 14, borderRadius: 999, background: '#E0E7FF', overflow: 'hidden' }}>
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  transition={{ duration: 1.2, ease: 'easeOut', delay: 0.5 }}
+                  style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#6366F1,#7C3AED)' }}
+                />
+              </div>
+              <span style={{ fontSize: '1rem' }}>{progress >= 100 ? '👑' : nextRank.split(' ')[0]}</span>
+            </div>
+            <p style={{ fontSize: '0.7rem', textAlign: 'right', color: '#94A3B8', fontWeight: 600, margin: 0 }}>
+              {progress >= 100 ? '🎉 Max rank reached!' : `${currentCP} / ${nextCP} CP · Next: ${nextRank}`}
+            </p>
+          </div>
         </motion.div>
 
-        {/* ── Gallery ── */}
-        <div className="space-y-4">
-          <h3
-            className="text-xl font-bold text-center"
-            style={{ fontFamily: FF, color: '#4338CA' }}
-          >
-            🖼️ City Hero Gallery
+        {/* ── Games & Diplomas ──────────────────────────────────────────── */}
+        <motion.div
+          initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.25 }}
+          style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+        >
+          <h3 style={{ fontFamily: FF, fontSize: '1.15rem', color: '#4338CA', margin: 0, paddingLeft: 4 }}>
+            🏅 My Scores & Diplomas
           </h3>
 
-          <div className="grid grid-cols-2 gap-4">
-            {SCRAPBOOK.map((m, idx) => {
-              const lvl        = highestLevel[m.id] || 0;
-              const isUnlocked = lvl >= 12;
-              const isLast     = idx === SCRAPBOOK.length - 1;
-
-              const frame = (
-                <motion.div
-                  key={m.id}
-                  initial={{ opacity: 0, scale: 0.88 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.08 * idx, type: 'spring', bounce: 0.3 }}
-                  className="flex flex-col rounded-3xl overflow-hidden"
-                  style={{
-                    background: '#FFFFFF',
-                    boxShadow: isUnlocked
-                      ? `0 6px 0 ${m.dark}, 0 10px 28px rgba(0,0,0,0.14)`
-                      : '0 4px 0 #CBD5E1, 0 8px 20px rgba(0,0,0,0.1)',
-                  }}
-                >
-                  {/* Photo */}
-                  <div
-                    className="relative flex items-center justify-center"
-                    style={{
-                      aspectRatio: '1/1',
-                      background: `linear-gradient(135deg,${m.from},${m.to})`,
-                      fontSize: '3.2rem',
-                      filter: isUnlocked ? 'none' : 'grayscale(100%) brightness(0.7)',
-                    }}
-                  >
-                    {m.emoji}
-
-                    {/* Locked overlay */}
-                    {!isUnlocked && (
-                      <div
-                        className="absolute inset-0 flex flex-col items-center justify-center gap-1"
-                        style={{ background: 'rgba(15,10,40,0.65)' }}
-                      >
-                        <span className="text-3xl">🔒</span>
-                        <span
-                          className="font-bold tracking-widest"
-                          style={{ fontFamily: FF, color: '#FFF', fontSize: '0.65rem' }}
-                        >
-                          LOCKED
-                        </span>
-                        <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.6rem', fontWeight: 600 }}>
-                          Reach Level 12
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Unlocked tick */}
-                    {isUnlocked && (
-                      <div
-                        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center shadow-md"
-                        style={{ background: '#22C55E' }}
-                      >
-                        <span className="text-white text-xs font-bold">✓</span>
-                      </div>
-                    )}
+          {GAMES.map((g, i) => {
+            const score = highScores[g.id] ?? 0;
+            return (
+              <motion.div
+                key={g.id}
+                initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.05 * i }}
+                style={{
+                  background: '#fff', borderRadius: 18, padding: '14px 16px',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  boxShadow: '0 2px 10px rgba(79,70,229,0.08)',
+                }}
+              >
+                <span style={{ fontSize: '1.6rem', width: 32, textAlign: 'center' }}>{g.icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: FF, fontSize: '0.9rem', color: '#1E293B', lineHeight: 1.2 }}>
+                    {g.title}
                   </div>
-
-                  {/* Caption */}
-                  <div className="px-3 pt-2.5 pb-3 text-center space-y-0.5">
-                    <p
-                      className="font-bold leading-tight text-sm"
-                      style={{ fontFamily: FF, color: isUnlocked ? m.accent : '#9CA3AF' }}
-                    >
-                      {m.title}
-                    </p>
-                    <p className="text-xs font-semibold" style={{ color: '#CBD5E1' }}>
-                      {lvl > 0 ? `Level ${lvl}` : '— not started —'}
-                    </p>
+                  <div style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600, marginTop: 2 }}>
+                    Best score: <span style={{ color: score > 0 ? '#6D28D9' : '#CBD5E1' }}>{score > 0 ? score : '—'}</span>
                   </div>
-                </motion.div>
-              );
+                </div>
+                <DiplomaRow missionId={g.id} score={score} />
+              </motion.div>
+            );
+          })}
+        </motion.div>
 
-              if (isLast) {
-                return (
-                  <div key={m.id} className="col-span-2 flex justify-center">
-                    <div style={{ width: 'calc(50% - 8px)' }}>{frame}</div>
-                  </div>
-                );
-              }
-              return frame;
-            })}
-          </div>
-
-          <p className="text-center text-xs font-semibold" style={{ color: '#A5B4FC' }}>
-            🌈 Reach Level 12 in each mission to unlock its photo!
-          </p>
-        </div>
-
-        {/* Log out */}
+        {/* ── Logout ───────────────────────────────────────────────────── */}
         <button
           onClick={() => signOut()}
           style={{
             width: '100%', padding: '14px 0', marginTop: 8,
             background: 'transparent', border: '1.5px solid #CBD5E1',
             borderRadius: 16, cursor: 'pointer',
-            fontFamily: 'Fredoka One, cursive', fontSize: 16, color: '#94A3B8',
-            letterSpacing: 0.3,
+            fontFamily: FF, fontSize: 16, color: '#94A3B8',
           }}
         >
           Log Out
         </button>
       </div>
+
+      {/* ── Avatar picker modal ───────────────────────────────────────── */}
+      <AnimatePresence>
+        {showPicker && (
+          <AvatarPicker
+            current={avatarId}
+            onSelect={selectAvatar}
+            onClose={() => setShowPicker(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

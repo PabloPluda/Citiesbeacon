@@ -1,14 +1,14 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
-import { useAdminStore, DEFAULT_MISSION_CONFIG } from '../store/adminStore';
+import { useAdminStore, DEFAULT_MISSION_CONFIG, DEFAULT_DIPLOMA_THRESHOLDS } from '../store/adminStore';
 import type { AdminBuildCat } from '../store/adminStore';
 import type { BuildItem } from '../game/cityBuilderData';
 import { supabase } from '../lib/supabase';
 
 const SUPABASE_URL = 'https://ielaccsufrrafhcssqpu.supabase.co';
 
-type Tab = 'missions' | 'builder' | 'analytics' | 'users' | 'seo';
+type Tab = 'missions' | 'builder' | 'analytics' | 'users' | 'seo' | 'diplomas';
 type AdminClient = ReturnType<typeof createClient>;
 
 const GAME_LABEL: Record<string, string> = {
@@ -836,6 +836,95 @@ function UsersTab({ adminClient }: { adminClient: AdminClient | null }) {
   );
 }
 
+// ─── Diplomas Panel ──────────────────────────────────────────────────────────
+
+const DIPLOMA_GAMES = [
+  { id: 1, icon: '🗑️', title: 'Keeping the city clean' },
+  { id: 2, icon: '🚶', title: 'Crossing the right way' },
+  { id: 3, icon: '💡', title: 'Responsible use of electricity' },
+  { id: 4, icon: '💧', title: 'Water saver' },
+  { id: 5, icon: '🐕', title: 'Not my dog, still my job' },
+  { id: 6, icon: '🚲', title: 'Biking my city' },
+  { id: 7, icon: '🏙️', title: 'City Builder' },
+  { id: 8, icon: '♻️', title: 'Recycling challenge' },
+];
+
+function DiplomasPanel() {
+  const { getDiplomaThresholds, setDiplomaThresholds } = useAdminStore();
+  const [drafts, setDrafts] = React.useState<Record<number, [number, number, number]>>(() =>
+    Object.fromEntries(DIPLOMA_GAMES.map(g => [g.id, getDiplomaThresholds(g.id)]))
+  );
+  const [saved, setSaved] = React.useState(false);
+
+  const update = (id: number, lvl: 0 | 1 | 2, val: number) =>
+    setDrafts(d => { const t = [...d[id]] as [number, number, number]; t[lvl] = val; return { ...d, [id]: t }; });
+
+  const save = () => {
+    DIPLOMA_GAMES.forEach(g => setDiplomaThresholds(g.id, drafts[g.id]));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const reset = () => {
+    const defaults = Object.fromEntries(DIPLOMA_GAMES.map(g => [g.id, DEFAULT_DIPLOMA_THRESHOLDS[g.id] ?? [5, 10, 15] as [number, number, number]]));
+    setDrafts(defaults);
+  };
+
+  const lvlStyle = (color: string): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', gap: 6,
+  });
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <h2 style={{ margin: 0, fontSize: 16, color: '#1E293B' }}>Diploma Score Thresholds</h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={reset} style={{ ...btnStyle, background: '#E2E8F0', color: '#475569' }}>Reset defaults</button>
+          <button onClick={save} style={{ ...btnStyle, background: saved ? '#22C55E' : '#6366F1', color: '#fff' }}>
+            {saved ? '✓ Saved!' : 'Save'}
+          </button>
+        </div>
+      </div>
+
+      <p style={{ fontSize: 12, color: '#64748B', marginBottom: 20 }}>
+        Set the minimum score a player needs to unlock each diploma level per game.
+        Scores are compared against the player's all-time high score for that game.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {DIPLOMA_GAMES.map(g => {
+          const [b, s, gold] = drafts[g.id];
+          return (
+            <div key={g.id} style={{
+              background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12,
+              padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+            }}>
+              <span style={{ fontSize: 22, width: 28 }}>{g.icon}</span>
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#1E293B', minWidth: 140 }}>{g.title}</span>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                {[
+                  { label: '🥉 Bronze', val: b, idx: 0 as const, color: '#CD7F32' },
+                  { label: '🥈 Silver', val: s, idx: 1 as const, color: '#94A3B8' },
+                  { label: '🥇 Gold',   val: gold, idx: 2 as const, color: '#D97706' },
+                ].map(({ label, val, idx, color }) => (
+                  <div key={idx} style={lvlStyle(color)}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color, minWidth: 62 }}>{label}</span>
+                    <input
+                      type="number" min={0} max={9999} value={val}
+                      onChange={e => update(g.id, idx, Number(e.target.value))}
+                      style={{ ...inputStyle, width: 64 }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function AdminPanel() {
@@ -944,6 +1033,7 @@ export default function AdminPanel() {
           ['analytics', '📊 Analytics'],
           ['users',     '👥 Usuarios'],
           ['seo',       '🔍 SEO'],
+          ['diplomas',  '🎓 Diplomas'],
         ] as [Tab, string][]).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer',
@@ -1065,6 +1155,9 @@ export default function AdminPanel() {
 
         {/* ── SEO TAB ──────────────────────────────────────────────────────── */}
         {tab === 'seo' && <SeoTab />}
+
+        {/* ── DIPLOMAS TAB ─────────────────────────────────────────────────── */}
+        {tab === 'diplomas' && <DiplomasPanel />}
 
         {/* ── DANGER ZONE ──────────────────────────────────────────────────── */}
         <div style={{ marginTop: 40, borderTop: '1px solid #E2E8F0', paddingTop: 20 }}>

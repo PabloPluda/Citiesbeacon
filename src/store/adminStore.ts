@@ -5,6 +5,18 @@ import type { BuildItem } from '../game/cityBuilderData';
 
 export type AdminBuildCat = { label: string; emoji: string; items: BuildItem[] };
 
+// Default score thresholds for Bronze / Silver / Gold diplomas per mission
+export const DEFAULT_DIPLOMA_THRESHOLDS: Record<number, [number, number, number]> = {
+  1: [5,  10, 15],
+  2: [5,  10, 15],
+  3: [5,  10, 15],
+  4: [5,  10, 15],
+  5: [3,  7,  12],
+  6: [3,  7,  12],
+  7: [5,  10, 15],
+  8: [5,  10, 15],
+};
+
 export const DEFAULT_MISSION_CONFIG = [
   { id: 1, title: 'Keeping the city clean',         icon: '🗑️' },
   { id: 2, title: 'Crossing the right way',          icon: '🚶' },
@@ -17,16 +29,18 @@ export const DEFAULT_MISSION_CONFIG = [
 ];
 
 interface AdminState {
-  // null means "use code defaults"; set once user makes any change
   missionOverrides: Record<number, { title?: string; icon?: string }>;
   builderCats: AdminBuildCat[] | null;
+  diplomaThresholds: Record<number, [number, number, number]>;
 
   setMissionOverride: (id: number, patch: { title?: string; icon?: string }) => void;
   setBuilderCats: (cats: AdminBuildCat[]) => void;
+  setDiplomaThresholds: (missionId: number, levels: [number, number, number]) => void;
   resetAll: () => void;
 
   getEffectiveCats: () => AdminBuildCat[];
   getEffectiveMission: (id: number) => { title: string; icon: string };
+  getDiplomaThresholds: (missionId: number) => [number, number, number];
 }
 
 export const useAdminStore = create<AdminState>()(
@@ -34,6 +48,7 @@ export const useAdminStore = create<AdminState>()(
     (set, get) => ({
       missionOverrides: {},
       builderCats: null,
+      diplomaThresholds: {},
 
       setMissionOverride: (id, patch) =>
         set(s => ({
@@ -45,7 +60,10 @@ export const useAdminStore = create<AdminState>()(
 
       setBuilderCats: (cats) => set({ builderCats: cats }),
 
-      resetAll: () => set({ missionOverrides: {}, builderCats: null }),
+      setDiplomaThresholds: (id, levels) =>
+        set(s => ({ diplomaThresholds: { ...s.diplomaThresholds, [id]: levels } })),
+
+      resetAll: () => set({ missionOverrides: {}, builderCats: null, diplomaThresholds: {} }),
 
       getEffectiveCats: () => {
         const { builderCats } = get();
@@ -57,6 +75,9 @@ export const useAdminStore = create<AdminState>()(
         const ov  = get().missionOverrides[id] ?? {};
         return { title: ov.title ?? def.title, icon: ov.icon ?? def.icon };
       },
+
+      getDiplomaThresholds: (id) =>
+        get().diplomaThresholds[id] ?? DEFAULT_DIPLOMA_THRESHOLDS[id] ?? [5, 10, 15],
     }),
     { name: 'cityhero-admin-v1' }
   )

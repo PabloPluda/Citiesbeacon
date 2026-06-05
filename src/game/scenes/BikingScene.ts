@@ -91,10 +91,10 @@ function randomEdgePoints(rows: number, cols: number, count: number): { row: num
 
 function getLevelCfg(level: number): LevelCfg {
   let gridRows: number, gridCols: number, timerSec: number, epCount: number;
-  if (level <= 4)        { gridRows = 6;  gridCols = 7;  timerSec = 120; epCount = 2; }
-  else if (level <= 10)  { gridRows = 7;  gridCols = 8;  timerSec = 150; epCount = 3; }
-  else if (level <= 15)  { gridRows = 8;  gridCols = 9;  timerSec = 180; epCount = 4; }
-  else                   { gridRows = 9;  gridCols = 10; timerSec = 180; epCount = 4; }
+  if (level <= 4)        { gridRows = 7;  gridCols = 6;  timerSec = 120; epCount = 2; }
+  else if (level <= 10)  { gridRows = 8;  gridCols = 7;  timerSec = 150; epCount = 3; }
+  else if (level <= 15)  { gridRows = 9;  gridCols = 8;  timerSec = 180; epCount = 4; }
+  else                   { gridRows = 10; gridCols = 9;  timerSec = 180; epCount = 4; }
   const positions = randomEdgePoints(gridRows, gridCols, epCount);
   const endpoints: Endpoint[] = positions.map((pos, i) => ({ ...pos, ...EP_META[i] }));
   return { gridRows, gridCols, timerSec, endpoints };

@@ -57,59 +57,47 @@ interface LevelCfg {
   endpoints: Endpoint[];
 }
 
-// Endpoints on each edge, varied by level. No openPort needed — all endpoints are crosses.
-function generateEndpoints4(rows: number, cols: number, level: number): Endpoint[] {
-  const rangeC = cols - 2;
-  const rangeR = rows - 2;
+const EP_META = [
+  { label: 'Home',    icon: '🏠', color: 0xFF6B6B },
+  { label: 'Park',    icon: '🌳', color: 0x22C55E },
+  { label: 'School',  icon: '🏫', color: 0x4DA6FF },
+  { label: 'Library', icon: '📚', color: 0x8B5CF6 },
+];
 
-  const topC   = 1 + (level * 3)     % rangeC;
-  const rightR = 1 + (level * 5 + 1) % rangeR;
-  const botC   = 1 + (level * 2 + 2) % rangeC;
-  const leftR  = 1 + (level * 7 + 3) % rangeR;
-
-  const rot = Math.floor(level / 4) % 4;
-  const edgeDefs = [
-    { row: 0,        col: topC     },
-    { row: rightR,   col: cols - 1 },
-    { row: rows - 1, col: botC     },
-    { row: leftR,    col: 0        },
-  ];
-
-  const meta = [
-    { label: 'Home',    icon: '🏠', color: 0xFF6B6B },
-    { label: 'Park',    icon: '🌳', color: 0x22C55E },
-    { label: 'School',  icon: '🏫', color: 0x4DA6FF },
-    { label: 'Library', icon: '📚', color: 0x8B5CF6 },
-  ];
-
-  return [0, 1, 2, 3].map(i => ({
-    ...edgeDefs[(i + rot) % 4],
-    ...meta[i],
-  }));
+function randomEdgePoints(rows: number, cols: number, count: number): { row: number; col: number }[] {
+  const pool: { row: number; col: number }[] = [];
+  for (let c = 0; c < cols; c++) { pool.push({ row: 0, col: c }); pool.push({ row: rows - 1, col: c }); }
+  for (let r = 1; r < rows - 1; r++) { pool.push({ row: r, col: 0 }); pool.push({ row: r, col: cols - 1 }); }
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const minDist = Math.max(3, Math.floor(Math.sqrt(rows * cols / count)));
+  const result: { row: number; col: number }[] = [];
+  for (const pos of pool) {
+    if (result.length >= count) break;
+    if (!result.some(p => Math.abs(p.row - pos.row) + Math.abs(p.col - pos.col) < minDist)) {
+      result.push(pos);
+    }
+  }
+  if (result.length < count) {
+    for (const pos of pool) {
+      if (result.length >= count) break;
+      if (!result.some(p => p.row === pos.row && p.col === pos.col)) result.push(pos);
+    }
+  }
+  return result;
 }
 
 function getLevelCfg(level: number): LevelCfg {
-  if (level <= 4) {
-    return {
-      gridRows: 5, gridCols: 4, timerSec: 120,
-      endpoints: [
-        { row: 4, col: 0, label: 'Home',   icon: '🏠', color: 0xFF6B6B },
-        { row: 0, col: 3, label: 'School', icon: '🏫', color: 0x4DA6FF },
-      ],
-    };
-  }
-  if (level <= 10) {
-    return {
-      gridRows: 6, gridCols: 5, timerSec: 150,
-      endpoints: [
-        { row: 5, col: 0, label: 'Home',   icon: '🏠', color: 0xFF6B6B },
-        { row: 0, col: 2, label: 'Park',   icon: '🌳', color: 0x22C55E },
-        { row: 2, col: 4, label: 'School', icon: '🏫', color: 0x4DA6FF },
-      ],
-    };
-  }
-  const [gridRows, gridCols] = level <= 15 ? [7, 6] : [8, 7];
-  return { gridRows, gridCols, timerSec: 180, endpoints: generateEndpoints4(gridRows, gridCols, level) };
+  let gridRows: number, gridCols: number, timerSec: number, epCount: number;
+  if (level <= 4)        { gridRows = 6;  gridCols = 7;  timerSec = 120; epCount = 2; }
+  else if (level <= 10)  { gridRows = 7;  gridCols = 8;  timerSec = 150; epCount = 3; }
+  else if (level <= 15)  { gridRows = 8;  gridCols = 9;  timerSec = 180; epCount = 4; }
+  else                   { gridRows = 9;  gridCols = 10; timerSec = 180; epCount = 4; }
+  const positions = randomEdgePoints(gridRows, gridCols, epCount);
+  const endpoints: Endpoint[] = positions.map((pos, i) => ({ ...pos, ...EP_META[i] }));
+  return { gridRows, gridCols, timerSec, endpoints };
 }
 
 // ── Cell ───────────────────────────────────────────────────────────────────────
@@ -207,14 +195,15 @@ export class BikingScene extends Phaser.Scene {
     this.rows     = this.cfg.gridRows;
     this.cols     = this.cfg.gridCols;
 
-    const HUD_H    = 72;
-    const CAT_H    = 100;
-    const GUIDE_H  = 26;
-    const BTN_H    = 50;
-    const BTN_GAP  = 12;
-    const GRID_PAD = 10;
+    const HUD_H      = 72;
+    const CAT_H      = 100;
+    const GUIDE_H    = 26;
+    const BTN_H      = 50;
+    const BTN_GAP    = 12;
+    const GRID_PAD   = 10;
+    const SAFE_BOTTOM = 56;
 
-    const availH = this.H - HUD_H - CAT_H - GUIDE_H - BTN_H - BTN_GAP - GRID_PAD * 2;
+    const availH = this.H - HUD_H - CAT_H - GUIDE_H - BTN_H - BTN_GAP - GRID_PAD * 2 - SAFE_BOTTOM;
     const availW = this.W - GRID_PAD * 2;
     this.cellSize = Math.floor(Math.min(availW / this.cols, availH / this.rows));
 
@@ -265,10 +254,10 @@ export class BikingScene extends Phaser.Scene {
     }).setOrigin(0.5, 0);
     this.updateGuide(0);
 
-    this.buildStartButton(this.H - BTN_H / 2 - BTN_GAP);
+    this.buildStartButton(this.H - BTN_H / 2 - BTN_GAP - SAFE_BOTTOM);
 
     EventBus.emit('game-timer', this.timeLeft);
-    EventBus.emit('game-scored-update', '...');
+    EventBus.emit('game-scored-update', `0/${this.cfg.endpoints.length}`);
     this.timerEvent = this.time.addEvent({ delay: 1000, loop: true, callback: this.onTick, callbackScope: this });
 
     const onRestart = (d?: { level?: number }) => this.scene.restart(d);
@@ -531,7 +520,11 @@ export class BikingScene extends Phaser.Scene {
       this.updateGuide(newUpTo);
     }
     this.startBtn?.setAlpha(this.connectionValid ? 1 : 0.45);
-    EventBus.emit('game-scored-update', this.connectionValid ? '✓ Go!' : '...');
+    const curConn = this.getConnectedUpTo();
+    const places  = this.connectionValid
+      ? this.cfg.endpoints.length
+      : curConn > 0 ? curConn + 1 : 0;
+    EventBus.emit('game-scored-update', `${places}/${this.cfg.endpoints.length}`);
   }
 
   // ── Guide text ─────────────────────────────────────────────────────────────
@@ -722,7 +715,7 @@ export class BikingScene extends Phaser.Scene {
   }
 
   private animateStep(wps: { x: number; y: number }[], idx: number, dur: number) {
-    if (idx >= wps.length) { this.time.delayedCall(300, () => EventBus.emit('game-level-complete', { level: this.level, coinsEarned: this.coinsEarned })); return; }
+    if (idx >= wps.length) { this.time.delayedCall(300, () => EventBus.emit('game-level-complete', { level: this.level, coinsEarned: this.coinsEarned, score: this.cfg.endpoints.length })); return; }
     this.tweens.add({ targets: this.bikeEmoji, x: wps[idx].x, y: wps[idx].y, duration: dur, ease: 'Linear', onComplete: () => this.animateStep(wps, idx + 1, dur) });
   }
 

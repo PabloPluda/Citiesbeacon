@@ -392,6 +392,10 @@ export default function GameWindow() {
       completeLevel(mId, completedLevel);
       if (coins > 0 && mId !== 2) addCityCoins(coins);
       if (mId === 2 && crossings > 0) setM2LevelBase(prev => prev + crossings);
+      if (mId === 6) {
+        const placeScore = typeof payload === 'object' ? ((payload as any).score ?? 0) : 0;
+        if (placeScore > 0) updateHighScore(6, placeScore);
+      }
       setLevelCoins(coins);
       setPhase('wellDone');
     };
@@ -1040,8 +1044,8 @@ export default function GameWindow() {
           )}
         </div>
 
-        {/* Scored — hidden for ThrowToBin (1), LightsOutScene (3), CityBuilder (7), Recycling (8) */}
-        {mId !== 1 && mId !== 2 && mId !== 3 && mId !== 7 && mId !== 8 && (
+        {/* Scored — hidden for ThrowToBin (1), Crossing (2), LightsOut (3), Biking (6), CityBuilder (7), Recycling (8) */}
+        {mId !== 1 && mId !== 2 && mId !== 3 && mId !== 6 && mId !== 7 && mId !== 8 && (
           <div style={{
             background: 'rgba(255,255,255,0.92)', borderRadius: 20,
             padding: '6px 14px', textAlign: 'center',
@@ -1051,6 +1055,19 @@ export default function GameWindow() {
               {scored}
             </div>
             <div style={{ fontFamily: 'Fredoka', fontSize: '0.65rem', color: '#999' }}>SCORED</div>
+          </div>
+        )}
+        {/* Biking (6) — places connected + record */}
+        {mId === 6 && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ background: 'rgba(255,255,255,0.92)', borderRadius: 16, padding: '4px 10px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', minWidth: 52 }}>
+              <div style={{ fontFamily: 'Fredoka One', fontSize: '1rem', color: '#22C55E', lineHeight: 1 }}>🚲 {scored}</div>
+              <div style={{ fontFamily: 'Fredoka', fontSize: '0.55rem', color: '#94A3B8' }}>PLACES</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.92)', borderRadius: 16, padding: '4px 10px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', minWidth: 52 }}>
+              <div style={{ fontFamily: 'Fredoka One', fontSize: '1rem', color: '#F59E0B', lineHeight: 1 }}>🏆 {highScores[6] ?? 0}</div>
+              <div style={{ fontFamily: 'Fredoka', fontSize: '0.55rem', color: '#94A3B8' }}>RECORD</div>
+            </div>
           </div>
         )}
         {mId === 7 && (
